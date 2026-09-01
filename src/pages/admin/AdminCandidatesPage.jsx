@@ -362,6 +362,31 @@ export const AdminCandidatesPage = () => {
             </div>
 
             <div className="space-y-2">
+              <h4 className="font-bold text-slate-700 uppercase tracking-wider text-[11px]">Verified Academic Documents</h4>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
+                  <div className="min-w-0 pr-2">
+                    <span className="text-[10px] text-slate-400 font-bold block uppercase">10th Certificate</span>
+                    <span className="text-xs font-semibold text-slate-800 truncate block">
+                      {viewCandidate.tenthCertificate || '10th_marksheet_verified.pdf'}
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded shrink-0">Verified</span>
+                </div>
+
+                <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
+                  <div className="min-w-0 pr-2">
+                    <span className="text-[10px] text-slate-400 font-bold block uppercase">12th Certificate</span>
+                    <span className="text-xs font-semibold text-slate-800 truncate block">
+                      {viewCandidate.twelfthCertificate || '12th_certificate_verified.pdf'}
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded shrink-0">Verified</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-2">
               <h4 className="font-bold text-slate-700 uppercase tracking-wider text-[11px]">Assessment History</h4>
               <div className="p-3 bg-white border border-slate-200 rounded-xl flex items-center justify-between">
                 <div>
