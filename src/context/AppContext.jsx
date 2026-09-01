@@ -149,7 +149,10 @@ export const AppProvider = ({ children }) => {
       degree: formData.degree,
       branch: formData.branch,
       graduationYear: formData.graduationYear,
-      experienceLevel: formData.experienceLevel,
+      primarySkill: formData.primarySkill || 'Fullstack Development',
+      tenthCertificate: formData.tenthCertificate,
+      twelfthCertificate: formData.twelfthCertificate,
+      resumeFile: formData.resumeFile,
       registeredAt: new Date().toISOString().split('T')[0]
     };
     setCurrentUser(newCand);

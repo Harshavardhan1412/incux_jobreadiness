@@ -17,7 +17,9 @@ import {
   User,
   Phone,
   Building,
-  GraduationCap
+  GraduationCap,
+  FileCheck,
+  FileText
 } from 'lucide-react';
 
 export const SignupPage = () => {
@@ -33,9 +35,11 @@ export const SignupPage = () => {
     degree: '',
     branch: '',
     graduationYear: '2026',
-    experienceLevel: 'Fresher',
+    primarySkill: '',
     agreeTerms: false,
-    resumeFile: null
+    resumeFile: null,
+    tenthCertificate: null,
+    twelfthCertificate: null
   });
 
   const [showPassword, setShowPassword] = useState(false);
@@ -97,6 +101,16 @@ export const SignupPage = () => {
     if (!formData.degree.trim()) newErrors.degree = 'Degree is required';
     if (!formData.branch.trim()) newErrors.branch = 'Branch/Specialization is required';
     if (!formData.graduationYear) newErrors.graduationYear = 'Select graduation year';
+    if (!formData.primarySkill.trim()) newErrors.primarySkill = 'Primary skill / domain is required';
+
+    // Compulsory Certificate validations
+    if (!formData.tenthCertificate) {
+      newErrors.tenthCertificate = '10th Class Marksheet / Certificate is required';
+    }
+    if (!formData.twelfthCertificate) {
+      newErrors.twelfthCertificate = '12th / Intermediate Certificate is required';
+    }
+
     if (!formData.agreeTerms) newErrors.agreeTerms = 'You must agree to terms & policy';
 
     setErrors(newErrors);
@@ -121,6 +135,26 @@ export const SignupPage = () => {
     const file = e.target.files[0];
     if (file) {
       setFormData(prev => ({ ...prev, resumeFile: file.name }));
+    }
+  };
+
+  const handleTenthUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setFormData(prev => ({ ...prev, tenthCertificate: file.name }));
+      if (errors.tenthCertificate) {
+        setErrors(prev => ({ ...prev, tenthCertificate: null }));
+      }
+    }
+  };
+
+  const handleTwelfthUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      setFormData(prev => ({ ...prev, twelfthCertificate: file.name }));
+      if (errors.twelfthCertificate) {
+        setErrors(prev => ({ ...prev, twelfthCertificate: null }));
+      }
     }
   };
 
@@ -199,17 +233,20 @@ export const SignupPage = () => {
                   setFormData({
                     fullName: 'Sarah Chen',
                     email: 'sarah.chen@stanford.edu',
-                    mobile: '+1 (555) 438-9210',
+                    mobile: '+91 98765 43210',
                     password: 'Password@123',
                     confirmPassword: 'Password@123',
                     college: 'National Institute of Tech',
                     degree: 'B.Tech',
                     branch: 'Computer Science',
                     graduationYear: '2026',
-                    experienceLevel: 'Fresher',
+                    primarySkill: 'Fullstack Web Development',
                     agreeTerms: true,
-                    resumeFile: 'sarah_chen_resume.pdf'
+                    resumeFile: 'sarah_chen_resume.pdf',
+                    tenthCertificate: 'sarah_chen_10th_marksheet.pdf',
+                    twelfthCertificate: 'sarah_chen_12th_certificate.pdf'
                   });
+                  setErrors({});
                 }}
                 className="text-brand-600 hover:text-brand-700 font-bold hover:underline"
               >
@@ -302,7 +339,7 @@ export const SignupPage = () => {
                           type="tel"
                           value={formData.mobile}
                           onChange={(e) => setFormData({ ...formData, mobile: e.target.value })}
-                          placeholder="+1 (555) 000-0000"
+                          placeholder="+91 98765 43210"
                           className={`w-full pl-10 pr-4 py-2.5 bg-slate-50 focus:bg-white text-xs sm:text-sm rounded-xl border ${
                             errors.mobile ? 'border-rose-400 focus:ring-rose-200' : 'border-slate-200 focus:border-brand-500'
                           } focus:ring-2 focus:ring-brand-500/20 outline-none transition-all`}
@@ -466,26 +503,105 @@ export const SignupPage = () => {
 
                     <div>
                       <label className="block text-xs font-bold text-slate-700 mb-1">
-                        Experience Level <span className="text-rose-500">*</span>
+                        Primary Skill / Domain <span className="text-rose-500">*</span>
                       </label>
-                      <div className="grid grid-cols-3 gap-2">
-                        {['Fresher', 'Student', 'Experienced'].map((lvl) => (
-                          <button
-                            key={lvl}
-                            type="button"
-                            onClick={() => setFormData({ ...formData, experienceLevel: lvl })}
-                            className={`py-2 px-1 text-xs font-bold rounded-xl border transition-all text-center ${
-                              formData.experienceLevel === lvl
-                                ? 'bg-brand-50 border-brand-500 text-brand-700 shadow-xs'
-                                : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-                            }`}
-                          >
-                            {lvl}
-                          </button>
-                        ))}
-                      </div>
+                      <input
+                        type="text"
+                        value={formData.primarySkill}
+                        onChange={(e) => setFormData({ ...formData, primarySkill: e.target.value })}
+                        placeholder="e.g. Java, Python, React, Data Science"
+                        className={`w-full px-3.5 py-2.5 bg-slate-50 focus:bg-white text-xs sm:text-sm rounded-xl border ${
+                          errors.primarySkill ? 'border-rose-400 focus:ring-rose-200' : 'border-slate-200 focus:border-brand-500'
+                        } focus:ring-2 focus:ring-brand-500/20 outline-none transition-all`}
+                      />
+                      {errors.primarySkill && <p className="text-[11px] text-rose-500 mt-1">{errors.primarySkill}</p>}
                     </div>
                   </div>
+
+                  {/* Academic Certificates Upload */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {/* 10th Certificate */}
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          10th Class Certificate <span className="text-rose-500">*</span>
+                        </label>
+                        <label className={`flex items-center justify-between p-3 border-2 border-dashed rounded-xl cursor-pointer transition-all ${
+                          errors.tenthCertificate
+                            ? 'border-rose-400 bg-rose-50/50 hover:bg-rose-50'
+                            : formData.tenthCertificate
+                            ? 'border-emerald-400 bg-emerald-50/40 hover:bg-emerald-50/60'
+                            : 'border-slate-200 hover:border-brand-400 bg-slate-50/50 hover:bg-brand-50/30'
+                        }`}>
+                          <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                            {formData.tenthCertificate ? (
+                              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                            ) : (
+                              <Upload className="w-4 h-4 text-slate-400 shrink-0" />
+                            )}
+                            <span className={`text-xs font-medium truncate ${formData.tenthCertificate ? 'text-emerald-900 font-bold' : 'text-slate-600'}`}>
+                              {formData.tenthCertificate || 'Upload 10th Marksheet'}
+                            </span>
+                          </div>
+                          {formData.tenthCertificate && (
+                            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded shrink-0">
+                              Attached
+                            </span>
+                          )}
+                          <input
+                            type="file"
+                            accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                            onChange={handleTenthUpload}
+                            className="hidden"
+                          />
+                        </label>
+                        {errors.tenthCertificate && (
+                          <p className="text-[11px] text-rose-500 mt-1 font-medium flex items-center gap-1">
+                            <AlertCircle className="w-3 h-3 shrink-0" /> {errors.tenthCertificate}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* 12th Certificate */}
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700 mb-1">
+                          12th / Diploma Certificate <span className="text-rose-500">*</span>
+                        </label>
+                        <label className={`flex items-center justify-between p-3 border-2 border-dashed rounded-xl cursor-pointer transition-all ${
+                          errors.twelfthCertificate
+                            ? 'border-rose-400 bg-rose-50/50 hover:bg-rose-50'
+                            : formData.twelfthCertificate
+                            ? 'border-emerald-400 bg-emerald-50/40 hover:bg-emerald-50/60'
+                            : 'border-slate-200 hover:border-brand-400 bg-slate-50/50 hover:bg-brand-50/30'
+                        }`}>
+                          <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                            {formData.twelfthCertificate ? (
+                              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                            ) : (
+                              <Upload className="w-4 h-4 text-slate-400 shrink-0" />
+                            )}
+                            <span className={`text-xs font-medium truncate ${formData.twelfthCertificate ? 'text-emerald-900 font-bold' : 'text-slate-600'}`}>
+                              {formData.twelfthCertificate || 'Upload 12th Certificate'}
+                            </span>
+                          </div>
+                          {formData.twelfthCertificate && (
+                            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded shrink-0">
+                              Attached
+                            </span>
+                          )}
+                          <input
+                            type="file"
+                            accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                            onChange={handleTwelfthUpload}
+                            className="hidden"
+                          />
+                        </label>
+                        {errors.twelfthCertificate && (
+                          <p className="text-[11px] text-rose-500 mt-1 font-medium flex items-center gap-1">
+                            <AlertCircle className="w-3 h-3 shrink-0" /> {errors.twelfthCertificate}
+                          </p>
+                        )}
+                      </div>
+                    </div>
 
                   {/* Optional Resume Upload */}
                   <div>
