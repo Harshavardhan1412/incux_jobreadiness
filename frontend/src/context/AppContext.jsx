@@ -11,21 +11,28 @@ import {
 const AppContext = createContext();
 
 export const AppProvider = ({ children }) => {
-  // Authentication & Role
+  // Authentication & Role: 'candidate' | 'admin' | 'guest'
   const [currentUser, setCurrentUser] = useState(() => {
     const saved = localStorage.getItem('rsj_user');
-    return saved ? JSON.parse(saved) : INITIAL_CANDIDATE;
+    return saved ? JSON.parse(saved) : null;
+  });
+
+  const [adminUser, setAdminUser] = useState(() => {
+    const saved = localStorage.getItem('rsj_admin_user');
+    return saved ? JSON.parse(saved) : null;
   });
 
   const [role, setRole] = useState(() => {
-    const saved = localStorage.getItem('rsj_role');
-    return saved || 'candidate'; // 'candidate' | 'admin' | 'guest'
+    const savedRole = localStorage.getItem('rsj_role');
+    const user = localStorage.getItem('rsj_user');
+    const admin = localStorage.getItem('rsj_admin_user');
+    if (admin) return 'admin';
+    if (user) return 'candidate';
+    return savedRole || 'guest';
   });
 
-  const [currentView, setCurrentView] = useState(() => {
-    const saved = localStorage.getItem('rsj_view');
-    return saved || 'dashboard'; // 'dashboard' | 'assessments' | 'take-assessment' | 'results' | 'ai-analysis' | 'performance' | 'recommendations' | 'final-report' | 'signup' | 'login' | 'admin-login' | 'admin-dashboard' | 'admin-candidates' | 'admin-questions' | 'admin-assessments' | 'admin-analytics' | 'admin-reports'
-  });
+  // Always land on 'signup' page by default when opening the link
+  const [currentView, setCurrentView] = useState('signup');
 
   // State entities
   const [assessments, setAssessments] = useState(() => {
@@ -50,7 +57,7 @@ export const AppProvider = ({ children }) => {
   const [assessmentAnswers, setAssessmentAnswers] = useState({});
   const [markedForReview, setMarkedForReview] = useState([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-  const [timeRemainingSeconds, setTimeRemainingSeconds] = useState(18 * 60 + 42); // 18m 42s default
+  const [timeRemainingSeconds, setTimeRemainingSeconds] = useState(18 * 60 + 42);
   const [latestResult, setLatestResult] = useState(() => {
     const saved = localStorage.getItem('rsj_latest_result');
     return saved ? JSON.parse(saved) : {
@@ -98,16 +105,29 @@ export const AppProvider = ({ children }) => {
 
   // Sync to localStorage
   useEffect(() => {
-    if (currentUser) localStorage.setItem('rsj_user', JSON.stringify(currentUser));
+    if (currentUser) {
+      localStorage.setItem('rsj_user', JSON.stringify(currentUser));
+    } else {
+      localStorage.removeItem('rsj_user');
+    }
   }, [currentUser]);
+
+  useEffect(() => {
+    if (adminUser) {
+      localStorage.setItem('rsj_admin_user', JSON.stringify(adminUser));
+    } else {
+      localStorage.removeItem('rsj_admin_user');
+    }
+  }, [adminUser]);
 
   useEffect(() => {
     localStorage.setItem('rsj_role', role);
   }, [role]);
 
+  // Clean any old rsj_view from previous sessions
   useEffect(() => {
-    localStorage.setItem('rsj_view', currentView);
-  }, [currentView]);
+    localStorage.removeItem('rsj_view');
+  }, []);
 
   useEffect(() => {
     localStorage.setItem('rsj_assessments', JSON.stringify(assessments));
@@ -127,8 +147,52 @@ export const AppProvider = ({ children }) => {
     }
   }, [latestResult]);
 
-  // Navigation Helper
+  // ==========================================
+  // RBAC PERMISSION & VIEW GUARD ENGINE
+  // ==========================================
+  const ADMIN_ONLY_VIEWS = [
+    'admin-dashboard',
+    'admin-candidates',
+    'admin-questions',
+    'admin-assessments',
+    'admin-analytics',
+    'admin-reports'
+  ];
+
+  const CANDIDATE_PROTECTED_VIEWS = [
+    'dashboard',
+    'assessments',
+    'take-assessment',
+    'results',
+    'ai-analysis',
+    'performance',
+    'recommendations',
+    'final-report'
+  ];
+
+  const PUBLIC_VIEWS = ['signup', 'login', 'admin-login'];
+
+  // Guarded Navigation Helper
   const navigateTo = (view, payload = null) => {
+    // 1. Guard Admin-Only Views
+    if (ADMIN_ONLY_VIEWS.includes(view)) {
+      if (role !== 'admin') {
+        addToast('Access Denied: Admin privileges required to access this portal.', 'error');
+        setCurrentView(role === 'candidate' ? 'dashboard' : 'admin-login');
+        return;
+      }
+    }
+
+    // 2. Guard Candidate-Protected Views
+    if (CANDIDATE_PROTECTED_VIEWS.includes(view)) {
+      if (role !== 'candidate' && role !== 'admin') {
+        addToast('Please login or register to access student assessments.', 'info');
+        setCurrentView('signup');
+        return;
+      }
+    }
+
+    // 3. Handle Assessment Launch
     if (view === 'take-assessment' && payload) {
       startAssessment(payload);
     } else {
@@ -137,7 +201,7 @@ export const AppProvider = ({ children }) => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // Candidate Actions
+  // Candidate Authentication Actions
   const registerCandidate = (formData) => {
     const newCand = {
       ...INITIAL_CANDIDATE,
@@ -158,7 +222,7 @@ export const AppProvider = ({ children }) => {
     setCurrentUser(newCand);
     setRole('candidate');
     setCandidatesList(prev => [newCand, ...prev]);
-    addToast('Account created successfully! Welcome to ReadySetJob.', 'success');
+    addToast('Account created successfully! Welcome to your student portal.', 'success');
     setCurrentView('dashboard');
   };
 
@@ -166,20 +230,38 @@ export const AppProvider = ({ children }) => {
     const existing = candidatesList.find(c => c.email.toLowerCase() === email.toLowerCase()) || INITIAL_CANDIDATE;
     setCurrentUser(existing);
     setRole('candidate');
-    addToast(`Logged in as ${existing.name}`, 'success');
+    addToast(`Welcome back, ${existing.name}! Logged into Student Portal.`, 'success');
     setCurrentView('dashboard');
   };
 
-  const loginAdmin = () => {
+  const logoutCandidate = () => {
+    setCurrentUser(null);
+    setRole('guest');
+    setCurrentView('login');
+    addToast('Signed out of Student Portal', 'info');
+  };
+
+  // Admin Authentication Actions
+  const loginAdmin = (adminDetails = { name: 'Admin Administrator', email: 'admin@readysetjob.com' }) => {
+    setAdminUser(adminDetails);
     setRole('admin');
-    addToast('Logged in as Administrator', 'info');
+    addToast('Admin authentication verified. Welcome to Admin Portal.', 'success');
     setCurrentView('admin-dashboard');
   };
 
-  const logout = () => {
+  const logoutAdmin = () => {
+    setAdminUser(null);
     setRole('guest');
-    setCurrentView('login');
-    addToast('Logged out successfully', 'info');
+    setCurrentView('admin-login');
+    addToast('Signed out of Admin Portal', 'info');
+  };
+
+  const logout = () => {
+    if (role === 'admin') {
+      logoutAdmin();
+    } else {
+      logoutCandidate();
+    }
   };
 
   // Start / Submit Assessment

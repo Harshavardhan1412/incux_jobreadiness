@@ -1,32 +1,14 @@
 {
-  "name": "jobreadiness",
+  "name": "jobreadiness-monorepo",
+  "version": "1.0.0",
+  "description": "ReadySetJob AI Job Readiness Platform — Monorepo",
   "private": true,
-  "version": "0.0.0",
-  "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "lint": "oxlint",
-    "preview": "vite preview"
-  },
-  "dependencies": {
-    "autoprefixer": "^10.5.4",
-    "canvas-confetti": "^1.9.4",
-    "chart.js": "^4.5.1",
-    "html2canvas": "^1.4.1",
-    "jspdf": "^4.2.1",
-    "lucide-react": "^1.38.0",
-    "postcss": "^8.5.26",
-    "react": "^19.2.8",
-    "react-chartjs-2": "^5.3.1",
-    "react-dom": "^19.2.8",
-    "tailwindcss": "^3.4.17"
-  },
-  "devDependencies": {
-    "@types/react": "^19.2.18",
-    "@types/react-dom": "^19.2.4",
-    "@vitejs/plugin-react": "^6.1.0",
-    "oxlint": "^1.79.0",
-    "vite": "^8.2.2"
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev": "start /B npm run dev:backend && npm run dev:frontend",
+    "install:all": "cd backend && npm install && cd ../frontend && npm install",
+    "seed": "cd backend && npm run seed",
+    "build": "cd frontend && npm run build"
   }
 }

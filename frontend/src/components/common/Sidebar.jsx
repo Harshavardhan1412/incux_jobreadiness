@@ -11,21 +11,20 @@ import {
   Database,
   Layers,
   BarChart3,
-  Sliders,
-  Award,
-  ChevronRight,
   Target,
-  GraduationCap
+  GraduationCap,
+  ShieldAlert,
+  LogOut
 } from 'lucide-react';
 
 export const Sidebar = ({ isOpen, onClose }) => {
-  const { role, currentView, navigateTo } = useApp();
+  const { role, currentView, navigateTo, logout } = useApp();
 
   const candidateNavItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, badge: null },
     { id: 'assessments', label: 'Assessments', icon: ClipboardCheck, badge: 'Live' },
     { id: 'results', label: 'My Results', icon: FileCheck, badge: null },
-    { id: 'ai-analysis', label: 'AI Performance', icon: Sparkles, badge: 'AI' },
+    { id: 'ai-analysis', label: 'AI Diagnosis', icon: Sparkles, badge: 'AI' },
     { id: 'performance', label: 'Skill Benchmarks', icon: TrendingUp, badge: null },
     { id: 'recommendations', label: 'Recommendations', icon: Target, badge: '3' },
     { id: 'final-report', label: 'Job Report', icon: FileText, badge: 'PDF' },
@@ -33,13 +32,14 @@ export const Sidebar = ({ isOpen, onClose }) => {
 
   const adminNavItems = [
     { id: 'admin-dashboard', label: 'Dashboard', icon: LayoutDashboard, badge: null },
-    { id: 'admin-candidates', label: 'Candidates', icon: Users, badge: '1,248' },
+    { id: 'admin-candidates', label: 'Candidates Roster', icon: Users, badge: '1,248' },
     { id: 'admin-questions', label: 'Question Bank', icon: Database, badge: null },
-    { id: 'admin-assessments', label: 'Assessments', icon: Layers, badge: '4' },
+    { id: 'admin-assessments', label: 'Assessments Wizard', icon: Layers, badge: '4' },
     { id: 'admin-analytics', label: 'Analytics', icon: BarChart3, badge: null },
-    { id: 'admin-reports', label: 'Reports & Export', icon: FileText, badge: null },
+    { id: 'admin-reports', label: 'Placement Reports', icon: FileText, badge: 'CSV' },
   ];
 
+  // Restrict strictly by role
   const navItems = role === 'admin' ? adminNavItems : candidateNavItems;
 
   const handleNavClick = (id) => {
@@ -64,23 +64,29 @@ export const Sidebar = ({ isOpen, onClose }) => {
       >
         <div className="p-4 space-y-6 overflow-y-auto">
           
-          {/* Section Indicator */}
-          <div className="px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-between">
+          {/* Role Status Tag */}
+          <div className={`px-3 py-2 border rounded-xl flex items-center justify-between ${
+            role === 'admin'
+              ? 'bg-slate-900 border-slate-800 text-white'
+              : 'bg-brand-50/70 border-brand-100 text-brand-900'
+          }`}>
             <div className="flex items-center gap-2">
-              <div className={`w-2 h-2 rounded-full ${role === 'admin' ? 'bg-amber-500' : 'bg-emerald-500'} animate-pulse`} />
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600">
-                {role === 'admin' ? 'Recruiter Admin' : 'Candidate Workspace'}
+              <div className={`w-2 h-2 rounded-full ${role === 'admin' ? 'bg-amber-400' : 'bg-emerald-500'} animate-pulse`} />
+              <span className="text-[11px] font-bold uppercase tracking-wider">
+                {role === 'admin' ? 'Recruiter Admin' : 'Student Workspace'}
               </span>
             </div>
-            <span className="text-[10px] font-semibold px-2 py-0.5 bg-white border border-slate-200 rounded text-slate-500">
-              v1.0
+            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+              role === 'admin' ? 'bg-slate-800 text-slate-300' : 'bg-white text-brand-700 border border-brand-200'
+            }`}>
+              {role === 'admin' ? 'HR Staff' : 'Student'}
             </span>
           </div>
 
           {/* Navigation Links */}
           <div className="space-y-1">
-            <p className="px-3 text-[11px] font-bold text-slate-600 uppercase tracking-wider mb-2">
-              Main Menu
+            <p className="px-3 text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+              {role === 'admin' ? 'Management Modules' : 'Candidate Modules'}
             </p>
             {navItems.map((item) => {
               const Icon = item.icon;
@@ -94,12 +100,18 @@ export const Sidebar = ({ isOpen, onClose }) => {
                   onClick={() => handleNavClick(item.id)}
                   className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all group ${
                     isActive
-                      ? 'bg-brand-50 text-brand-700 border border-brand-200/60 shadow-xs'
+                      ? role === 'admin'
+                        ? 'bg-slate-900 text-white shadow-xs'
+                        : 'bg-brand-50 text-brand-700 border border-brand-200/60 shadow-xs'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 border border-transparent'
                   }`}
                 >
                   <div className="flex items-center gap-3">
-                    <Icon className={`w-4 h-4 transition-colors ${isActive ? 'text-brand-600' : 'text-slate-400 group-hover:text-slate-600'}`} />
+                    <Icon className={`w-4 h-4 transition-colors ${
+                      isActive 
+                        ? role === 'admin' ? 'text-brand-400' : 'text-brand-600' 
+                        : 'text-slate-400 group-hover:text-slate-600'
+                    }`} />
                     <span>{item.label}</span>
                   </div>
 
@@ -117,7 +129,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
             })}
           </div>
 
-          {/* Quick Helper / Mini Card */}
+          {/* Role-Specific Context Card */}
           {role === 'candidate' ? (
             <div className="p-3.5 bg-gradient-to-br from-brand-50 to-slate-50 rounded-2xl border border-brand-100">
               <div className="flex items-center gap-2 mb-1.5">
@@ -138,7 +150,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
             <div className="p-3.5 bg-slate-900 text-white rounded-2xl">
               <div className="flex items-center gap-2 mb-1.5">
                 <GraduationCap className="w-4 h-4 text-brand-400" />
-                <h4 className="text-xs font-bold text-white">Placement Drive</h4>
+                <h4 className="text-xs font-bold text-white">University Placement</h4>
               </div>
               <p className="text-[11px] text-slate-300 leading-relaxed mb-3">
                 1,248 candidates registered across 14 universities.
@@ -154,13 +166,16 @@ export const Sidebar = ({ isOpen, onClose }) => {
 
         </div>
 
-        {/* Footer info */}
-        <div className="p-4 border-t border-slate-100 text-[11px] text-slate-600 flex items-center justify-between">
-          <span>ReadySetJob SaaS</span>
-          <span className="text-emerald-800 font-medium flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-700" />
-            System Live
-          </span>
+        {/* Footer info & Logout */}
+        <div className="p-4 border-t border-slate-100 flex items-center justify-between text-xs">
+          <span className="text-[11px] text-slate-400">ReadySetJob RBAC</span>
+          <button
+            onClick={logout}
+            className="text-[11px] font-bold text-rose-600 hover:underline flex items-center gap-1"
+          >
+            <LogOut className="w-3 h-3" />
+            <span>Sign Out</span>
+          </button>
         </div>
       </aside>
     </>
