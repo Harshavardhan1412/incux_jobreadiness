@@ -32,8 +32,8 @@ export const AppProvider = ({ children }) => {
     return savedRole || 'guest';
   });
 
-  // Always land on 'signup' page by default when opening the link
-  const [currentView, setCurrentView] = useState('signup');
+  // Default to 'hero' landing page on link open
+  const [currentView, setCurrentView] = useState('hero');
 
   // State entities
   const [assessments, setAssessments] = useState(() => {
