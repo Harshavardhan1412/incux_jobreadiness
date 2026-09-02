@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { api } from '../services/api';
 import {
   INITIAL_CANDIDATE,
   INITIAL_ASSESSMENTS,
@@ -163,10 +164,7 @@ export const AppProvider = ({ children }) => {
     'dashboard',
     'assessments',
     'take-assessment',
-    'results',
-    'ai-analysis',
-    'performance',
-    'recommendations',
+
     'final-report'
   ];
 
@@ -202,28 +200,61 @@ export const AppProvider = ({ children }) => {
   };
 
   // Candidate Authentication Actions
-  const registerCandidate = (formData) => {
-    const newCand = {
-      ...INITIAL_CANDIDATE,
-      id: `cand-${Date.now()}`,
-      name: formData.fullName,
-      email: formData.email,
-      mobile: formData.mobile,
-      college: formData.college,
-      degree: formData.degree,
-      branch: formData.branch,
-      graduationYear: formData.graduationYear,
-      primarySkill: formData.primarySkill || 'Fullstack Development',
-      tenthCertificate: formData.tenthCertificate,
-      twelfthCertificate: formData.twelfthCertificate,
-      resumeFile: formData.resumeFile,
-      registeredAt: new Date().toISOString().split('T')[0]
-    };
-    setCurrentUser(newCand);
-    setRole('candidate');
-    setCandidatesList(prev => [newCand, ...prev]);
-    addToast('Account created successfully! Welcome to your student portal.', 'success');
-    setCurrentView('dashboard');
+  const registerCandidate = async (formData) => {
+    try {
+      const res = await api.auth.register({
+        name: formData.fullName || formData.name,
+        fullName: formData.fullName || formData.name,
+        email: formData.email,
+        mobile: formData.mobile || formData.phoneNo,
+        phoneNo: formData.mobile || formData.phoneNo,
+        college: formData.college || formData.collegeName,
+        collegeName: formData.college || formData.collegeName,
+        degree: formData.degree || 'B.Tech',
+        branch: formData.branch,
+        specialization: formData.specialization,
+        country: formData.country || 'India',
+        state: formData.state,
+        city: formData.city,
+        graduationYear: formData.graduationYear || 2026,
+        experienceLevel: formData.experienceLevel || 'Fresher',
+        password: formData.password
+      });
+
+      if (!res.ok) {
+        addToast(res.error || 'Failed to register account in database.', 'error');
+        return false;
+      }
+
+      if (res.data?.token) {
+        api.saveToken(res.data.token);
+      }
+
+      const registeredCand = res.data?.candidate || {
+        id: `cand-${Date.now()}`,
+        name: formData.fullName || formData.name,
+        email: formData.email,
+        mobile: formData.mobile || formData.phoneNo,
+        college: formData.college || formData.collegeName,
+        degree: formData.degree || 'B.Tech',
+        branch: formData.branch,
+        specialization: formData.specialization,
+        country: formData.country || 'India',
+        state: formData.state,
+        city: formData.city,
+      };
+
+      setCurrentUser(registeredCand);
+      setRole('candidate');
+      setCandidatesList(prev => [registeredCand, ...prev.filter(c => c.id !== registeredCand.id)]);
+      addToast(`Account created & saved to database! Welcome, ${registeredCand.name}.`, 'success');
+      setCurrentView('dashboard');
+      return true;
+    } catch (err) {
+      console.error('Registration API error:', err);
+      addToast(err.message || 'Registration failed', 'error');
+      return false;
+    }
   };
 
   const loginCandidate = (email) => {
@@ -337,8 +368,8 @@ export const AppProvider = ({ children }) => {
       } : a));
     }
 
-    addToast('Assessment submitted successfully! AI evaluation ready.', 'success');
-    setCurrentView('results');
+    addToast('Assessment submitted successfully!', 'success');
+    setCurrentView('dashboard');
   };
 
   // Question Bank CRUD

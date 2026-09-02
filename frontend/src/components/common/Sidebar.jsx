@@ -23,10 +23,6 @@ export const Sidebar = ({ isOpen, onClose }) => {
   const candidateNavItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, badge: null },
     { id: 'assessments', label: 'Assessments', icon: ClipboardCheck, badge: 'Live' },
-    { id: 'results', label: 'My Results', icon: FileCheck, badge: null },
-    { id: 'ai-analysis', label: 'AI Diagnosis', icon: Sparkles, badge: 'AI' },
-    { id: 'performance', label: 'Skill Benchmarks', icon: TrendingUp, badge: null },
-    { id: 'recommendations', label: 'Recommendations', icon: Target, badge: '3' },
     { id: 'final-report', label: 'Job Report', icon: FileText, badge: 'PDF' },
   ];
 

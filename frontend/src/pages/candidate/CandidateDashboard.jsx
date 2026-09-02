@@ -133,13 +133,6 @@ export const CandidateDashboard = () => {
 
           <div className="flex flex-wrap items-center gap-3">
             <button
-              onClick={() => navigateTo('ai-analysis')}
-              className="px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold transition-all border border-white/15 flex items-center gap-2 shadow-xs"
-            >
-              <BrainCircuit className="w-4 h-4 text-brand-400" />
-              <span>View AI Insights</span>
-            </button>
-            <button
               onClick={() => navigateTo('final-report')}
               className="px-4 py-2.5 bg-brand-500 hover:bg-brand-400 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-brand-500/30 flex items-center gap-2"
             >
@@ -326,13 +319,6 @@ export const CandidateDashboard = () => {
                   {isCompleted ? (
                     <div className="flex gap-2">
                       <button
-                        onClick={() => navigateTo('results')}
-                        className="flex-1 py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5"
-                      >
-                        <Eye className="w-3.5 h-3.5 text-slate-500" />
-                        <span>View Result</span>
-                      </button>
-                      <button
                         onClick={() => startAssessment(asm.id)}
                         className="py-2 px-3 bg-brand-50 hover:bg-brand-100 text-brand-700 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1"
                         title="Retake test"
@@ -364,146 +350,7 @@ export const CandidateDashboard = () => {
         </div>
       </div>
 
-      {/* SKILL ANALYSIS & AI CAREER INSIGHT */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        
-        {/* Skill Analysis Progress Bars */}
-        <div className="lg:col-span-6 bg-white rounded-2xl border border-slate-200/90 shadow-card p-6 space-y-6">
-          <div>
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Diagnosis</span>
-            <h3 className="text-base font-bold text-slate-900">Skill Proficiency Matrix</h3>
-          </div>
 
-          {/* Strong Areas */}
-          <div className="space-y-3">
-            <h4 className="text-xs font-bold text-emerald-800 uppercase tracking-wider flex items-center gap-1.5">
-              <CheckCircle2 className="w-4 h-4" /> Strong Areas
-            </h4>
-            <div className="space-y-3">
-              {currentUser?.strongAreas?.map((item) => (
-                <div key={item.name} className="space-y-1">
-                  <div className="flex justify-between text-xs font-semibold">
-                    <span className="text-slate-800">{item.name}</span>
-                    <span className="text-emerald-800">{item.mastery}%</span>
-                  </div>
-                  <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                    <div
-                      className="bg-emerald-500 h-full rounded-full transition-all duration-500"
-                      style={{ width: `${item.mastery}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Needs Improvement */}
-          <div className="space-y-3 pt-2 border-t border-slate-100">
-            <h4 className="text-xs font-bold text-amber-800 uppercase tracking-wider flex items-center gap-1.5">
-              <AlertTriangle className="w-4 h-4" /> Needs Improvement
-            </h4>
-            <div className="space-y-3">
-              {currentUser?.needsImprovement?.map((item) => (
-                <div key={item.name} className="space-y-1">
-                  <div className="flex justify-between text-xs font-semibold">
-                    <span className="text-slate-800">{item.name}</span>
-                    <span className="text-amber-800">{item.mastery}%</span>
-                  </div>
-                  <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                    <div
-                      className="bg-amber-500 h-full rounded-full transition-all duration-500"
-                      style={{ width: `${item.mastery}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* AI Career Insight & Recommendations */}
-        <div className="lg:col-span-6 space-y-6">
-          
-          {/* AI Insight Card */}
-          <div className="bg-gradient-to-br from-brand-900 to-slate-900 text-white rounded-2xl p-6 shadow-card space-y-4 border border-brand-800">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-brand-500/20 text-brand-300 flex items-center justify-center border border-brand-500/30">
-                  <Sparkles className="w-4 h-4" />
-                </div>
-                <div>
-                  <h4 className="text-sm font-bold text-white">AI Career Insight</h4>
-                  <span className="text-[10px] text-brand-300">Generated for {currentUser?.branch || 'CS & Engineering'}</span>
-                </div>
-              </div>
-              <span className="px-2 py-0.5 bg-brand-500/20 border border-brand-400/30 text-brand-300 rounded text-[10px] font-bold">
-                GPT-4o Engine
-              </span>
-            </div>
-
-            <p className="text-xs sm:text-sm text-slate-200 leading-relaxed italic bg-white/5 p-4 rounded-xl border border-white/10">
-              "{currentUser?.aiInsights?.summary || 'You demonstrate strong logical reasoning and programming fundamentals. Your biggest improvement opportunity is quantitative aptitude and SQL. Improving these areas could significantly increase your overall job-readiness score.'}"
-            </p>
-
-            <button
-              onClick={() => navigateTo('ai-analysis')}
-              className="w-full py-2.5 bg-brand-500 hover:bg-brand-400 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-brand-500/20 flex items-center justify-center gap-2"
-            >
-              <span>View Detailed AI Performance Analysis</span>
-              <ArrowRight className="w-4 h-4" />
-            </button>
-          </div>
-
-          {/* Actionable Recommendations List */}
-          <div className="bg-white rounded-2xl border border-slate-200/90 shadow-card p-6 space-y-3">
-            <div className="flex items-center justify-between mb-1">
-              <div>
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Next Steps</span>
-                <h3 className="text-sm font-bold text-slate-900">Recommended Actions</h3>
-              </div>
-              <span className="text-xs font-bold text-brand-600 bg-brand-50 px-2.5 py-0.5 rounded-full border border-brand-100">
-                4 Active Tasks
-              </span>
-            </div>
-
-            <div className="space-y-2.5">
-              {recommendations.slice(0, 3).map((rec) => (
-                <div
-                  key={rec.id}
-                  className="p-3.5 rounded-xl border border-slate-100 hover:border-brand-200 bg-slate-50/60 hover:bg-brand-50/20 transition-all flex items-start justify-between gap-3"
-                >
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-slate-900">{rec.skill}</span>
-                      <span className="text-[10px] font-bold px-2 py-0.5 bg-slate-200/80 rounded text-slate-700">
-                        {rec.currentLevel} → {rec.targetLevel}
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-500 line-clamp-1 leading-normal">
-                      {rec.action}
-                    </p>
-                  </div>
-
-                  <button
-                    onClick={() => {
-                      if (rec.category === 'Assessment') {
-                        startAssessment('asm-full-1');
-                      } else {
-                        navigateTo('ai-analysis');
-                      }
-                    }}
-                    className="px-3 py-1.5 bg-white hover:bg-brand-600 hover:text-white text-brand-700 border border-brand-200 rounded-lg text-[11px] font-bold transition-all shadow-2xs flex-shrink-0"
-                  >
-                    Start
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-
-        </div>
-
-      </div>
 
     </div>
   );

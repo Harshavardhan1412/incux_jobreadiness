@@ -1,0 +1,442 @@
+// Prisma Schema for ReadySetJob AI Job Readiness Platform
+// Database: PostgreSQL (Railway)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// 1. users — Stores authentication and user roles
+model User {
+  id            String             @id @db.VarChar(64)
+  email         String             @unique @db.VarChar(255)
+  passwordHash  String             @map("password_hash") @db.VarChar(255)
+  role          String             @db.VarChar(32)
+  name          String             @db.VarChar(255)
+  status        String?            @default("active") @db.VarChar(32)
+  createdAt     DateTime?          @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime?          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  
+  // Relations
+  candidateProfiles CandidateProfile[]
+  createdAssessments Assessment[]     @relation("AssessmentCreator")
+  createdQuestions   Question[]       @relation("QuestionCreator")
+
+  @@map("users")
+}
+
+// 2. candidate_profiles — Stores candidate information
+model CandidateProfile {
+  id              String            @id @db.VarChar(64)
+  userId          String            @map("user_id") @db.VarChar(64)
+  name            String            @db.VarChar(255)
+  email           String?           @unique @db.VarChar(255)
+  mobile          String?           @db.VarChar(20)
+  college         String?           @db.VarChar(255)
+  degree          String?           @db.VarChar(128)
+  branch          String?           @db.VarChar(128)
+  specialization  String?           @db.VarChar(128)
+  country         String?           @default("India") @db.VarChar(128)
+  state           String?           @db.VarChar(128)
+  city            String?           @db.VarChar(128)
+  graduationYear  Int?              @map("graduation_year")
+  experienceLevel String?           @map("experience_level") @db.VarChar(64)
+  resumeUrl       String?           @map("resume_url") @db.Text
+  createdAt       DateTime?         @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime?         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  testAttempts    TestAttempt[]
+  skillPerformance SkillPerformance[]
+  companyReadiness CompanyReadiness[]
+  reports         Report[]
+
+  @@map("candidate_profiles")
+}
+
+// Legacy Candidates Table (Compatibility)
+model Candidate {
+  id                   String    @id @db.VarChar(64)
+  name                 String    @db.VarChar(255)
+  email                String    @unique @db.VarChar(255)
+  mobile               String?   @db.VarChar(32)
+  college              String?   @db.VarChar(255)
+  degree               String?   @db.VarChar(128)
+  branch               String?   @db.VarChar(128)
+  specialization       String?   @db.VarChar(128)
+  country              String?   @default("India") @db.VarChar(128)
+  state                String?   @db.VarChar(128)
+  city                 String?   @db.VarChar(128)
+  graduationYear       String?   @map("graduation_year") @db.VarChar(16)
+  experienceLevel      String?   @default("Fresher") @map("experience_level") @db.VarChar(64)
+  jobReadinessScore    Int?      @default(0) @map("job_readiness_score")
+  readinessLevel       String?   @default("In Progress") @map("readiness_level") @db.VarChar(128)
+  readinessStatus      String?   @default("In Progress") @map("readiness_status") @db.VarChar(64)
+  aptitudeScore        Int?      @default(0) @map("aptitude_score")
+  reasoningScore       Int?      @default(0) @map("reasoning_score")
+  technicalScore       Int?      @default(0) @map("technical_score")
+  assessmentsCompleted Int?      @default(0) @map("assessments_completed")
+  createdAt            DateTime? @default(now()) @map("created_at") @db.Timestamptz
+
+  @@map("candidates")
+}
+
+// 3. assessments — Stores assessments created by admin
+model Assessment {
+  id              String               @id @db.VarChar(64)
+  title           String               @db.VarChar(255)
+  description     String?              @db.Text
+  category        String               @db.VarChar(64)
+  difficulty      String?              @default("Medium") @db.VarChar(32)
+  durationMinutes Int                  @map("duration_minutes")
+  totalQuestions  Int                  @map("total_questions")
+  totalMarks      Int                  @map("total_marks")
+  passingScore    Int                  @map("passing_score")
+  status          String?              @default("Draft") @db.VarChar(32)
+  createdBy       String?              @map("created_by") @db.VarChar(64)
+  createdAt       DateTime?            @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime?            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  creator         User?                @relation("AssessmentCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  sections        AssessmentSection[]
+  questions       AssessmentQuestion[]
+  testAttempts    TestAttempt[]
+
+  @@map("assessments")
+}
+
+// 4. assessment_sections — Stores sections inside an assessment
+model AssessmentSection {
+  id               String               @id @db.VarChar(64)
+  assessmentId     String               @map("assessment_id") @db.VarChar(64)
+  name             String               @db.VarChar(128)
+  description      String?              @db.Text
+  questionCount    Int                  @map("question_count")
+  marksPerQuestion Int?                 @default(1) @map("marks_per_question")
+  displayOrder     Int                  @map("display_order")
+  createdAt        DateTime?            @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  assessment       Assessment           @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  questions        AssessmentQuestion[]
+
+  @@map("assessment_sections")
+}
+
+// 5. topics — Stores question topics
+model Topic {
+  id          String     @id @db.VarChar(64)
+  name        String     @unique @db.VarChar(128)
+  category    String     @db.VarChar(64)
+  description String?    @db.Text
+  status      String?    @default("active") @db.VarChar(32)
+  createdAt   DateTime?  @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  questions   Question[]
+
+  @@map("topics")
+}
+
+// 6. skills — Stores skills evaluated by the platform
+model Skill {
+  id                     String                  @id @db.VarChar(64)
+  name                   String                  @unique @db.VarChar(128)
+  category               String                  @db.VarChar(64)
+  description            String?                 @db.Text
+  status                 String?                 @default("active") @db.VarChar(32)
+  createdAt              DateTime?               @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  questionSkills         QuestionSkill[]
+  skillPerformances      SkillPerformance[]
+  roleSkillRequirements  RoleSkillRequirement[]
+
+  @@map("skills")
+}
+
+// 7. questions — Main Question Bank
+model Question {
+  id            String               @id @db.VarChar(64)
+  topicId       String?              @map("topic_id") @db.VarChar(64)
+  category      String               @db.VarChar(64)
+  difficulty    String               @db.VarChar(32)
+  type          String               @db.VarChar(64)
+  question      String               @db.Text
+  codeSnippet   String?              @map("code_snippet") @db.Text
+  language      String?              @db.VarChar(32)
+  explanation   String?              @db.Text
+  marks         Int?                 @default(1)
+  timeLimitSec  Int?                 @default(60) @map("time_limit_sec")
+  status        String?              @default("Active") @db.VarChar(32)
+  source        String?              @default("Manual") @db.VarChar(32)
+  createdBy     String?              @map("created_by") @db.VarChar(64)
+  optionsJson   Json?                @map("options")
+  correctAnswer String?              @map("correct_answer") @db.VarChar(16)
+  tags          String[]
+  createdAt     DateTime?            @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime?            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  topic               Topic?               @relation(fields: [topicId], references: [id], onDelete: SetNull)
+  creator             User?                @relation("QuestionCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  options             QuestionOption[]
+  questionSkills      QuestionSkill[]
+  assessmentQuestions AssessmentQuestion[]
+  candidateAnswers    CandidateAnswer[]
+
+  @@map("questions")
+}
+
+// 8. question_options — Stores MCQ options separately
+model QuestionOption {
+  id           String    @id @db.VarChar(64)
+  questionId   String    @map("question_id") @db.VarChar(64)
+  optionKey    String    @map("option_key") @db.VarChar(8)
+  optionText   String    @map("option_text") @db.Text
+  displayOrder Int       @map("display_order")
+  isCorrect    Boolean?  @default(false) @map("is_correct")
+
+  // Relations
+  question     Question  @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@map("question_options")
+}
+
+// 9. question_skills — Maps questions to skills
+model QuestionSkill {
+  id         String   @id @db.VarChar(64)
+  questionId String   @map("question_id") @db.VarChar(64)
+  skillId    String   @map("skill_id") @db.VarChar(64)
+  weight     Decimal? @default(1.0) @db.Decimal
+
+  // Relations
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  skill      Skill    @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@unique([questionId, skillId])
+  @@map("question_skills")
+}
+
+// 10. assessment_questions — Connects assessments with questions
+model AssessmentQuestion {
+  id            String             @id @db.VarChar(64)
+  assessmentId  String             @map("assessment_id") @db.VarChar(64)
+  sectionId     String?            @map("section_id") @db.VarChar(64)
+  questionId    String             @map("question_id") @db.VarChar(64)
+  questionOrder Int                @map("question_order")
+  marks         Int
+
+  // Relations
+  assessment    Assessment         @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  section       AssessmentSection? @relation(fields: [sectionId], references: [id], onDelete: SetNull)
+  question      Question           @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([assessmentId, questionId])
+  @@map("assessment_questions")
+}
+
+// 11. test_attempts — Stores every candidate's attempt
+model TestAttempt {
+  id               String               @id @db.VarChar(64)
+  candidateId      String               @map("candidate_id") @db.VarChar(64)
+  assessmentId     String               @map("assessment_id") @db.VarChar(64)
+  attemptNumber    Int                  @map("attempt_number")
+  status           String?              @default("InProgress") @db.VarChar(32)
+  startedAt        DateTime             @default(now()) @map("started_at") @db.Timestamptz
+  submittedAt      DateTime?            @map("submitted_at") @db.Timestamptz
+  timeTakenSeconds Int?                 @map("time_taken_seconds")
+  createdAt        DateTime?            @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  candidate        CandidateProfile     @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  assessment       Assessment           @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  answers          CandidateAnswer[]
+  performance      PerformanceAnalysis?
+  skillPerformance SkillPerformance[]
+  companyReadiness CompanyReadiness[]
+  reports          Report[]
+
+  @@map("test_attempts")
+}
+
+// 12. candidate_answers — Stores individual answers
+model CandidateAnswer {
+  id               String      @id @db.VarChar(64)
+  attemptId        String      @map("attempt_id") @db.VarChar(64)
+  questionId       String      @map("question_id") @db.VarChar(64)
+  selectedOption   String?     @map("selected_option") @db.VarChar(8)
+  isCorrect        Boolean?    @map("is_correct")
+  marksObtained    Decimal?    @default(0) @map("marks_obtained") @db.Decimal
+  timeTakenSeconds Int?        @map("time_taken_seconds")
+  answeredAt       DateTime?   @map("answered_at") @db.Timestamptz
+
+  // Relations
+  attempt          TestAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  question         Question    @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@map("candidate_answers")
+}
+
+// 13. performance_analysis — Stores overall test analysis
+model PerformanceAnalysis {
+  id             String      @id @db.VarChar(64)
+  attemptId      String      @unique @map("attempt_id") @db.VarChar(64)
+  overallScore   Decimal     @map("overall_score") @db.Decimal
+  accuracy       Decimal     @db.Decimal
+  speedScore     Decimal     @map("speed_score") @db.Decimal
+  aptitudeScore  Decimal?    @map("aptitude_score") @db.Decimal
+  reasoningScore Decimal?    @map("reasoning_score") @db.Decimal
+  technicalScore Decimal?    @map("technical_score") @db.Decimal
+  strengths      Json?
+  weaknesses     Json?
+  aiSummary      String?     @map("ai_summary") @db.Text
+  recommendations Json?
+  createdAt      DateTime?   @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  attempt        TestAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+
+  @@map("performance_analysis")
+}
+
+// 14. skill_performance — Stores detailed skill-level performance
+model SkillPerformance {
+  id                 String           @id @db.VarChar(64)
+  attemptId          String           @map("attempt_id") @db.VarChar(64)
+  candidateId        String           @map("candidate_id") @db.VarChar(64)
+  skillId            String           @map("skill_id") @db.VarChar(64)
+  score              Decimal          @db.Decimal
+  proficiency        String?          @db.VarChar(32)
+  questionsAttempted Int?             @default(0) @map("questions_attempted")
+  correctAnswers     Int?             @default(0) @map("correct_answers")
+  createdAt          DateTime?        @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  attempt            TestAttempt      @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  candidate          CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  skill              Skill            @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@map("skill_performance")
+}
+
+// 15. companies — Stores companies used for readiness analysis
+model Company {
+  id               String             @id @db.VarChar(64)
+  name             String             @unique @db.VarChar(128)
+  industry         String?            @db.VarChar(128)
+  description      String?            @db.Text
+  website          String?            @db.Text
+  status           String?            @default("Active") @db.VarChar(32)
+  createdAt        DateTime?          @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  roles            CompanyRole[]
+  companyReadiness CompanyReadiness[]
+
+  @@map("companies")
+}
+
+// 16. company_roles — Stores roles offered/targeted for each company
+model CompanyRole {
+  id                    String                 @id @db.VarChar(64)
+  companyId             String                 @map("company_id") @db.VarChar(64)
+  roleName              String                 @map("role_name") @db.VarChar(128)
+  description           String?                @db.Text
+  experienceLevel       String?                @map("experience_level") @db.VarChar(64)
+  status                String?                @default("Active") @db.VarChar(32)
+  createdAt             DateTime?              @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  company               Company                @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  roleSkillRequirements RoleSkillRequirement[]
+  companyReadiness      CompanyReadiness[]
+
+  @@map("company_roles")
+}
+
+// 17. role_skill_requirements — Defines what skills are required for each company role
+model RoleSkillRequirement {
+  id            String      @id @db.VarChar(64)
+  roleId        String      @map("role_id") @db.VarChar(64)
+  skillId       String      @map("skill_id") @db.VarChar(64)
+  requiredScore Decimal?    @map("required_score") @db.Decimal
+  weight        Decimal?    @default(1.0) @db.Decimal
+  importance    String?     @default("Required") @db.VarChar(32)
+
+  // Relations
+  role          CompanyRole @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  skill         Skill       @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, skillId])
+  @@map("role_skill_requirements")
+}
+
+// 18. company_readiness — Stores candidate's company/role suitability result
+model CompanyReadiness {
+  id             String           @id @db.VarChar(64)
+  candidateId    String           @map("candidate_id") @db.VarChar(64)
+  attemptId      String?          @map("attempt_id") @db.VarChar(64)
+  companyId      String           @map("company_id") @db.VarChar(64)
+  roleId         String           @map("role_id") @db.VarChar(64)
+  readinessScore Decimal          @map("readiness_score") @db.Decimal
+  readinessLevel String?          @map("readiness_level") @db.VarChar(32)
+  matchedSkills  Json?            @map("matched_skills")
+  skillGaps      Json?            @map("skill_gaps")
+  aiAnalysis     String?          @map("ai_analysis") @db.Text
+  createdAt      DateTime?        @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  candidate      CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  attempt        TestAttempt?     @relation(fields: [attemptId], references: [id], onDelete: SetNull)
+  company        Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  role           CompanyRole      @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@map("company_readiness")
+}
+
+// 19. reports — Stores the final generated candidate report
+model Report {
+  id              String            @id @db.VarChar(64)
+  candidateId     String            @map("candidate_id") @db.VarChar(64)
+  attemptId       String?           @map("attempt_id") @db.VarChar(64)
+  reportType      String?           @map("report_type") @db.VarChar(64)
+  overallScore    Decimal?          @map("overall_score") @db.Decimal
+  summary         String?           @db.Text
+  strengths       Json?
+  weaknesses      Json?
+  recommendations Json?
+  reportUrl       String?           @map("report_url") @db.Text
+  generatedAt     DateTime?         @default(now()) @map("generated_at") @db.Timestamptz
+
+  // Relations
+  candidate       CandidateProfile  @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  attempt         TestAttempt?      @relation(fields: [attemptId], references: [id], onDelete: SetNull)
+
+  @@map("reports")
+}
+
+// 20. submissions — Legacy Submissions Table
+model Submission {
+  id              String    @id @db.VarChar(64)
+  candidateId     String?   @map("candidate_id") @db.VarChar(64)
+  assessmentId    String?   @map("assessment_id") @db.VarChar(64)
+  score           Int
+  accuracy        Int
+  correctCount    Int       @default(0) @map("correct_count")
+  incorrectCount  Int       @default(0) @map("incorrect_count")
+  unansweredCount Int       @default(0) @map("unanswered_count")
+  timeTaken       String?   @map("time_taken") @db.VarChar(64)
+  categoryScores  Json?     @map("category_scores")
+  topicBreakdown  Json?     @map("topic_breakdown")
+  answers         Json?
+  createdAt       DateTime? @default(now()) @map("created_at") @db.Timestamptz
+
+  @@map("submissions")
+}

@@ -10,8 +10,7 @@ import { LoginPage } from './pages/candidate/LoginPage';
 import { CandidateDashboard } from './pages/candidate/CandidateDashboard';
 import { AssessmentsListPage } from './pages/candidate/AssessmentsListPage';
 import { AssessmentPage } from './pages/candidate/AssessmentPage';
-import { ResultsPage } from './pages/candidate/ResultsPage';
-import { AIAnalysisPage } from './pages/candidate/AIAnalysisPage';
+
 import { FinalReportPage } from './pages/candidate/FinalReportPage';
 
 // Admin Pages
@@ -115,12 +114,6 @@ function AppContent() {
         return <CandidateDashboard />;
       case 'assessments':
         return <AssessmentsListPage />;
-      case 'results':
-        return <ResultsPage />;
-      case 'ai-analysis':
-      case 'performance':
-      case 'recommendations':
-        return <AIAnalysisPage />;
       case 'final-report':
         return <FinalReportPage />;
       default:

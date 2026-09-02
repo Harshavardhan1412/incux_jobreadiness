@@ -106,8 +106,7 @@ export const Header = ({ onToggleSidebar }) => {
     } else {
       if (q.includes('test') || q.includes('tech') || q.includes('apt') || q.includes('reason')) {
         navigateTo('assessments');
-      } else if (q.includes('ai') || q.includes('skill') || q.includes('gap') || q.includes('radar')) {
-        navigateTo('ai-analysis');
+
       } else if (q.includes('report') || q.includes('cert')) {
         navigateTo('final-report');
       } else {
@@ -305,12 +304,7 @@ export const Header = ({ onToggleSidebar }) => {
                             >
                               <BarChart2 className="w-4 h-4 text-slate-400" /> My Dashboard
                             </button>
-                            <button
-                              onClick={() => { navigateTo('ai-analysis'); setProfileOpen(false); }}
-                              className="w-full text-left px-4 py-2 font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2.5"
-                            >
-                              <Sparkles className="w-4 h-4 text-brand-500" /> AI Insights
-                            </button>
+
                             <button
                               onClick={() => { navigateTo('final-report'); setProfileOpen(false); }}
                               className="w-full text-left px-4 py-2 font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2.5"
