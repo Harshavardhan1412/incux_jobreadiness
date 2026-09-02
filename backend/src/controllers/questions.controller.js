@@ -1,4 +1,5 @@
 import { pool } from '../db/pool.js';
+import crypto from 'crypto';
 
 // GET /api/questions
 export const getAllQuestions = async (req, res) => {
@@ -19,14 +20,30 @@ export const getAllQuestions = async (req, res) => {
 
 // POST /api/questions  (admin only)
 export const createQuestion = async (req, res) => {
-  const { category, topic, difficulty, type, question, codeSnippet, language, options, correctAnswer, explanation, marks, timeLimitSec, tags } = req.body;
-  const id = `q-${Date.now()}`;
+  const { id: customId, category, topic, difficulty, type, question, codeSnippet, language, options, correctAnswer, explanation, marks, timeLimitSec, tags } = req.body;
+  const id = customId || `q-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
   try {
     const result = await pool.query(
       `INSERT INTO questions (id, category, topic, difficulty, type, question, code_snippet, language, options, correct_answer, explanation, marks, time_limit_sec, tags)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
-      [id, category, topic, difficulty, type, question, codeSnippet || null, language || null,
-       JSON.stringify(options), correctAnswer, explanation, marks || 4, timeLimitSec || 60, tags || []]
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+       ON CONFLICT (id) DO UPDATE SET
+         category = EXCLUDED.category,
+         topic = EXCLUDED.topic,
+         difficulty = EXCLUDED.difficulty,
+         type = EXCLUDED.type,
+         question = EXCLUDED.question,
+         code_snippet = EXCLUDED.code_snippet,
+         language = EXCLUDED.language,
+         options = EXCLUDED.options,
+         correct_answer = EXCLUDED.correct_answer,
+         explanation = EXCLUDED.explanation,
+         marks = EXCLUDED.marks,
+         time_limit_sec = EXCLUDED.time_limit_sec,
+         tags = EXCLUDED.tags,
+         updated_at = CURRENT_TIMESTAMP
+       RETURNING *`,
+      [id, category || 'Technical', topic || 'General', difficulty || 'Medium', type || 'Single Choice', question, codeSnippet || null, language || null,
+       JSON.stringify(options || []), correctAnswer || 'A', explanation || null, marks || 4, timeLimitSec || 60, tags || []]
     );
     res.status(201).json({ success: true, data: result.rows[0] });
   } catch (err) {

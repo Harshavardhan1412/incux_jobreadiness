@@ -15,7 +15,6 @@ import { FinalReportPage } from './pages/candidate/FinalReportPage';
 
 // Admin Pages
 import { AdminLoginPage } from './pages/admin/AdminLoginPage';
-import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { AdminCandidatesPage } from './pages/admin/AdminCandidatesPage';
 import { AdminQuestionBankPage } from './pages/admin/AdminQuestionBankPage';
 import { AdminAssessmentsPage } from './pages/admin/AdminAssessmentsPage';
@@ -59,13 +58,19 @@ function AppContent() {
   const { currentView, role, navigateTo } = useApp();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  // 1. PUBLIC AUTH VIEWS
-  if (currentView === 'signup') return <><SignupPage /><ToastContainer /></>;
-  if (currentView === 'login') return <><LoginPage /><ToastContainer /></>;
-  if (currentView === 'admin-login') return <><AdminLoginPage /><ToastContainer /></>;
+  const safeView = (currentView && typeof currentView === 'string')
+    ? currentView
+    : (role === 'admin' ? 'admin-candidates' : (role === 'candidate' ? 'dashboard' : 'signup'));
+
+  // 1. PUBLIC AUTH VIEWS (Only for guests/unauthenticated users)
+  if (role !== 'candidate' && role !== 'admin') {
+    if (safeView === 'login') return <><LoginPage /><ToastContainer /></>;
+    if (safeView === 'admin-login') return <><AdminLoginPage /><ToastContainer /></>;
+    return <><SignupPage /><ToastContainer /></>;
+  }
 
   // 2. DISTRACTION-FREE ASSESSMENT RUNNER (Guarded)
-  if (currentView === 'take-assessment') {
+  if (safeView === 'take-assessment') {
     if (role !== 'candidate' && role !== 'admin') {
       return (
         <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
@@ -80,14 +85,12 @@ function AppContent() {
   // 3. ROLE-BASED ROUTE GUARD RENDERER
   const renderMainContent = () => {
     // Admin Module Routes (Strictly Guarded for role === 'admin')
-    if (currentView.startsWith('admin-')) {
+    if (safeView.startsWith('admin-')) {
       if (role !== 'admin') {
         return <AccessDenied message="Admin authentication required to access recruiter and management modules." requiredRole="admin" />;
       }
 
-      switch (currentView) {
-        case 'admin-dashboard':
-          return <AdminDashboard />;
+      switch (safeView) {
         case 'admin-candidates':
           return <AdminCandidatesPage />;
         case 'admin-questions':
@@ -98,7 +101,7 @@ function AppContent() {
           return <AdminAnalyticsPage />;
 
         default:
-          return <AdminDashboard />;
+          return <AdminCandidatesPage />;
       }
     }
 
@@ -107,7 +110,7 @@ function AppContent() {
       return <SignupPage />;
     }
 
-    switch (currentView) {
+    switch (safeView) {
       case 'dashboard':
         return <CandidateDashboard />;
       case 'assessments':

@@ -285,7 +285,6 @@ export const SignupPage = () => {
                     name="name"
                     value={formData.name}
                     onChange={handleChange}
-                    placeholder="e.g. Harsha Vardhan"
                     className={`w-full pl-10 pr-4 py-2.5 bg-white border text-sm text-slate-900 placeholder-slate-400 rounded-xl outline-none transition-all ${
                       errors.name ? 'border-rose-500 ring-2 ring-rose-500/20' : 'border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20'
                     }`}
@@ -306,7 +305,6 @@ export const SignupPage = () => {
                     name="email"
                     value={formData.email}
                     onChange={handleChange}
-                    placeholder="student@university.edu"
                     className={`w-full pl-10 pr-9 py-2.5 bg-white border text-sm text-slate-900 placeholder-slate-400 rounded-xl outline-none transition-all ${
                       errors.email ? 'border-rose-500 ring-2 ring-rose-500/20' : formData.email && EMAIL_REGEX.test(formData.email) ? 'border-emerald-500 ring-2 ring-emerald-500/20' : 'border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20'
                     }`}
@@ -342,7 +340,6 @@ export const SignupPage = () => {
                     value={formData.phoneNo}
                     onChange={handleChange}
                     maxLength={13}
-                    placeholder="9876543210"
                     className={`w-full pl-16 pr-9 py-2.5 bg-white border text-sm text-slate-900 placeholder-slate-400 rounded-xl outline-none transition-all ${
                       errors.phoneNo ? 'border-rose-500 ring-2 ring-rose-500/20' : formData.phoneNo && INDIAN_MOBILE_REGEX.test(formData.phoneNo.replace(/[\s\-]/g, '')) ? 'border-emerald-500 ring-2 ring-emerald-500/20' : 'border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20'
                     }`}
@@ -370,7 +367,6 @@ export const SignupPage = () => {
                     name="collegeName"
                     value={formData.collegeName}
                     onChange={handleChange}
-                    placeholder="e.g. BITS Pilani / IIT Hyderabad"
                     className={`w-full pl-10 pr-4 py-2.5 bg-white border text-sm text-slate-900 placeholder-slate-400 rounded-xl outline-none transition-all ${
                       errors.collegeName ? 'border-rose-500 ring-2 ring-rose-500/20' : 'border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20'
                     }`}
@@ -444,7 +440,6 @@ export const SignupPage = () => {
                     value={formData.country}
                     onChange={handleChange}
                     className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-300 text-sm text-slate-900 rounded-xl outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20 transition-all"
-                    placeholder="India"
                   />
                 </div>
               </div>
@@ -482,7 +477,6 @@ export const SignupPage = () => {
                     name="city"
                     value={formData.city}
                     onChange={handleChange}
-                    placeholder="e.g. Hyderabad"
                     className={`w-full pl-10 pr-4 py-2.5 bg-white border text-sm text-slate-900 placeholder-slate-400 rounded-xl outline-none transition-all ${
                       errors.city ? 'border-rose-500 ring-2 ring-rose-500/20' : 'border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20'
                     }`}
@@ -508,7 +502,6 @@ export const SignupPage = () => {
                     name="password"
                     value={formData.password}
                     onChange={handleChange}
-                    placeholder="••••••••"
                     className={`w-full pl-10 pr-10 py-2.5 bg-white border text-sm text-slate-900 placeholder-slate-400 rounded-xl outline-none transition-all ${
                       errors.password ? 'border-rose-500 ring-2 ring-rose-500/20' : 'border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20'
                     }`}
@@ -549,7 +542,6 @@ export const SignupPage = () => {
                     name="confirmPassword"
                     value={formData.confirmPassword}
                     onChange={handleChange}
-                    placeholder="••••••••"
                     className={`w-full pl-10 pr-10 py-2.5 bg-white border text-sm text-slate-900 placeholder-slate-400 rounded-xl outline-none transition-all ${
                       errors.confirmPassword ? 'border-rose-500 ring-2 ring-rose-500/20' : 'border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20'
                     }`}
@@ -592,11 +584,11 @@ export const SignupPage = () => {
               {isSubmitting ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Connecting Database & Registering...</span>
+                  <span>Creating Account...</span>
                 </>
               ) : (
                 <>
-                  <span>Create Account & Save to Database</span>
+                  <span>Create Account</span>
                   <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                 </>
               )}

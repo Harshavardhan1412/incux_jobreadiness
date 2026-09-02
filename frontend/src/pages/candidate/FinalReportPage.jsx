@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 
 export const FinalReportPage = () => {
-  const { currentUser, addToast } = useApp();
+  const { currentUser, latestResult, addToast } = useApp();
   const reportRef = useRef();
 
   const handlePrint = () => {
@@ -36,6 +36,11 @@ export const FinalReportPage = () => {
     addToast('Verified report link copied to clipboard!', 'success');
   };
 
+  const displayScore = latestResult?.score ?? currentUser?.jobReadinessScore ?? 78;
+  const displayAccuracy = latestResult?.accuracy ?? 82;
+  const displayDate = latestResult?.completedAt || new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const displayAsmName = latestResult?.assessmentName || 'Job Readiness Assessment';
+
   return (
     <div className="space-y-8 pb-16">
       
@@ -44,7 +49,7 @@ export const FinalReportPage = () => {
         <div>
           <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Official Credential</span>
           <h1 className="text-xl font-extrabold text-slate-900 tracking-tight">
-            Verified Job Readiness Report
+            Verified Job Readiness Report — {displayAsmName}
           </h1>
           <p className="text-xs text-slate-500">Official verifiable performance scorecard for recruiters & university placement cells.</p>
         </div>
@@ -86,7 +91,7 @@ export const FinalReportPage = () => {
               </div>
             </div>
             <h2 className="text-2xl font-black text-slate-900 tracking-tight uppercase pt-2">
-              Job Readiness Report
+              {displayAsmName} — Score Card
             </h2>
             <p className="text-xs text-slate-500 font-mono">
               Report ID: RSJ-2026-CAND-8942 • Verification Hash: #9e4a8b1c
@@ -95,7 +100,7 @@ export const FinalReportPage = () => {
 
           <div className="sm:text-right space-y-1 bg-slate-50 sm:bg-transparent p-3 sm:p-0 rounded-xl">
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Assessment Date</span>
-            <span className="text-sm font-bold text-slate-900 block">Aug 30, 2026</span>
+            <span className="text-sm font-bold text-slate-900 block">{displayDate}</span>
             <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
               <ShieldCheck className="w-3 h-3" /> Verified Certificate
             </span>
@@ -127,11 +132,11 @@ export const FinalReportPage = () => {
           <div className="md:col-span-4 flex flex-col items-center justify-center border-b md:border-b-0 md:border-r border-brand-100 pb-4 md:pb-0 md:pr-4">
             <span className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Overall Score</span>
             <div className="flex items-baseline gap-1">
-              <span className="text-5xl font-black text-brand-600">{currentUser?.jobReadinessScore || 78}</span>
+              <span className="text-5xl font-black text-brand-600">{displayScore}</span>
               <span className="text-lg text-slate-400 font-bold">/ 100</span>
             </div>
             <span className="mt-2 px-3 py-1 bg-brand-600 text-white rounded-full text-xs font-bold shadow-xs">
-              86th Percentile
+              {displayAccuracy}% Accuracy Rate
             </span>
           </div>
 
@@ -140,11 +145,33 @@ export const FinalReportPage = () => {
               Readiness Level
             </span>
             <h3 className="text-xl font-bold text-slate-900">
-              Job Ready — With Improvement Areas
+              {displayScore >= 60 ? 'Job Ready — Verified Certificate' : 'Assessment Completed — Needs Topic Review'}
             </h3>
             <p className="text-xs text-slate-600 leading-relaxed">
-              The candidate demonstrates above-average problem-solving velocity and strong object-oriented programming foundation, suitable for entry-level Software Development Engineer (SDE-1) roles.
+              {displayScore >= 60
+                ? 'The candidate demonstrates strong problem-solving accuracy and domain proficiency, suitable for technical entry roles.'
+                : 'The assessment has been submitted. Review the recommended improvement areas below to boost your job readiness score.'}
             </p>
+          </div>
+        </div>
+
+        {/* DETAILED QUESTION BREAKDOWN STATS */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 bg-slate-50 border border-slate-200 rounded-2xl text-center text-xs">
+          <div className="p-3 bg-white rounded-xl border border-slate-100 shadow-2xs">
+            <span className="text-[10px] font-bold text-slate-400 uppercase block">Correct Answers</span>
+            <span className="text-xl font-extrabold text-emerald-600">{latestResult?.correctCount ?? 0}</span>
+          </div>
+          <div className="p-3 bg-white rounded-xl border border-slate-100 shadow-2xs">
+            <span className="text-[10px] font-bold text-slate-400 uppercase block">Incorrect Answers</span>
+            <span className="text-xl font-extrabold text-rose-600">{latestResult?.incorrectCount ?? 0}</span>
+          </div>
+          <div className="p-3 bg-white rounded-xl border border-slate-100 shadow-2xs">
+            <span className="text-[10px] font-bold text-slate-400 uppercase block">Unanswered</span>
+            <span className="text-xl font-extrabold text-slate-600">{latestResult?.unansweredCount ?? 0}</span>
+          </div>
+          <div className="p-3 bg-white rounded-xl border border-slate-100 shadow-2xs">
+            <span className="text-[10px] font-bold text-slate-400 uppercase block">Accuracy</span>
+            <span className="text-xl font-extrabold text-brand-600">{displayAccuracy}%</span>
           </div>
         </div>
 

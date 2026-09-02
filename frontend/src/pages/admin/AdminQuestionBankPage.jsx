@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Modal } from '../../components/common/Modal';
+import { parseQuestionsFromExcel, downloadExcelQuestionTemplate } from '../../utils/excelParser';
 import {
   Database,
   Plus,
@@ -14,14 +15,77 @@ import {
   CheckCircle2,
   Tag,
   Clock,
-  Award
+  Award,
+  Folder,
+  FolderOpen,
+  BookOpen,
+  Brain,
+  Calculator,
+  Code,
+  Layers,
+  Sparkles,
+  ChevronRight,
+  Download,
+  Upload
 } from 'lucide-react';
 
+const FOLDERS = [
+  {
+    id: 'Aptitude',
+    name: 'Aptitude Folder',
+    category: 'Aptitude',
+    description: 'Quantitative aptitude, arithmetic, ratios, probability & data interpretation',
+    icon: Calculator,
+    color: 'emerald',
+    cardBg: 'bg-emerald-50/50 border-emerald-200/80 hover:border-emerald-400',
+    activeCard: 'ring-2 ring-emerald-500 bg-emerald-50 border-emerald-500 shadow-md',
+    iconBg: 'bg-emerald-100 text-emerald-700',
+    badge: 'bg-emerald-100 text-emerald-800'
+  },
+  {
+    id: 'Reasoning',
+    name: 'Reasoning Folder',
+    category: 'Reasoning',
+    description: 'Logical deduction, pattern recognition, syllogisms & analytical reasoning',
+    icon: Brain,
+    color: 'amber',
+    cardBg: 'bg-amber-50/50 border-amber-200/80 hover:border-amber-400',
+    activeCard: 'ring-2 ring-amber-500 bg-amber-50 border-amber-500 shadow-md',
+    iconBg: 'bg-amber-100 text-amber-700',
+    badge: 'bg-amber-100 text-amber-800'
+  },
+  {
+    id: 'Technical',
+    name: 'Technical Folder',
+    category: 'Technical',
+    description: 'Data structures, algorithms, OOP, SQL, web development & system design',
+    icon: Code,
+    color: 'brand',
+    cardBg: 'bg-brand-50/50 border-brand-200/80 hover:border-brand-400',
+    activeCard: 'ring-2 ring-brand-500 bg-brand-50 border-brand-500 shadow-md',
+    iconBg: 'bg-brand-100 text-brand-700',
+    badge: 'bg-brand-100 text-brand-800'
+  },
+  {
+    id: 'Verbal',
+    name: 'Verbal Folder',
+    category: 'Verbal',
+    description: 'Reading comprehension, grammar, vocabulary, synonyms & sentence correction',
+    icon: BookOpen,
+    color: 'purple',
+    cardBg: 'bg-purple-50/50 border-purple-200/80 hover:border-purple-400',
+    activeCard: 'ring-2 ring-purple-500 bg-purple-50 border-purple-500 shadow-md',
+    iconBg: 'bg-purple-100 text-purple-700',
+    badge: 'bg-purple-100 text-purple-800'
+  }
+];
+
 export const AdminQuestionBankPage = () => {
-  const { questionBank, addQuestion, updateQuestion, deleteQuestion, addToast } = useApp();
+  const { questionBank, addQuestion, addQuestionsBatch, updateQuestion, deleteQuestion, addToast } = useApp();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
+  const [selectedTopic, setSelectedTopic] = useState('All');
   const [selectedDifficulty, setSelectedDifficulty] = useState('All');
   const [selectedType, setSelectedType] = useState('All');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -47,6 +111,28 @@ export const AdminQuestionBankPage = () => {
     tags: 'Algorithms, Data Structures'
   });
 
+  // Calculate stats & sub-topics per category folder
+  const folderStats = useMemo(() => {
+    const stats = {};
+    FOLDERS.forEach(f => {
+      const qInCat = questionBank.filter(q => q.category === f.category);
+      const uniqueTopics = Array.from(new Set(qInCat.map(q => q.topic).filter(Boolean)));
+      stats[f.category] = {
+        count: qInCat.length,
+        topics: uniqueTopics
+      };
+    });
+    return stats;
+  }, [questionBank]);
+
+  // Extract available sub-topics based on selected folder/category
+  const availableTopics = useMemo(() => {
+    if (selectedCategory === 'All') {
+      return Array.from(new Set(questionBank.map(q => q.topic).filter(Boolean)));
+    }
+    return Array.from(new Set(questionBank.filter(q => q.category === selectedCategory).map(q => q.topic).filter(Boolean)));
+  }, [questionBank, selectedCategory]);
+
   const filteredQuestions = useMemo(() => {
     return questionBank.filter(q => {
       const matchSearch = q.question.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -54,12 +140,23 @@ export const AdminQuestionBankPage = () => {
         q.id.toLowerCase().includes(searchQuery.toLowerCase());
 
       const matchCategory = selectedCategory === 'All' || q.category === selectedCategory;
+      const matchTopic = selectedTopic === 'All' || q.topic === selectedTopic;
       const matchDifficulty = selectedDifficulty === 'All' || q.difficulty === selectedDifficulty;
       const matchType = selectedType === 'All' || q.type === selectedType;
 
-      return matchSearch && matchCategory && matchDifficulty && matchType;
+      return matchSearch && matchCategory && matchTopic && matchDifficulty && matchType;
     });
-  }, [questionBank, searchQuery, selectedCategory, selectedDifficulty, selectedType]);
+  }, [questionBank, searchQuery, selectedCategory, selectedTopic, selectedDifficulty, selectedType]);
+
+  const handleOpenAddModal = (catChoice = null) => {
+    const cat = catChoice || (selectedCategory !== 'All' ? selectedCategory : 'Technical');
+    setFormData(prev => ({
+      ...prev,
+      category: cat,
+      topic: cat === 'Aptitude' ? 'Quantitative Aptitude' : cat === 'Reasoning' ? 'Logical Deduction' : cat === 'Verbal' ? 'Vocabulary & Antonyms' : 'Data Structures'
+    }));
+    setIsAddModalOpen(true);
+  };
 
   const handleCreateQuestion = (e) => {
     e.preventDefault();
@@ -116,173 +213,404 @@ export const AdminQuestionBankPage = () => {
     });
   };
 
+  // Calculate next auto-generated unique ID
+  const nextUniqueId = useMemo(() => {
+    const existingNumIds = questionBank
+      .map(q => parseInt(q.id.replace('q-', ''), 10))
+      .filter(n => !isNaN(n));
+    const nextNum = existingNumIds.length > 0 ? Math.max(...existingNumIds) + 1 : 101;
+    return `q-${nextNum}`;
+  }, [questionBank]);
+
+  const handleDownloadTemplate = () => {
+    const activeCat = selectedCategory !== 'All' ? selectedCategory : 'Aptitude';
+    downloadExcelQuestionTemplate(activeCat);
+    addToast(`Sample ${activeCat} Excel (.xlsx) template downloaded!`, 'success');
+  };
+
+  const handleImportExcel = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    try {
+      const parsedList = await parseQuestionsFromExcel(file, selectedCategory !== 'All' ? selectedCategory : 'Technical', selectedTopic !== 'All' ? selectedTopic : 'General');
+      if (parsedList.length === 0) {
+        addToast('No valid questions found in file', 'error');
+        return;
+      }
+
+      addQuestionsBatch(parsedList);
+    } catch (err) {
+      addToast(err.message || 'Failed to parse Excel file', 'error');
+    } finally {
+      e.target.value = '';
+    }
+  };
+
   const handleDuplicate = (q) => {
     const duplicated = {
       ...q,
+      id: null,
       question: `[Copy] ${q.question}`
     };
     addQuestion(duplicated);
-    addToast('Question duplicated into Question Bank', 'info');
   };
 
   return (
     <div className="space-y-8 pb-16">
       
-      {/* Header */}
+      {/* 1. BREADCRUMB HEADER */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
+          {/* Breadcrumbs */}
+          <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
+            <button
+              onClick={() => { setSelectedCategory('All'); setSelectedTopic('All'); }}
+              className="hover:text-brand-600 font-semibold flex items-center gap-1"
+            >
+              <Database className="w-3.5 h-3.5" />
+              <span>Question Bank</span>
+            </button>
+            {selectedCategory !== 'All' && (
+              <>
+                <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+                <button
+                  onClick={() => setSelectedTopic('All')}
+                  className={`font-semibold ${selectedTopic === 'All' ? 'text-slate-900 font-bold' : 'hover:text-brand-600'}`}
+                >
+                  {selectedCategory} Folder
+                </button>
+              </>
+            )}
+            {selectedTopic !== 'All' && (
+              <>
+                <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+                <span className="font-bold text-slate-900">{selectedTopic}</span>
+              </>
+            )}
+          </div>
+
           <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-            Question Bank
+            {selectedCategory === 'All'
+              ? 'Subject Folders'
+              : selectedTopic === 'All'
+              ? `${selectedCategory} Topics`
+              : `${selectedTopic} Questions`}
           </h1>
-          <p className="text-xs sm:text-sm text-slate-500 mt-1">
-            Manage, author, and curate assessment questions for Aptitude, Reasoning, and Technical tracks.
+          <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
+            {selectedCategory === 'All'
+              ? 'Select a subject folder to view its topic folders and questions.'
+              : selectedTopic === 'All'
+              ? `Select a topic folder in ${selectedCategory} to view and manage its questions.`
+              : `Managing questions for topic "${selectedTopic}" in ${selectedCategory}.`}
           </p>
         </div>
 
-        <button
-          onClick={() => setIsAddModalOpen(true)}
-          className="px-4 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold shadow-md shadow-brand-600/20 transition-all flex items-center gap-2 self-start sm:self-auto"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Add Question</span>
-        </button>
-      </div>
-
-      {/* FILTER & SEARCH CONTROLS */}
-      <div className="bg-white rounded-2xl border border-slate-200/90 shadow-card p-4 space-y-4">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-          
-          {/* Search */}
-          <div className="relative lg:col-span-2">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search question text, topic, ID..."
-              className="w-full pl-10 pr-3 py-2 bg-slate-50 text-xs rounded-xl border border-slate-200 focus:border-brand-500 outline-none"
-            />
-          </div>
-
-          {/* Category */}
-          <select
-            value={selectedCategory}
-            onChange={(e) => setSelectedCategory(e.target.value)}
-            className="px-3 py-2 bg-slate-50 text-xs rounded-xl border border-slate-200 outline-none text-slate-700"
+        <div className="flex flex-wrap items-center gap-2">
+          {selectedCategory !== 'All' && (
+            <button
+              onClick={() => {
+                if (selectedTopic !== 'All') setSelectedTopic('All');
+                else setSelectedCategory('All');
+              }}
+              className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all"
+            >
+              ⬅ Back
+            </button>
+          )}
+          <button
+            onClick={handleDownloadTemplate}
+            className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5"
+            title="Download sample Excel template for questions"
           >
-            <option value="All">All Categories</option>
-            <option value="Aptitude">Aptitude</option>
-            <option value="Reasoning">Reasoning</option>
-            <option value="Technical">Technical</option>
-          </select>
-
-          {/* Difficulty */}
-          <select
-            value={selectedDifficulty}
-            onChange={(e) => setSelectedDifficulty(e.target.value)}
-            className="px-3 py-2 bg-slate-50 text-xs rounded-xl border border-slate-200 outline-none text-slate-700"
+            <Download className="w-3.5 h-3.5 text-brand-600" />
+            <span>Download Excel Template (.xlsx)</span>
+          </button>
+          <label className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold cursor-pointer transition-all flex items-center gap-1.5 shadow-2xs">
+            <Upload className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Import Excel (.xlsx) / CSV</span>
+            <input type="file" accept=".xlsx, .xls, .csv" onChange={handleImportExcel} className="hidden" />
+          </label>
+          <button
+            onClick={() => handleOpenAddModal()}
+            className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold shadow-md transition-all flex items-center gap-2"
           >
-            <option value="All">All Difficulties</option>
-            <option value="Easy">Easy</option>
-            <option value="Medium">Medium</option>
-            <option value="Hard">Hard</option>
-          </select>
-
-          {/* Question Type */}
-          <select
-            value={selectedType}
-            onChange={(e) => setSelectedType(e.target.value)}
-            className="px-3 py-2 bg-slate-50 text-xs rounded-xl border border-slate-200 outline-none text-slate-700"
-          >
-            <option value="All">All Question Types</option>
-            <option value="Single Choice">Single Choice</option>
-            <option value="Code Snippet">Code Snippet</option>
-            <option value="True/False">True/False</option>
-          </select>
-
+            <Plus className="w-4 h-4" />
+            <span>Add Question</span>
+          </button>
         </div>
       </div>
 
-      {/* QUESTIONS TABLE */}
-      <div className="bg-white rounded-2xl border border-slate-200/90 shadow-card overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead>
-              <tr className="bg-slate-50 border-b border-slate-200 text-slate-400 font-bold uppercase tracking-wider text-[10px]">
-                <th className="py-3.5 px-4">ID</th>
-                <th className="py-3.5 px-4">Question</th>
-                <th className="py-3.5 px-4">Category</th>
-                <th className="py-3.5 px-4">Topic</th>
-                <th className="py-3.5 px-4">Difficulty</th>
-                <th className="py-3.5 px-4">Type</th>
-                <th className="py-3.5 px-4 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-              {filteredQuestions.map((q) => (
-                <tr key={q.id} className="hover:bg-slate-50/80 transition-colors">
-                  <td className="py-3.5 px-4 font-mono text-[11px] text-slate-400">
-                    {q.id}
-                  </td>
-                  <td className="py-3.5 px-4 max-w-xs">
-                    <div className="font-bold text-slate-900 truncate">{q.question}</div>
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      {q.tags?.map((t, idx) => (
-                        <span key={idx} className="text-[10px] text-slate-400 font-medium">#{t}</span>
-                      ))}
+      {/* 2. LEVEL 1: MAIN SUBJECT FOLDERS VIEW */}
+      {selectedCategory === 'All' && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+          {FOLDERS.map((f) => {
+            const Icon = f.icon;
+            const stats = folderStats[f.category] || { count: 0, topics: [] };
+
+            return (
+              <div
+                key={f.id}
+                onClick={() => {
+                  setSelectedCategory(f.category);
+                  setSelectedTopic('All');
+                }}
+                className={`p-6 rounded-3xl border transition-all cursor-pointer group flex flex-col justify-between ${f.cardBg} bg-white shadow-card hover:shadow-lg`}
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-4">
+                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${f.iconBg} font-bold shadow-xs group-hover:scale-105 transition-transform`}>
+                      <Icon className="w-6 h-6" />
                     </div>
-                  </td>
-                  <td className="py-3.5 px-4">
-                    <span className="font-semibold text-slate-800">{q.category}</span>
-                  </td>
-                  <td className="py-3.5 px-4 text-slate-600">
-                    {q.topic}
-                  </td>
-                  <td className="py-3.5 px-4">
-                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                      q.difficulty === 'Easy'
-                        ? 'bg-emerald-50 text-emerald-700'
-                        : q.difficulty === 'Medium'
-                        ? 'bg-amber-50 text-amber-700'
-                        : 'bg-rose-50 text-rose-700'
-                    }`}>
-                      {q.difficulty}
+                    <span className={`text-xs font-extrabold px-3 py-1 rounded-full ${f.badge}`}>
+                      {stats.count} {stats.count === 1 ? 'Question' : 'Questions'}
                     </span>
-                  </td>
-                  <td className="py-3.5 px-4 text-slate-600">
-                    {q.type}
-                  </td>
-                  <td className="py-3.5 px-4 text-right">
-                    <div className="flex items-center justify-end gap-1.5">
-                      <button
-                        onClick={() => setPreviewQuestion(q)}
-                        className="p-1.5 rounded-lg bg-slate-100 hover:bg-brand-50 hover:text-brand-700 text-slate-600 transition-colors"
-                        title="Preview question"
-                      >
-                        <Eye className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        onClick={() => handleDuplicate(q)}
-                        className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors"
-                        title="Duplicate question"
-                      >
-                        <Copy className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        onClick={() => deleteQuestion(q.id)}
-                        className="p-1.5 rounded-lg bg-slate-100 hover:bg-rose-50 hover:text-rose-600 text-slate-600 transition-colors"
-                        title="Delete question"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </div>
+
+                  <h3 className="text-lg font-extrabold text-slate-900 group-hover:text-brand-700 transition-colors flex items-center justify-between">
+                    <span>{f.name}</span>
+                    <ChevronRight className="w-4 h-4 text-slate-400 group-hover:translate-x-1 transition-transform" />
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-1.5 line-clamp-2 leading-relaxed">
+                    {f.description}
+                  </p>
+                </div>
+
+                <div className="mt-5 pt-4 border-t border-slate-200/70">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="font-bold text-slate-500 uppercase tracking-wider">Topics ({stats.topics.length})</span>
+                    <span className="font-bold text-brand-600 group-hover:underline">Open Folder &rarr;</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {stats.topics.length > 0 ? (
+                      stats.topics.map((t, idx) => (
+                        <span key={idx} className="text-[10px] font-semibold bg-white/90 px-2 py-0.5 rounded-md border border-slate-200 text-slate-700">
+                          📁 {t}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-[11px] text-slate-400 italic">No topics added yet</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
-      </div>
+      )}
+
+      {/* 2. QUESTIONS SECTION (DIRECTLY DISPLAYED FOR SELECTED FOLDER) */}
+      <div className="space-y-4">
+        
+        {/* SEARCH & FILTERS BAR */}
+        <div className="bg-white rounded-2xl border border-slate-200/90 shadow-card p-4 space-y-3">
+          
+          {/* Active Folder Indicator & Topic Pills */}
+          {selectedCategory !== 'All' && (
+            <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-50 p-3 rounded-xl border border-slate-200/80 mb-1">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-500">Active Folder:</span>
+                <span className="text-xs font-extrabold px-2.5 py-1 rounded-md bg-brand-600 text-white uppercase tracking-wider">
+                  {selectedCategory} Folder
+                </span>
+                <span className="text-xs font-bold text-slate-400">({filteredQuestions.length} Questions)</span>
+              </div>
+
+              {/* Topic Filter Pills */}
+              {availableTopics.length > 0 && (
+                <div className="flex items-center gap-1.5 flex-wrap text-xs">
+                  <span className="text-slate-400 text-[11px] font-bold">Filter Topic:</span>
+                  <button
+                    onClick={() => setSelectedTopic('All')}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                      selectedTopic === 'All'
+                        ? 'bg-slate-900 text-white'
+                        : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    All Topics
+                  </button>
+                  {availableTopics.map(top => (
+                    <button
+                      key={top}
+                      onClick={() => setSelectedTopic(top)}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                        selectedTopic === top
+                          ? 'bg-brand-600 text-white'
+                          : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      {top}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            
+            {/* Search */}
+            <div className="relative lg:col-span-2">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search question text, topic, ID..."
+                className="w-full pl-10 pr-3 py-2 bg-slate-50 text-xs rounded-xl border border-slate-200 focus:border-brand-500 outline-none"
+              />
+            </div>
+
+            {/* Difficulty Filter */}
+            <select
+              value={selectedDifficulty}
+              onChange={(e) => setSelectedDifficulty(e.target.value)}
+              className="px-3 py-2 bg-slate-50 text-xs rounded-xl border border-slate-200 outline-none text-slate-700"
+            >
+              <option value="All">All Difficulties</option>
+              <option value="Easy">Easy</option>
+              <option value="Medium">Medium</option>
+              <option value="Hard">Hard</option>
+            </select>
+
+            {/* Question Type Filter */}
+            <select
+              value={selectedType}
+              onChange={(e) => setSelectedType(e.target.value)}
+              className="px-3 py-2 bg-slate-50 text-xs rounded-xl border border-slate-200 outline-none text-slate-700"
+            >
+              <option value="All">All Question Types</option>
+              <option value="Single Choice">Single Choice</option>
+              <option value="Code Snippet">Code Snippet</option>
+              <option value="True/False">True/False</option>
+            </select>
+
+          </div>
+        </div>
+
+        {/* QUESTIONS TABLE */}
+          <div className="bg-white rounded-2xl border border-slate-200/90 shadow-card overflow-hidden">
+            {filteredQuestions.length === 0 ? (
+              <div className="p-12 text-center space-y-2">
+                <FolderOpen className="w-10 h-10 text-slate-300 mx-auto" />
+                <h4 className="text-sm font-bold text-slate-800">No Questions Found</h4>
+                <p className="text-xs text-slate-500">No questions exist in this topic folder yet.</p>
+                <button
+                  onClick={() => handleOpenAddModal(selectedCategory)}
+                  className="mt-2 px-3.5 py-1.5 bg-brand-600 text-white text-xs font-bold rounded-xl shadow-xs"
+                >
+                  Add Question Now
+                </button>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200 text-slate-400 font-bold uppercase tracking-wider text-[10px]">
+                      <th className="py-3.5 px-4">ID</th>
+                      <th className="py-3.5 px-4 min-w-[280px]">Question & Options</th>
+                      <th className="py-3.5 px-4">Topic</th>
+                      <th className="py-3.5 px-4">Difficulty</th>
+                      <th className="py-3.5 px-4">Correct Ans</th>
+                      <th className="py-3.5 px-4">Marks / Time</th>
+                      <th className="py-3.5 px-4 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                    {filteredQuestions.map((q) => (
+                      <tr key={q.id} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="py-3.5 px-4 font-mono text-[11px] text-slate-400 font-bold">
+                          {q.id}
+                        </td>
+                        <td className="py-3.5 px-4 space-y-1.5">
+                          <div className="font-bold text-slate-900 text-sm">{q.question}</div>
+                          
+                          {/* Render Options list directly */}
+                          {q.options && q.options.length > 0 && (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 mt-1 text-[11px]">
+                              {q.options.map((opt) => {
+                                const isCorrect = opt.id === q.correctAnswer;
+                                return (
+                                  <div
+                                    key={opt.id}
+                                    className={`px-2 py-0.5 rounded-lg border font-medium flex items-center gap-1.5 ${
+                                      isCorrect
+                                        ? 'bg-emerald-50 border-emerald-300 text-emerald-800 font-bold'
+                                        : 'bg-slate-50 border-slate-200 text-slate-600'
+                                    }`}
+                                  >
+                                    <span className={`w-4 h-4 rounded-md text-[10px] flex items-center justify-center font-bold ${
+                                      isCorrect ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-700'
+                                    }`}>
+                                      {opt.id}
+                                    </span>
+                                    <span className="truncate">{opt.text}</span>
+                                    {isCorrect && <CheckCircle2 className="w-3 h-3 text-emerald-600 ml-auto flex-shrink-0" />}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <span className="font-semibold text-slate-800 bg-slate-100 px-2 py-0.5 rounded text-[11px]">
+                            {q.topic}
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                            q.difficulty === 'Easy'
+                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                              : q.difficulty === 'Medium'
+                              ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                              : 'bg-rose-50 text-rose-700 border border-rose-200'
+                          }`}>
+                            {q.difficulty}
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <span className="font-extrabold text-xs px-2.5 py-1 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-300">
+                            Option {q.correctAnswer}
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-4 text-slate-600 text-[11px]">
+                          <div><strong>{q.marks || 4}</strong> Marks</div>
+                          <div className="text-slate-400">{q.timeLimitSec || 60} sec</div>
+                        </td>
+                        <td className="py-3.5 px-4 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              onClick={() => setPreviewQuestion(q)}
+                              className="p-1.5 rounded-lg bg-slate-100 hover:bg-brand-50 hover:text-brand-700 text-slate-600 transition-colors"
+                              title="Preview full question details"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => handleDuplicate(q)}
+                              className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors"
+                              title="Duplicate question"
+                            >
+                              <Copy className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => deleteQuestion(q.id)}
+                              className="p-1.5 rounded-lg bg-slate-100 hover:bg-rose-50 hover:text-rose-600 text-slate-600 transition-colors"
+                              title="Delete question"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
 
       {/* ADD QUESTION MODAL */}
       <Modal
@@ -293,17 +621,31 @@ export const AdminQuestionBankPage = () => {
         maxWidth="max-w-3xl"
       >
         <form onSubmit={handleCreateQuestion} className="space-y-4 text-xs">
+          
+          {/* Unique Question ID Badge */}
+          <div className="p-3 bg-brand-50/80 border border-brand-200 rounded-xl flex items-center justify-between">
+            <div className="flex items-center gap-2 text-xs font-bold text-brand-900">
+              <Sparkles className="w-4 h-4 text-brand-600" />
+              <span>Assigned Unique ID:</span>
+              <span className="font-mono bg-white px-2 py-0.5 rounded border border-brand-300 text-brand-700 shadow-2xs font-extrabold text-xs">
+                {nextUniqueId}
+              </span>
+            </div>
+            <span className="text-[11px] text-slate-500 font-semibold">Auto-assigned upon creation</span>
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="block font-bold text-slate-700 mb-1">Category *</label>
               <select
                 value={formData.category}
                 onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                className="w-full px-3 py-2 bg-slate-50 rounded-xl border border-slate-200 outline-none"
+                className="w-full px-3 py-2 bg-slate-50 rounded-xl border border-slate-200 outline-none font-bold"
               >
                 <option value="Technical">Technical</option>
                 <option value="Aptitude">Aptitude</option>
                 <option value="Reasoning">Reasoning</option>
+                <option value="Verbal">Verbal</option>
               </select>
             </div>
 
@@ -332,25 +674,7 @@ export const AdminQuestionBankPage = () => {
             </div>
           </div>
 
-          <div>
-            <label className="block font-bold text-slate-700 mb-1">Question Type *</label>
-            <div className="flex gap-2">
-              {['Single Choice', 'Code Snippet', 'True/False'].map(t => (
-                <button
-                  type="button"
-                  key={t}
-                  onClick={() => setFormData({ ...formData, type: t })}
-                  className={`px-3 py-1.5 rounded-xl font-bold border transition-all ${
-                    formData.type === t
-                      ? 'bg-brand-50 border-brand-500 text-brand-700'
-                      : 'bg-slate-50 border-slate-200 text-slate-600'
-                  }`}
-                >
-                  {t}
-                </button>
-              ))}
-            </div>
-          </div>
+
 
           {/* Question Text */}
           <div>
@@ -482,16 +806,7 @@ export const AdminQuestionBankPage = () => {
             </div>
           </div>
 
-          <div>
-            <label className="block font-bold text-slate-700 mb-1">Explanation & Solution</label>
-            <textarea
-              rows={2}
-              value={formData.explanation}
-              onChange={(e) => setFormData({ ...formData, explanation: e.target.value })}
-              placeholder="Explanation shown after test submission"
-              className="w-full p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none"
-            />
-          </div>
+
 
           <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
             <button

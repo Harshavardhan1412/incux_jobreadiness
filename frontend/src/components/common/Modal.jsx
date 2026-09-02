@@ -5,6 +5,7 @@ export const Modal = ({ isOpen, onClose, title, subtitle, children, maxWidth = '
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape' && isOpen) {
+        e.stopPropagation();
         onClose();
       }
     };

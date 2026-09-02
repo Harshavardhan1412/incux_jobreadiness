@@ -1,9 +1,10 @@
 import { pool } from '../db/pool.js';
+import crypto from 'crypto';
 
 // POST /api/submissions
 export const submitAssessment = async (req, res) => {
   const { assessmentId, score, accuracy, correctCount, incorrectCount, unansweredCount, timeTaken, categoryScores, topicBreakdown, answers } = req.body;
-  const id = `sub-${Date.now()}`;
+  const id = `sub-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
   const candidateId = req.user.id;
   try {
     const result = await pool.query(

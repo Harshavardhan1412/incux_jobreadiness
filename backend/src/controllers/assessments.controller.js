@@ -1,4 +1,5 @@
 import { pool } from '../db/pool.js';
+import crypto from 'crypto';
 
 // GET /api/assessments
 export const getAllAssessments = async (req, res) => {
@@ -23,13 +24,23 @@ export const getAssessmentById = async (req, res) => {
 
 // POST /api/assessments  (admin only)
 export const createAssessment = async (req, res) => {
-  const { title, category, description, difficulty, durationMinutes, totalQuestions, passingScore } = req.body;
-  const id = `asm-${Date.now()}`;
+  const { id: customId, title, category, description, difficulty, durationMinutes, totalQuestions, passingScore } = req.body;
+  const id = customId || `asm-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
   try {
     const result = await pool.query(
       `INSERT INTO assessments (id, title, category, description, difficulty, duration_minutes, total_questions, passing_score, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
-      [id, title, category, description, difficulty, durationMinutes, totalQuestions, passingScore, req.user?.id || 'admin']
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+       ON CONFLICT (id) DO UPDATE SET
+         title = EXCLUDED.title,
+         category = EXCLUDED.category,
+         description = EXCLUDED.description,
+         difficulty = EXCLUDED.difficulty,
+         duration_minutes = EXCLUDED.duration_minutes,
+         total_questions = EXCLUDED.total_questions,
+         passing_score = EXCLUDED.passing_score,
+         updated_at = CURRENT_TIMESTAMP
+       RETURNING *`,
+      [id, title, category || 'Technical', description || null, difficulty || 'Medium', Number(durationMinutes) || 30, Number(totalQuestions) || 10, Number(passingScore) || 65, req.user?.id || 'admin']
     );
     res.status(201).json({ success: true, data: result.rows[0] });
   } catch (err) {

@@ -4,7 +4,7 @@ import helmet from 'helmet';
 import dotenv from 'dotenv';
 dotenv.config();
 
-import { testConnection } from './db/pool.js';
+import { testConnection, closePool } from './db/pool.js';
 import { initSchema } from './db/schema.js';
 
 import authRoutes from './routes/auth.routes.js';
@@ -15,12 +15,13 @@ import submissionsRoutes from './routes/submissions.routes.js';
 import adminRoutes from './routes/admin.routes.js';
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = parseInt(process.env.PORT || '5000', 10);
+const HOST = '0.0.0.0';
 
 // ─── Security & Parsing Middleware ───────────────────────────────────────────
 app.use(helmet());
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+  origin: process.env.CORS_ORIGIN || '*',
   credentials: true,
 }));
 app.use(express.json({ limit: '1mb' }));
@@ -35,6 +36,7 @@ app.get('/api/health', async (_req, res) => {
     version: '1.0.0',
     database: dbOk ? 'connected ✅' : 'offline ❌',
     timestamp: new Date().toISOString(),
+    pid: process.pid,
   });
 });
 
@@ -55,26 +57,46 @@ app.use((err, _req, res, _next) => {
 });
 
 // ─── Startup ─────────────────────────────────────────────────────────────────
-app.listen(PORT, async () => {
-  console.log(`\n🚀  ReadySetJob Backend API  →  http://localhost:${PORT}`);
+const server = app.listen(PORT, HOST, async () => {
+  console.log(`\n🚀  ReadySetJob Backend API  →  http://${HOST}:${PORT}`);
   console.log(`   Environment : ${process.env.NODE_ENV || 'development'}`);
   const connected = await testConnection();
   if (connected) {
     await initSchema();
-    console.log('\n📡  API Routes ready:');
-    console.log('   POST   /api/auth/register');
-    console.log('   POST   /api/auth/login');
-    console.log('   POST   /api/auth/admin/login');
-    console.log('   GET    /api/candidates');
-    console.log('   GET    /api/assessments');
-    console.log('   GET    /api/questions');
-    console.log('   POST   /api/submissions');
-    console.log('   GET    /api/admin/stats');
-    console.log('   GET    /api/admin/analytics');
-    console.log('   GET    /api/admin/reports\n');
+    console.log('\n📡  API Routes ready.');
   } else {
     console.warn('\n⚠️  Running without database. Check DATABASE_URL in backend/.env\n');
   }
 });
+
+// ─── Graceful Shutdown ────────────────────────────────────────────────────────
+let isShuttingDown = false;
+
+const gracefulShutdown = async (signal) => {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+  console.log(`\n🛑 ${signal} received. Initiating graceful shutdown...`);
+
+  server.close(async (err) => {
+    if (err) {
+      console.error('Error closing HTTP server:', err.message);
+    } else {
+      console.log('✅ HTTP server closed. No longer accepting new connections.');
+    }
+
+    await closePool();
+    console.log('👋 Process exiting cleanly.\n');
+    process.exit(err ? 1 : 0);
+  });
+
+  // Force shutdown after 10 seconds if connections fail to close
+  setTimeout(() => {
+    console.error('⚠️ Forced shutdown after 10s timeout.');
+    process.exit(1);
+  }, 10000).unref();
+};
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 export default app;

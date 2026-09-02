@@ -18,17 +18,15 @@ import {
 } from 'lucide-react';
 
 export const Sidebar = ({ isOpen, onClose }) => {
-  const { role, currentView, navigateTo, logout } = useApp();
+  const { role, currentView, navigateTo, logout, candidatesList } = useApp();
 
   const candidateNavItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, badge: null },
-    { id: 'assessments', label: 'Assessments', icon: ClipboardCheck, badge: 'Live' },
-    { id: 'final-report', label: 'Job Report', icon: FileText, badge: 'PDF' },
+    { id: 'assessments', label: 'Assessments & Tests', icon: ClipboardCheck, badge: 'Live' },
+    { id: 'final-report', label: 'Job Readiness Report', icon: FileText, badge: 'PDF' },
   ];
 
   const adminNavItems = [
-    { id: 'admin-dashboard', label: 'Dashboard', icon: LayoutDashboard, badge: null },
-    { id: 'admin-candidates', label: 'Candidates Roster', icon: Users, badge: '1,248' },
+    { id: 'admin-candidates', label: 'Candidates Roster', icon: Users, badge: candidatesList ? candidatesList.length.toString() : '0' },
     { id: 'admin-questions', label: 'Question Bank', icon: Database, badge: null },
     { id: 'admin-assessments', label: 'Assessments Wizard', icon: Layers, badge: '4' },
     { id: 'admin-analytics', label: 'Analytics', icon: BarChart3, badge: null },
@@ -86,8 +84,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = currentView === item.id || 
-                (item.id === 'assessments' && currentView === 'take-assessment') ||
-                (item.id === 'admin-dashboard' && currentView === 'admin-dashboard');
+                (item.id === 'assessments' && currentView === 'take-assessment');
 
               return (
                 <button
@@ -124,24 +121,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
             })}
           </div>
 
-          {/* Role-Specific Context Card */}
-          {role === 'candidate' ? (
-            <div className="p-3.5 bg-gradient-to-br from-brand-50 to-slate-50 rounded-2xl border border-brand-100">
-              <div className="flex items-center gap-2 mb-1.5">
-                <Sparkles className="w-4 h-4 text-brand-600" />
-                <h4 className="text-xs font-bold text-slate-900">Job Readiness AI</h4>
-              </div>
-              <p className="text-[11px] text-slate-600 leading-relaxed mb-3">
-                Complete technical mock test to boost your score to 85%+.
-              </p>
-              <button
-                onClick={() => handleNavClick('assessments')}
-                className="w-full py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-xs font-bold transition-colors shadow-xs"
-              >
-                Resume Assessment
-              </button>
-            </div>
-          ) : null}
+
 
         </div>
 

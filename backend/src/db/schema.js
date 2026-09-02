@@ -1,7 +1,6 @@
 import { pool } from './pool.js';
 
-export const initSchema = async () => {
-  const schemaSQL = `
+const schemaSQL = `
     -- 1. users: Stores authentication and user roles
     CREATE TABLE IF NOT EXISTS users (
       id VARCHAR(64) PRIMARY KEY,
@@ -113,6 +112,7 @@ export const initSchema = async () => {
     CREATE TABLE IF NOT EXISTS questions (
       id VARCHAR(64) PRIMARY KEY,
       topic_id VARCHAR(64) REFERENCES topics(id) ON DELETE SET NULL,
+      topic VARCHAR(255) DEFAULT 'General',
       category VARCHAR(64) NOT NULL,
       difficulty VARCHAR(32) NOT NULL,
       type VARCHAR(64) NOT NULL,
@@ -132,15 +132,7 @@ export const initSchema = async () => {
       updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );
 
-    -- 8. question_options: Stores MCQ options separately
-    CREATE TABLE IF NOT EXISTS question_options (
-      id VARCHAR(64) PRIMARY KEY,
-      question_id VARCHAR(64) REFERENCES questions(id) ON DELETE CASCADE,
-      option_key VARCHAR(8) NOT NULL,
-      option_text TEXT NOT NULL,
-      display_order INT NOT NULL,
-      is_correct BOOLEAN DEFAULT false
-    );
+    -- 8. questions table handles options via JSONB array (question_options removed to avoid redundancy)
 
     -- 9. question_skills: Maps questions to skills
     CREATE TABLE IF NOT EXISTS question_skills (
@@ -298,12 +290,20 @@ export const initSchema = async () => {
     );
   `;
 
+export const initSchema = async () => {
+  const LOCK_KEY = 74639201;
+  let client;
+
   try {
-    await pool.query(schemaSQL);
+    client = await pool.connect();
+    // Acquire session-level advisory lock so only 1 replica runs migrations at a time
+    await client.query('SELECT pg_advisory_lock($1)', [LOCK_KEY]);
+
+    await client.query(schemaSQL);
     console.log('✅ All 19 Database Tables synchronized successfully.');
 
     // Safe column migrations for existing tables
-    await pool.query(`
+    await client.query(`
       ALTER TABLE users ADD COLUMN IF NOT EXISTS status VARCHAR(32) DEFAULT 'active';
       ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP;
 
@@ -325,19 +325,39 @@ export const initSchema = async () => {
       ALTER TABLE assessments ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP;
 
       ALTER TABLE questions ADD COLUMN IF NOT EXISTS topic_id VARCHAR(64);
+      ALTER TABLE questions ADD COLUMN IF NOT EXISTS topic VARCHAR(255) DEFAULT 'General';
+      ALTER TABLE questions ADD COLUMN IF NOT EXISTS category VARCHAR(64) DEFAULT 'Technical';
+      ALTER TABLE questions ADD COLUMN IF NOT EXISTS difficulty VARCHAR(32) DEFAULT 'Medium';
+      ALTER TABLE questions ADD COLUMN IF NOT EXISTS type VARCHAR(64) DEFAULT 'Single Choice';
+      ALTER TABLE questions ADD COLUMN IF NOT EXISTS question TEXT;
+      ALTER TABLE questions ADD COLUMN IF NOT EXISTS code_snippet TEXT;
+      ALTER TABLE questions ADD COLUMN IF NOT EXISTS language VARCHAR(32);
+      ALTER TABLE questions ADD COLUMN IF NOT EXISTS explanation TEXT;
+      ALTER TABLE questions ADD COLUMN IF NOT EXISTS options JSONB;
+      ALTER TABLE questions ADD COLUMN IF NOT EXISTS correct_answer VARCHAR(16) DEFAULT 'A';
+      ALTER TABLE questions ADD COLUMN IF NOT EXISTS marks INT DEFAULT 4;
+      ALTER TABLE questions ADD COLUMN IF NOT EXISTS time_limit_sec INT DEFAULT 60;
+      ALTER TABLE questions ADD COLUMN IF NOT EXISTS tags TEXT[];
       ALTER TABLE questions ADD COLUMN IF NOT EXISTS status VARCHAR(32) DEFAULT 'Active';
       ALTER TABLE questions ADD COLUMN IF NOT EXISTS source VARCHAR(32) DEFAULT 'Manual';
       ALTER TABLE questions ADD COLUMN IF NOT EXISTS created_by VARCHAR(64);
       ALTER TABLE questions ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP;
 
-      -- Allow legacy columns to be nullable
-      ALTER TABLE questions ALTER COLUMN topic DROP NOT NULL;
-      ALTER TABLE questions ALTER COLUMN options DROP NOT NULL;
-      ALTER TABLE questions ALTER COLUMN correct_answer DROP NOT NULL;
+      -- Drop redundant options table if it exists (options are stored directly in questions.options JSONB)
+      DROP TABLE IF EXISTS question_options CASCADE;
     `);
     console.log('✅ Safe column alterations applied.');
   } catch (err) {
     console.error('❌ Schema initialization error:', err.message);
     throw err;
+  } finally {
+    if (client) {
+      try {
+        await client.query('SELECT pg_advisory_unlock($1)', [LOCK_KEY]);
+      } catch (unlockErr) {
+        console.error('⚠️ Advisory unlock warning:', unlockErr.message);
+      }
+      client.release();
+    }
   }
 };

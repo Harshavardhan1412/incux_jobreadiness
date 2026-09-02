@@ -5,6 +5,7 @@ import {
   Search,
   Bell,
   User,
+  Users,
   Shield,
   LogOut,
   ChevronDown,
@@ -12,6 +13,8 @@ import {
   Menu,
   BarChart2,
   FileText,
+  Layers,
+  HelpCircle,
   Lock,
   LogIn
 } from 'lucide-react';
@@ -100,7 +103,7 @@ export const Header = ({ onToggleSidebar }) => {
       } else if (q.includes('test') || q.includes('asm')) {
         navigateTo('admin-assessments');
       } else {
-        navigateTo('admin-dashboard');
+        navigateTo('admin-candidates');
       }
     } else {
       if (q.includes('test') || q.includes('tech') || q.includes('apt') || q.includes('reason')) {
@@ -137,11 +140,11 @@ export const Header = ({ onToggleSidebar }) => {
 
             <div 
               onClick={() => {
-                if (role === 'admin') navigateTo('admin-dashboard');
-                else if (role === 'candidate') navigateTo('dashboard');
+                if (role === 'admin') navigateTo('admin-candidates');
+                else if (role === 'candidate') navigateTo('assessments');
                 else navigateTo('signup');
               }}
-              className="flex items-center gap-2.5 cursor-pointer group select-none"
+              className="flex items-center gap-2.5 cursor-pointer group select-none font-sans"
             >
               <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-white shadow-md transition-transform group-hover:scale-105 ${
                 role === 'admin' 
@@ -298,10 +301,10 @@ export const Header = ({ onToggleSidebar }) => {
                         {role === 'candidate' ? (
                           <>
                             <button
-                              onClick={() => { navigateTo('dashboard'); setProfileOpen(false); }}
+                              onClick={() => { navigateTo('assessments'); setProfileOpen(false); }}
                               className="w-full text-left px-4 py-2 font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2.5"
                             >
-                              <BarChart2 className="w-4 h-4 text-slate-400" /> My Dashboard
+                              <BarChart2 className="w-4 h-4 text-slate-400" /> Assessments & Tests
                             </button>
 
                             <button
@@ -314,16 +317,31 @@ export const Header = ({ onToggleSidebar }) => {
                         ) : (
                           <>
                             <button
-                              onClick={() => { navigateTo('admin-dashboard'); setProfileOpen(false); }}
-                              className="w-full text-left px-4 py-2 font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2.5"
-                            >
-                              <BarChart2 className="w-4 h-4 text-slate-400" /> Admin Overview
-                            </button>
-                            <button
                               onClick={() => { navigateTo('admin-candidates'); setProfileOpen(false); }}
                               className="w-full text-left px-4 py-2 font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2.5"
                             >
-                              <User className="w-4 h-4 text-slate-400" /> Student Candidates
+                              <Users className="w-4 h-4 text-slate-400" /> Candidates Roster
+                            </button>
+
+                            <button
+                              onClick={() => { navigateTo('admin-questions'); setProfileOpen(false); }}
+                              className="w-full text-left px-4 py-2 font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2.5"
+                            >
+                              <HelpCircle className="w-4 h-4 text-slate-400" /> Question Bank
+                            </button>
+
+                            <button
+                              onClick={() => { navigateTo('admin-assessments'); setProfileOpen(false); }}
+                              className="w-full text-left px-4 py-2 font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2.5"
+                            >
+                              <Layers className="w-4 h-4 text-slate-400" /> Assessments
+                            </button>
+
+                            <button
+                              onClick={() => { navigateTo('admin-analytics'); setProfileOpen(false); }}
+                              className="w-full text-left px-4 py-2 font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2.5"
+                            >
+                              <BarChart2 className="w-4 h-4 text-slate-400" /> Analytics & Reports
                             </button>
                           </>
                         )}

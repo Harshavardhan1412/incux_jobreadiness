@@ -5,7 +5,7 @@ import {
   Users,
   Search,
   Filter,
-  Plus,
+  Download,
   Eye,
   Trash2,
   Edit2,
@@ -20,27 +20,14 @@ import {
 } from 'lucide-react';
 
 export const AdminCandidatesPage = () => {
-  const { candidatesList, addCandidate, deleteCandidate, addToast, navigateTo } = useApp();
+  const { candidatesList, deleteCandidate, addToast, navigateTo } = useApp();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCollege, setSelectedCollege] = useState('All');
   const [selectedYear, setSelectedYear] = useState('All');
   const [selectedStatus, setSelectedStatus] = useState('All');
   const [selectedReadiness, setSelectedReadiness] = useState('All');
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [viewCandidate, setViewCandidate] = useState(null);
-
-  // New Candidate Form State
-  const [newCandForm, setNewCandForm] = useState({
-    name: '',
-    email: '',
-    college: 'ABC University of Technology',
-    branch: 'Computer Science & Engineering',
-    graduationYear: '2026',
-    assessmentStatus: 'Pending',
-    overallScore: 75,
-    readiness: 'Job Ready'
-  });
 
   const filteredCandidates = useMemo(() => {
     return candidatesList.filter(c => {
@@ -57,30 +44,35 @@ export const AdminCandidatesPage = () => {
     });
   }, [candidatesList, searchQuery, selectedCollege, selectedYear, selectedStatus, selectedReadiness]);
 
-  const handleAddSubmit = (e) => {
-    e.preventDefault();
-    if (!newCandForm.name || !newCandForm.email) {
-      addToast('Name and Email are required', 'error');
+  const handleDownloadCSV = () => {
+    if (!filteredCandidates || filteredCandidates.length === 0) {
+      addToast('No candidate records available to export.', 'warning');
       return;
     }
-    addCandidate({
-      ...newCandForm,
-      lastAssessment: 'Just now',
-      aptitude: 76,
-      reasoning: 74,
-      technical: 75
-    });
-    setIsAddModalOpen(false);
-    setNewCandForm({
-      name: '',
-      email: '',
-      college: 'ABC University of Technology',
-      branch: 'Computer Science & Engineering',
-      graduationYear: '2026',
-      assessmentStatus: 'Pending',
-      overallScore: 75,
-      readiness: 'Job Ready'
-    });
+
+    const headers = ['Candidate ID', 'Name', 'Email', 'College', 'Branch', 'Graduation Year', 'Overall Score (%)', 'Status', 'Readiness'];
+    const rows = filteredCandidates.map(c => [
+      `"${c.id || ''}"`,
+      `"${c.name || ''}"`,
+      `"${c.email || ''}"`,
+      `"${c.college || ''}"`,
+      `"${c.branch || ''}"`,
+      `"${c.graduationYear || ''}"`,
+      `"${c.overallScore || 0}"`,
+      `"${c.assessmentStatus || ''}"`,
+      `"${c.readiness || ''}"`
+    ]);
+
+    const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `Candidate_Roster_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    addToast(`Exported ${filteredCandidates.length} candidate record(s) to CSV.`, 'success');
   };
 
   const uniqueColleges = Array.from(new Set(candidatesList.map(c => c.college)));
@@ -91,20 +83,25 @@ export const AdminCandidatesPage = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-            Candidate Directory
-          </h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+              Candidate Directory
+            </h1>
+            <span className="px-2.5 py-0.5 bg-brand-50 text-brand-700 border border-brand-200 text-xs font-bold rounded-full">
+              {filteredCandidates.length} {filteredCandidates.length === 1 ? 'Candidate' : 'Candidates'}
+            </span>
+          </div>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
-            Search, filter, and inspect detailed profiles of candidates enrolled across all assessment tracks.
+            Search, filter, and inspect detailed profiles of {candidatesList.length} enrolled candidates across all assessment tracks.
           </p>
         </div>
 
         <button
-          onClick={() => setIsAddModalOpen(true)}
-          className="px-4 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold shadow-md shadow-brand-600/20 transition-all flex items-center gap-2 self-start sm:self-auto"
+          onClick={handleDownloadCSV}
+          className="px-4 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold shadow-md shadow-brand-600/20 transition-all flex items-center gap-2 self-start sm:self-auto cursor-pointer"
         >
-          <Plus className="w-4 h-4" />
-          <span>Add Candidate</span>
+          <Download className="w-4 h-4" />
+          <span>Download Candidate CSV</span>
         </button>
       </div>
 
@@ -181,30 +178,30 @@ export const AdminCandidatesPage = () => {
               {filteredCandidates.map((cand) => (
                 <tr key={cand.id} className="hover:bg-slate-50/80 transition-colors">
                   <td className="py-3.5 px-4">
-                    <div className="font-bold text-slate-900">{cand.name}</div>
+                    <div className="font-bold text-slate-900">{cand.name || cand.fullName}</div>
                     <div className="text-[11px] text-slate-400">{cand.email}</div>
                   </td>
                   <td className="py-3.5 px-4 font-semibold text-slate-800">
-                    {cand.college}
+                    {cand.college || cand.collegeName || 'N/A'}
                   </td>
                   <td className="py-3.5 px-4 text-slate-600">
-                    {cand.branch}
+                    {cand.branch || 'CSE'}
                   </td>
                   <td className="py-3.5 px-4 text-slate-600">
-                    {cand.graduationYear}
+                    {cand.graduationYear || cand.graduation_year || 2026}
                   </td>
                   <td className="py-3.5 px-4">
-                    <span className="font-black text-slate-900 text-sm">{cand.overallScore}%</span>
+                    <span className="font-black text-slate-900 text-sm">{cand.overallScore ?? cand.jobReadinessScore ?? 78}%</span>
                   </td>
                   <td className="py-3.5 px-4">
                     <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                      cand.assessmentStatus === 'Completed'
+                      (cand.assessmentStatus || cand.status) === 'Completed' || (cand.assessmentStatus || cand.status) === 'Active'
                         ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                        : cand.assessmentStatus === 'In Progress'
+                        : (cand.assessmentStatus || cand.status) === 'In Progress'
                         ? 'bg-amber-50 text-amber-700 border border-amber-200'
                         : 'bg-slate-100 text-slate-600'
                     }`}>
-                      {cand.assessmentStatus}
+                      {cand.assessmentStatus || cand.status || 'Active'}
                     </span>
                   </td>
                   <td className="py-3.5 px-4 text-right">
@@ -234,104 +231,7 @@ export const AdminCandidatesPage = () => {
         </div>
       </div>
 
-      {/* ADD CANDIDATE MODAL */}
-      <Modal
-        isOpen={isAddModalOpen}
-        onClose={() => setIsAddModalOpen(false)}
-        title="Add New Candidate"
-        subtitle="Register candidate into the assessment platform"
-      >
-        <form onSubmit={handleAddSubmit} className="space-y-4 text-xs">
-          <div>
-            <label className="block font-bold text-slate-700 mb-1">Full Name *</label>
-            <input
-              type="text"
-              required
-              value={newCandForm.name}
-              onChange={(e) => setNewCandForm({ ...newCandForm, name: e.target.value })}
-              placeholder="e.g. David Miller"
-              className="w-full px-3.5 py-2.5 bg-slate-50 rounded-xl border border-slate-200 focus:border-brand-500 outline-none"
-            />
-          </div>
 
-          <div>
-            <label className="block font-bold text-slate-700 mb-1">Email Address *</label>
-            <input
-              type="email"
-              required
-              value={newCandForm.email}
-              onChange={(e) => setNewCandForm({ ...newCandForm, email: e.target.value })}
-              placeholder="david@university.edu"
-              className="w-full px-3.5 py-2.5 bg-slate-50 rounded-xl border border-slate-200 focus:border-brand-500 outline-none"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block font-bold text-slate-700 mb-1">College</label>
-              <input
-                type="text"
-                value={newCandForm.college}
-                onChange={(e) => setNewCandForm({ ...newCandForm, college: e.target.value })}
-                className="w-full px-3.5 py-2.5 bg-slate-50 rounded-xl border border-slate-200 outline-none"
-              />
-            </div>
-            <div>
-              <label className="block font-bold text-slate-700 mb-1">Branch</label>
-              <input
-                type="text"
-                value={newCandForm.branch}
-                onChange={(e) => setNewCandForm({ ...newCandForm, branch: e.target.value })}
-                className="w-full px-3.5 py-2.5 bg-slate-50 rounded-xl border border-slate-200 outline-none"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block font-bold text-slate-700 mb-1">Graduation Year</label>
-              <select
-                value={newCandForm.graduationYear}
-                onChange={(e) => setNewCandForm({ ...newCandForm, graduationYear: e.target.value })}
-                className="w-full px-3.5 py-2.5 bg-slate-50 rounded-xl border border-slate-200 outline-none"
-              >
-                <option value="2027">2027</option>
-                <option value="2026">2026</option>
-                <option value="2025">2025</option>
-              </select>
-            </div>
-            <div>
-              <label className="block font-bold text-slate-700 mb-1">Readiness Level</label>
-              <select
-                value={newCandForm.readiness}
-                onChange={(e) => setNewCandForm({ ...newCandForm, readiness: e.target.value })}
-                className="w-full px-3.5 py-2.5 bg-slate-50 rounded-xl border border-slate-200 outline-none"
-              >
-                <option value="Job Ready">Job Ready</option>
-                <option value="Highly Ready">Highly Ready</option>
-                <option value="Developing">Developing</option>
-                <option value="Needs Training">Needs Training</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
-            <button
-              type="button"
-              onClick={() => setIsAddModalOpen(false)}
-              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded-xl font-bold text-slate-700"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="px-5 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl font-bold shadow-xs"
-            >
-              Add Candidate
-            </button>
-          </div>
-        </form>
-      </Modal>
 
       {/* VIEW CANDIDATE PROFILE MODAL */}
       {viewCandidate && (

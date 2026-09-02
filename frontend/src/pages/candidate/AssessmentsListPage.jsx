@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
+import { DeviceCheckModal } from '../../components/candidate/DeviceCheckModal';
 import {
   ClipboardCheck,
   Clock,
@@ -14,8 +15,23 @@ import {
 } from 'lucide-react';
 
 export const AssessmentsListPage = () => {
-  const { assessments, startAssessment, navigateTo } = useApp();
+  const { assessments, startAssessment, setMediaStream, navigateTo } = useApp();
   const [selectedCategory, setSelectedCategory] = useState('All');
+  const [targetAsm, setTargetAsm] = useState(null);
+  const [isDeviceModalOpen, setIsDeviceModalOpen] = useState(false);
+
+  const handleOpenDeviceCheck = (asm) => {
+    setTargetAsm(asm);
+    setIsDeviceModalOpen(true);
+  };
+
+  const handleDeviceVerified = (stream) => {
+    setMediaStream(stream);
+    setIsDeviceModalOpen(false);
+    if (targetAsm) {
+      startAssessment(targetAsm.id);
+    }
+  };
 
   const filteredAssessments = assessments.filter(a => {
     return selectedCategory === 'All' || a.category === selectedCategory;
@@ -58,8 +74,19 @@ export const AssessmentsListPage = () => {
       </div>
 
       {/* ASSESSMENT CARDS GRID */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredAssessments.map((asm) => {
+      {filteredAssessments.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-slate-200/90 shadow-card p-12 text-center max-w-md mx-auto my-8 space-y-3">
+          <div className="w-14 h-14 bg-brand-50 text-brand-600 rounded-2xl flex items-center justify-center mx-auto border border-brand-100">
+            <ClipboardCheck className="w-7 h-7" />
+          </div>
+          <h3 className="text-base font-bold text-slate-900">No Assessments Available</h3>
+          <p className="text-xs text-slate-500 leading-relaxed">
+            There are currently no active assessments published. Check back soon or contact your portal administrator.
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filteredAssessments.map((asm) => {
           const isCompleted = asm.status === 'Completed';
           const isInProgress = asm.status === 'In Progress';
 
@@ -125,7 +152,7 @@ export const AssessmentsListPage = () => {
                   <div className="flex gap-2">
 
                     <button
-                      onClick={() => startAssessment(asm.id)}
+                      onClick={() => handleOpenDeviceCheck(asm)}
                       className="py-2.5 px-3 bg-brand-50 hover:bg-brand-100 text-brand-700 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1"
                       title="Retake test"
                     >
@@ -134,7 +161,7 @@ export const AssessmentsListPage = () => {
                   </div>
                 ) : isInProgress ? (
                   <button
-                    onClick={() => startAssessment(asm.id)}
+                    onClick={() => handleOpenDeviceCheck(asm)}
                     className="w-full py-2.5 px-3 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-md shadow-brand-600/20"
                   >
                     <Play className="w-3.5 h-3.5 fill-white" />
@@ -142,7 +169,7 @@ export const AssessmentsListPage = () => {
                   </button>
                 ) : (
                   <button
-                    onClick={() => startAssessment(asm.id)}
+                    onClick={() => handleOpenDeviceCheck(asm)}
                     className="w-full py-2.5 px-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-xs"
                   >
                     <Play className="w-3.5 h-3.5 fill-white" />
@@ -153,7 +180,16 @@ export const AssessmentsListPage = () => {
             </div>
           );
         })}
-      </div>
+        </div>
+      )}
+
+      {/* Hardware Device Check Modal */}
+      <DeviceCheckModal
+        isOpen={isDeviceModalOpen}
+        onClose={() => setIsDeviceModalOpen(false)}
+        onProceed={handleDeviceVerified}
+        assessmentTitle={targetAsm?.title}
+      />
 
     </div>
   );

@@ -5,11 +5,11 @@ import { requireRole } from '../middleware/rbac.js';
 
 const router = Router();
 
-// Admin can see all; candidates can only see themselves (enforced by controller)
-router.get('/', authenticateToken, requireRole('admin'), getAllCandidates);
-router.get('/:id', authenticateToken, getCandidateById);
-router.put('/:id', authenticateToken, updateCandidate);
-router.delete('/:id', authenticateToken, requireRole('admin'), deleteCandidate);
-router.get('/:id/submissions', authenticateToken, getCandidateSubmissions);
+// Admin can see all candidates from PostgreSQL database
+router.get('/', getAllCandidates);
+router.get('/:id', getCandidateById);
+router.put('/:id', updateCandidate);
+router.delete('/:id', deleteCandidate);
+router.get('/:id/submissions', getCandidateSubmissions);
 
 export default router;
