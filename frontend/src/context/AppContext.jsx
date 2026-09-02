@@ -156,9 +156,7 @@ export const AppProvider = ({ children }) => {
     'admin-candidates',
     'admin-questions',
     'admin-assessments',
-    'admin-analytics',
-    'admin-reports'
-  ];
+    'admin-analytics'  ];
 
   const CANDIDATE_PROTECTED_VIEWS = [
     'dashboard',

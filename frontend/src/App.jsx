@@ -20,7 +20,6 @@ import { AdminCandidatesPage } from './pages/admin/AdminCandidatesPage';
 import { AdminQuestionBankPage } from './pages/admin/AdminQuestionBankPage';
 import { AdminAssessmentsPage } from './pages/admin/AdminAssessmentsPage';
 import { AdminAnalyticsPage } from './pages/admin/AdminAnalyticsPage';
-import { AdminReportsPage } from './pages/admin/AdminReportsPage';
 
 import { ShieldAlert, Lock, ArrowRight } from 'lucide-react';
 
@@ -97,8 +96,7 @@ function AppContent() {
           return <AdminAssessmentsPage />;
         case 'admin-analytics':
           return <AdminAnalyticsPage />;
-        case 'admin-reports':
-          return <AdminReportsPage />;
+
         default:
           return <AdminDashboard />;
       }

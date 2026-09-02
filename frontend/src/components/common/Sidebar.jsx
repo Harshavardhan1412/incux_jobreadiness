@@ -32,7 +32,6 @@ export const Sidebar = ({ isOpen, onClose }) => {
     { id: 'admin-questions', label: 'Question Bank', icon: Database, badge: null },
     { id: 'admin-assessments', label: 'Assessments Wizard', icon: Layers, badge: '4' },
     { id: 'admin-analytics', label: 'Analytics', icon: BarChart3, badge: null },
-    { id: 'admin-reports', label: 'Placement Reports', icon: FileText, badge: 'CSV' },
   ];
 
   // Restrict strictly by role
@@ -142,23 +141,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
                 Resume Assessment
               </button>
             </div>
-          ) : (
-            <div className="p-3.5 bg-slate-900 text-white rounded-2xl">
-              <div className="flex items-center gap-2 mb-1.5">
-                <GraduationCap className="w-4 h-4 text-brand-400" />
-                <h4 className="text-xs font-bold text-white">University Placement</h4>
-              </div>
-              <p className="text-[11px] text-slate-300 leading-relaxed mb-3">
-                1,248 candidates registered across 14 universities.
-              </p>
-              <button
-                onClick={() => handleNavClick('admin-reports')}
-                className="w-full py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-lg text-xs font-bold transition-colors"
-              >
-                Export Placement CSV
-              </button>
-            </div>
-          )}
+          ) : null}
 
         </div>
 

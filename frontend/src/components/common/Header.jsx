@@ -96,8 +96,7 @@ export const Header = ({ onToggleSidebar }) => {
         navigateTo('admin-candidates');
       } else if (q.includes('quest') || q.includes('sql') || q.includes('code') || q.includes('bank')) {
         navigateTo('admin-questions');
-      } else if (q.includes('report') || q.includes('csv') || q.includes('export')) {
-        navigateTo('admin-reports');
+
       } else if (q.includes('test') || q.includes('asm')) {
         navigateTo('admin-assessments');
       } else {
