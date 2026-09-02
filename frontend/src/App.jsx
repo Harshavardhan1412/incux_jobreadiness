@@ -55,11 +55,14 @@ function AccessDenied({ message = "You do not have permission to view this porta
   );
 }
 
+import { JobReadinessHero } from './pages/JobReadinessHero';
+
 function AppContent() {
   const { currentView, role, navigateTo } = useApp();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  // 1. PUBLIC AUTH VIEWS
+  // 1. PUBLIC AUTH & LANDING VIEWS
+  if (currentView === 'hero') return <><JobReadinessHero /><ToastContainer /></>;
   if (currentView === 'signup') return <><SignupPage /><ToastContainer /></>;
   if (currentView === 'login') return <><LoginPage /><ToastContainer /></>;
   if (currentView === 'admin-login') return <><AdminLoginPage /><ToastContainer /></>;

@@ -10,6 +10,10 @@
     "lint": "oxlint"
   },
   "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@mui/icons-material": "^9.4.0",
+    "@mui/material": "^9.4.0",
     "canvas-confetti": "^1.9.4",
     "chart.js": "^4.5.1",
     "html2canvas": "^1.4.1",
