@@ -54,6 +54,8 @@ function AccessDenied({ message = "You do not have permission to view this porta
   );
 }
 
+import { JobReadinessHero } from './pages/JobReadinessHero';
+
 function AppContent() {
   const { currentView, role, navigateTo } = useApp();
   const [sidebarOpen, setSidebarOpen] = useState(false);

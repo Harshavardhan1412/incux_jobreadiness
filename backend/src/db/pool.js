@@ -21,9 +21,13 @@ export const pool = new Pool({
   max: parseInt(process.env.DB_POOL_MAX || '20', 10),
 });
 
-pool.on('error', (err) => {
-  console.error('PostgreSQL pool error:', err.message);
-});
+if (pool) {
+  pool.on('error', (err) => {
+    console.error('PostgreSQL pool error:', err.message);
+  });
+} else {
+  console.warn('⚠️  DATABASE_URL is not set in backend/.env. Database features will run in mock mode.');
+}
 
 export const testConnection = async (retries = 3) => {
   for (let attempt = 1; attempt <= retries; attempt++) {
