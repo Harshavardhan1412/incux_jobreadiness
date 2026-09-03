@@ -60,11 +60,11 @@ export const SignupPage = () => {
     email: '',
     phoneNo: '',
     collegeName: '',
-    branch: 'Computer Science & Engineering (CSE)',
-    specialization: 'Full-Stack Web Development',
-    country: 'India',
-    state: 'Telangana',
-    city: 'Hyderabad',
+    branch: '',
+    specialization: '',
+    country: '',
+    state: '',
+    city: '',
     password: '',
     confirmPassword: '',
     agreeTerms: true
@@ -135,7 +135,7 @@ export const SignupPage = () => {
     }
     const cleanMobile = formData.phoneNo.replace(/[\s\-]/g, '');
     if (!formData.phoneNo.trim() || !INDIAN_MOBILE_REGEX.test(cleanMobile)) {
-      newErrors.phoneNo = 'Valid 10-digit Indian mobile number required';
+      newErrors.phoneNo = 'Valid 10-digit  Mobile number required';
     }
     if (!formData.collegeName.trim()) newErrors.collegeName = 'College name is required';
     if (!formData.branch.trim()) newErrors.branch = 'Branch is required';
@@ -200,17 +200,22 @@ export const SignupPage = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8 relative overflow-hidden font-sans">
-      
+
       {/* Subtle Ambient Background Accents */}
       <div className="absolute top-0 left-1/4 w-96 h-96 bg-brand-500/10 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
 
       <div className="sm:mx-auto sm:w-full sm:max-w-2xl relative z-10">
-        
+
         {/* Top Header Logo */}
         <div className="text-center mb-6">
+<<<<<<< HEAD
           <div 
             onClick={() => navigateTo('signup')}
+=======
+          <div
+            onClick={() => navigateTo('hero')}
+>>>>>>> 91e3ed14ab7ce4d3431d3f09dbe89f040f565b89
             className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-tr from-brand-600 to-brand-500 text-white shadow-xl shadow-brand-500/20 mb-3 ring-4 ring-slate-100 cursor-pointer group"
           >
             <BrainCircuit className="w-8 h-8 group-hover:scale-105 transition-transform" />
@@ -225,8 +230,8 @@ export const SignupPage = () => {
 
         {/* Card Form */}
         <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-10 shadow-xl shadow-slate-200/50 relative">
-          
-          <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-6">
+
+          <div className="border-b border-slate-100 pb-4 mb-6">
             <div>
               <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
                 <User className="w-5 h-5 text-brand-600" />
@@ -237,10 +242,10 @@ export const SignupPage = () => {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5" noValidate>
-            
+
             {/* Row 1: Full Name & Email */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              
+
               {/* 1. Full Name */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
@@ -253,10 +258,9 @@ export const SignupPage = () => {
                     name="name"
                     value={formData.name}
                     onChange={handleChange}
-                    placeholder="e.g. Harsha Vardhan"
-                    className={`w-full pl-10 pr-4 py-2.5 bg-white border text-sm text-slate-900 placeholder-slate-400 rounded-xl outline-none transition-all ${
-                      errors.name ? 'border-rose-500 ring-2 ring-rose-500/20' : 'border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20'
-                    }`}
+                    placeholder="Enter Full Name"
+                    className={`w-full pl-10 pr-4 py-2.5 bg-white border text-sm text-slate-900 placeholder-slate-400 rounded-xl outline-none transition-all ${errors.name ? 'border-rose-500 ring-2 ring-rose-500/20' : 'border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20'
+                      }`}
                   />
                 </div>
                 {errors.name && <p className="mt-1 text-xs text-rose-500 flex items-center gap-1"><AlertCircle className="w-3 h-3" />{errors.name}</p>}
@@ -274,10 +278,9 @@ export const SignupPage = () => {
                     name="email"
                     value={formData.email}
                     onChange={handleChange}
-                    placeholder="student@university.edu"
-                    className={`w-full pl-10 pr-9 py-2.5 bg-white border text-sm text-slate-900 placeholder-slate-400 rounded-xl outline-none transition-all ${
-                      errors.email ? 'border-rose-500 ring-2 ring-rose-500/20' : formData.email && EMAIL_REGEX.test(formData.email) ? 'border-emerald-500 ring-2 ring-emerald-500/20' : 'border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20'
-                    }`}
+                    placeholder="Enter Email Address"
+                    className={`w-full pl-10 pr-9 py-2.5 bg-white border text-sm text-slate-900 placeholder-slate-400 rounded-xl outline-none transition-all ${errors.email ? 'border-rose-500 ring-2 ring-rose-500/20' : formData.email && EMAIL_REGEX.test(formData.email) ? 'border-emerald-500 ring-2 ring-emerald-500/20' : 'border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20'
+                      }`}
                   />
                   {formData.email && EMAIL_REGEX.test(formData.email) && (
                     <CheckCircle2 className="w-4 h-4 text-emerald-500 absolute right-3 top-1/2 -translate-y-1/2" />
@@ -294,11 +297,11 @@ export const SignupPage = () => {
 
             {/* Row 2: Phone No (Indian Validation) & College Name */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              
+
               {/* 3. Phone No (Indian Validation) */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                  3. Indian Phone No <span className="text-rose-500">*</span>
+                  3. Phone No <span className="text-rose-500">*</span>
                 </label>
                 <div className="relative flex items-center">
                   <span className="absolute left-3.5 text-xs font-bold text-slate-500 select-none flex items-center gap-1">
@@ -311,9 +314,8 @@ export const SignupPage = () => {
                     onChange={handleChange}
                     maxLength={13}
                     placeholder="9876543210"
-                    className={`w-full pl-16 pr-9 py-2.5 bg-white border text-sm text-slate-900 placeholder-slate-400 rounded-xl outline-none transition-all ${
-                      errors.phoneNo ? 'border-rose-500 ring-2 ring-rose-500/20' : formData.phoneNo && INDIAN_MOBILE_REGEX.test(formData.phoneNo.replace(/[\s\-]/g, '')) ? 'border-emerald-500 ring-2 ring-emerald-500/20' : 'border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20'
-                    }`}
+                    className={`w-full pl-16 pr-9 py-2.5 bg-white border text-sm text-slate-900 placeholder-slate-400 rounded-xl outline-none transition-all ${errors.phoneNo ? 'border-rose-500 ring-2 ring-rose-500/20' : formData.phoneNo && INDIAN_MOBILE_REGEX.test(formData.phoneNo.replace(/[\s\-]/g, '')) ? 'border-emerald-500 ring-2 ring-emerald-500/20' : 'border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20'
+                      }`}
                   />
                   {formData.phoneNo && INDIAN_MOBILE_REGEX.test(formData.phoneNo.replace(/[\s\-]/g, '')) && (
                     <CheckCircle2 className="w-4 h-4 text-emerald-500 absolute right-3 top-1/2 -translate-y-1/2" />
@@ -338,10 +340,9 @@ export const SignupPage = () => {
                     name="collegeName"
                     value={formData.collegeName}
                     onChange={handleChange}
-                    placeholder="e.g. BITS Pilani / IIT Hyderabad"
-                    className={`w-full pl-10 pr-4 py-2.5 bg-white border text-sm text-slate-900 placeholder-slate-400 rounded-xl outline-none transition-all ${
-                      errors.collegeName ? 'border-rose-500 ring-2 ring-rose-500/20' : 'border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20'
-                    }`}
+                    placeholder="Enter College Name"
+                    className={`w-full pl-10 pr-4 py-2.5 bg-white border text-sm text-slate-900 placeholder-slate-400 rounded-xl outline-none transition-all ${errors.collegeName ? 'border-rose-500 ring-2 ring-rose-500/20' : 'border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20'
+                      }`}
                   />
                 </div>
                 {errors.collegeName && <p className="mt-1 text-xs text-rose-500 flex items-center gap-1"><AlertCircle className="w-3 h-3" />{errors.collegeName}</p>}
@@ -351,7 +352,7 @@ export const SignupPage = () => {
 
             {/* Row 3: Branch & Specialization */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              
+
               {/* 5. Branch */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
@@ -365,6 +366,7 @@ export const SignupPage = () => {
                     onChange={handleChange}
                     className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-300 text-sm text-slate-900 rounded-xl outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20 transition-all appearance-none cursor-pointer"
                   >
+                    <option value="">Select Branch / Stream</option>
                     {POPULAR_BRANCHES.map(b => (
                       <option key={b} value={b}>{b}</option>
                     ))}
@@ -386,6 +388,7 @@ export const SignupPage = () => {
                     onChange={handleChange}
                     className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-300 text-sm text-slate-900 rounded-xl outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20 transition-all appearance-none cursor-pointer"
                   >
+                    <option value="">Select Specialization</option>
                     {SPECIALIZATIONS.map(s => (
                       <option key={s} value={s}>{s}</option>
                     ))}
@@ -398,7 +401,7 @@ export const SignupPage = () => {
 
             {/* Row 4: Country, State & City */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              
+
               {/* 7. Country */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
@@ -411,8 +414,8 @@ export const SignupPage = () => {
                     name="country"
                     value={formData.country}
                     onChange={handleChange}
+                    placeholder="Enter Country"
                     className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-300 text-sm text-slate-900 rounded-xl outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20 transition-all"
-                    placeholder="India"
                   />
                 </div>
               </div>
@@ -430,6 +433,7 @@ export const SignupPage = () => {
                     onChange={handleChange}
                     className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-300 text-sm text-slate-900 rounded-xl outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20 transition-all appearance-none cursor-pointer"
                   >
+                    <option value="">Select State</option>
                     {INDIAN_STATES.map(st => (
                       <option key={st} value={st}>{st}</option>
                     ))}
@@ -450,10 +454,9 @@ export const SignupPage = () => {
                     name="city"
                     value={formData.city}
                     onChange={handleChange}
-                    placeholder="e.g. Hyderabad"
-                    className={`w-full pl-10 pr-4 py-2.5 bg-white border text-sm text-slate-900 placeholder-slate-400 rounded-xl outline-none transition-all ${
-                      errors.city ? 'border-rose-500 ring-2 ring-rose-500/20' : 'border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20'
-                    }`}
+                    placeholder="Enter City"
+                    className={`w-full pl-10 pr-4 py-2.5 bg-white border text-sm text-slate-900 placeholder-slate-400 rounded-xl outline-none transition-all ${errors.city ? 'border-rose-500 ring-2 ring-rose-500/20' : 'border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20'
+                      }`}
                   />
                 </div>
                 {errors.city && <p className="mt-1 text-xs text-rose-500 flex items-center gap-1"><AlertCircle className="w-3 h-3" />{errors.city}</p>}
@@ -463,7 +466,7 @@ export const SignupPage = () => {
 
             {/* Row 5: Password & Confirm Password */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-slate-100 pt-4">
-              
+
               {/* Password */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
@@ -476,10 +479,8 @@ export const SignupPage = () => {
                     name="password"
                     value={formData.password}
                     onChange={handleChange}
-                    placeholder="••••••••"
-                    className={`w-full pl-10 pr-10 py-2.5 bg-white border text-sm text-slate-900 placeholder-slate-400 rounded-xl outline-none transition-all ${
-                      errors.password ? 'border-rose-500 ring-2 ring-rose-500/20' : 'border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20'
-                    }`}
+                    className={`w-full pl-10 pr-10 py-2.5 bg-white border text-sm text-slate-900 placeholder-slate-400 rounded-xl outline-none transition-all ${errors.password ? 'border-rose-500 ring-2 ring-rose-500/20' : 'border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20'
+                      }`}
                   />
                   <button
                     type="button"
@@ -517,10 +518,8 @@ export const SignupPage = () => {
                     name="confirmPassword"
                     value={formData.confirmPassword}
                     onChange={handleChange}
-                    placeholder="••••••••"
-                    className={`w-full pl-10 pr-10 py-2.5 bg-white border text-sm text-slate-900 placeholder-slate-400 rounded-xl outline-none transition-all ${
-                      errors.confirmPassword ? 'border-rose-500 ring-2 ring-rose-500/20' : 'border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20'
-                    }`}
+                    className={`w-full pl-10 pr-10 py-2.5 bg-white border text-sm text-slate-900 placeholder-slate-400 rounded-xl outline-none transition-all ${errors.confirmPassword ? 'border-rose-500 ring-2 ring-rose-500/20' : 'border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20'
+                      }`}
                   />
                   <button
                     type="button"
@@ -546,7 +545,7 @@ export const SignupPage = () => {
                 className="mt-0.5 w-4 h-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500 cursor-pointer"
               />
               <label htmlFor="agreeTerms" className="text-xs text-slate-600 leading-relaxed cursor-pointer">
-                I agree to the <span className="text-brand-600 hover:underline font-semibold">Terms of Service</span> and <span className="text-brand-600 hover:underline font-semibold">Privacy Policy</span>. My data will be stored securely in the PostgreSQL platform database.
+                I agree to the <span className="text-brand-600 hover:underline font-semibold">Terms of Service</span> and <span className="text-brand-600 hover:underline font-semibold">Privacy Policy</span>. My data will be stored securely.
               </label>
             </div>
             {errors.agreeTerms && <p className="text-xs text-rose-500 flex items-center gap-1"><AlertCircle className="w-3 h-3" />{errors.agreeTerms}</p>}
@@ -560,11 +559,11 @@ export const SignupPage = () => {
               {isSubmitting ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Connecting Database & Registering...</span>
+                  <span>Creating Account...</span>
                 </>
               ) : (
                 <>
-                  <span>Create Account & Save to Database</span>
+                  <span>Create Account</span>
                   <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                 </>
               )}
@@ -583,29 +582,9 @@ export const SignupPage = () => {
                 Sign In
               </button>
             </p>
-
-            <button
-              onClick={() => navigateTo('admin-login')}
-              className="text-slate-500 hover:text-slate-700 flex items-center gap-1 font-medium transition-colors"
-            >
-              <Lock className="w-3 h-3 text-slate-400" />
-              <span>Admin Portal Login</span>
-            </button>
           </div>
 
         </div>
-
-        {/* Security Seals Footer */}
-        <div className="mt-6 text-center text-xs text-slate-500 flex items-center justify-center gap-4">
-          <span className="flex items-center gap-1">
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" /> 256-Bit SSL Encrypted
-          </span>
-          <span>•</span>
-          <span className="flex items-center gap-1">
-            <Building2 className="w-3.5 h-3.5 text-brand-600" /> Railway PostgreSQL Backend
-          </span>
-        </div>
-
       </div>
 
     </div>

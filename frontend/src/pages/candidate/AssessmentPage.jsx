@@ -1,7 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Modal } from '../../components/common/Modal';
+<<<<<<< HEAD
 import { stopProctoringStream, getProctoringStream } from '../../utils/proctoring';
+=======
+import { MediaPreviewWidget } from '../../components/candidate/MediaPreviewWidget';
+>>>>>>> 91e3ed14ab7ce4d3431d3f09dbe89f040f565b89
 import {
   Clock,
   ChevronLeft,
@@ -20,6 +24,8 @@ import {
 export const AssessmentPage = () => {
   const {
     activeAssessment,
+    mediaStream,
+    stopMediaStream,
     questionBank,
     assessmentAnswers,
     setAssessmentAnswers,
@@ -29,12 +35,20 @@ export const AssessmentPage = () => {
     setCurrentQuestionIndex,
     timeRemainingSeconds,
     setTimeRemainingSeconds,
+<<<<<<< HEAD
     questionTimeLog,
     setQuestionTimeLog,
     submitAssessment
+=======
+    submitAssessment,
+    navigateTo,
+    addToast
+>>>>>>> 91e3ed14ab7ce4d3431d3f09dbe89f040f565b89
   } = useApp();
 
   const [showSubmitModal, setShowSubmitModal] = useState(false);
+  const [showFullscreenWarning, setShowFullscreenWarning] = useState(false);
+  const [showEnterFullscreenModal, setShowEnterFullscreenModal] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
   const [tabWarning, setTabWarning] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -111,12 +125,150 @@ export const AssessmentPage = () => {
     };
   }, []);
 
+  const fullscreenExitCountRef = useRef(0);
+  const isSubmittedRef = useRef(false);
+  const timerRef = useRef(null);
+
+  // Fullscreen Request Helper
+  const requestExamFullscreen = () => {
+    const elem = document.documentElement;
+    if (elem.requestFullscreen) {
+      elem.requestFullscreen().catch(() => {});
+    } else if (elem.webkitRequestFullscreen) {
+      elem.webkitRequestFullscreen();
+    } else if (elem.msRequestFullscreen) {
+      elem.msRequestFullscreen();
+    }
+    setShowEnterFullscreenModal(false);
+    setShowFullscreenWarning(false);
+  };
+
+  const exitExamFullscreenAndStopMedia = () => {
+    if (document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement) {
+      try {
+        if (document.exitFullscreen) {
+          document.exitFullscreen().catch(() => {});
+        } else if (document.webkitExitFullscreen) {
+          document.webkitExitFullscreen();
+        } else if (document.msExitFullscreen) {
+          document.msExitFullscreen();
+        }
+      } catch (e) {}
+    }
+    stopMediaStream();
+  };
+
+  const handleAutoSubmit = (reason) => {
+    if (isSubmittedRef.current) return;
+    isSubmittedRef.current = true;
+
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+    }
+
+    exitExamFullscreenAndStopMedia();
+
+    submitAssessment(
+      assessmentAnswers,
+      Math.max(1, Math.round(((activeAssessment?.durationMinutes * 60 || 1800) - timeRemainingSeconds) / 60))
+    );
+    navigateTo('assessments');
+  };
+
+  const handleSubmit = () => {
+    if (isSubmittedRef.current) return;
+    isSubmittedRef.current = true;
+    setShowSubmitModal(false);
+
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+    }
+
+    exitExamFullscreenAndStopMedia();
+
+    submitAssessment(
+      assessmentAnswers,
+      Math.max(1, Math.round(((activeAssessment?.durationMinutes * 60 || 1800) - timeRemainingSeconds) / 60))
+    );
+    navigateTo('assessments');
+  };
+
+  // Fullscreen, Keydown & Tab Switch Violation Listeners
+  useEffect(() => {
+    requestExamFullscreen();
+
+    const checkTimer = setTimeout(() => {
+      if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+        setShowEnterFullscreenModal(true);
+      }
+    }, 400);
+
+    const handleFullscreenChange = () => {
+      const isFS = Boolean(
+        document.fullscreenElement ||
+        document.webkitFullscreenElement ||
+        document.mozFullScreenElement ||
+        document.msFullscreenElement
+      );
+
+      if (!isFS && !isSubmittedRef.current && !showEnterFullscreenModal) {
+        if (fullscreenExitCountRef.current === 0) {
+          fullscreenExitCountRef.current = 1;
+          setShowFullscreenWarning(true);
+          if (addToast) addToast('⚠️ Warning: Fullscreen mode exited! Exiting once more will auto-submit your exam.', 'warning');
+        } else {
+          if (addToast) addToast('🚨 Exam Auto-Submitted due to repeated fullscreen exit violation!', 'error');
+          handleAutoSubmit('fullscreen_violation');
+        }
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if ((document.hidden || document.visibilityState === 'hidden') && !isSubmittedRef.current) {
+        if (addToast) addToast('🚨 Exam Auto-Submitted due to tab switching violation!', 'error');
+        handleAutoSubmit('tab_switch_violation');
+      }
+    };
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' || e.code === 'Escape') {
+        if (!isSubmittedRef.current) {
+          if (fullscreenExitCountRef.current === 0) {
+            fullscreenExitCountRef.current = 1;
+            setShowFullscreenWarning(true);
+            if (addToast) addToast('⚠️ Warning: Escape pressed / Fullscreen exit detected! Exiting once more will auto-submit your exam.', 'warning');
+          } else {
+            if (addToast) addToast('🚨 Exam Auto-Submitted due to Escape key violation!', 'error');
+            handleAutoSubmit('fullscreen_violation');
+          }
+        }
+      }
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    document.addEventListener('mozfullscreenchange', handleFullscreenChange);
+    document.addEventListener('MSFullscreenChange', handleFullscreenChange);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      clearTimeout(checkTimer);
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('MSFullscreenChange', handleFullscreenChange);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
+
   // Live Timer Countdown
   useEffect(() => {
-    const timer = setInterval(() => {
+    timerRef.current = setInterval(() => {
       setTimeRemainingSeconds((prev) => {
         if (prev <= 1) {
-          clearInterval(timer);
+          if (timerRef.current) clearInterval(timerRef.current);
           handleSubmit();
           return 0;
         }
@@ -124,7 +276,9 @@ export const AssessmentPage = () => {
       });
     }, 1000);
 
-    return () => clearInterval(timer);
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
   }, []);
 
   // Track time spent on the current question (increments every second)
@@ -145,6 +299,15 @@ export const AssessmentPage = () => {
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
+<<<<<<< HEAD
+=======
+  const questions = (activeAssessment?.questions && activeAssessment.questions.length > 0)
+    ? activeAssessment.questions
+    : questionBank;
+  const currentQuestion = questions[currentQuestionIndex] || questions[0];
+  const totalQuestions = questions.length;
+
+>>>>>>> 91e3ed14ab7ce4d3431d3f09dbe89f040f565b89
   const handleSelectOption = (optionId) => {
     setAssessmentAnswers(prev => ({
       ...prev,
@@ -182,6 +345,7 @@ export const AssessmentPage = () => {
   const unansweredCount = totalQuestions - answeredCount;
   const reviewCount = markedForReview.length;
 
+<<<<<<< HEAD
   const handleSubmit = () => {
     setShowSubmitModal(false);
     const totalSec = activeAssessment?.durationMinutes * 60 || 1500;
@@ -199,6 +363,8 @@ export const AssessmentPage = () => {
     submitAssessment(assessmentAnswers, spent);
   };
 
+=======
+>>>>>>> 91e3ed14ab7ce4d3431d3f09dbe89f040f565b89
   const isMarked = markedForReview.includes(currentQuestion?.id);
   const selectedOption = assessmentAnswers[currentQuestion?.id];
 
@@ -418,9 +584,18 @@ export const AssessmentPage = () => {
             </div>
           </div>
 
-          {/* RIGHT SIDE: QUESTION NAVIGATOR MATRIX (4 cols) */}
-          <div className="lg:col-span-4 space-y-6">
-            <div className="bg-white rounded-2xl border border-slate-200/90 shadow-card p-5 space-y-5">
+          {/* RIGHT SIDEBAR: CAMERA PREVIEW & QUESTION PALETTE (4 cols on desktop) */}
+          <div className="lg:col-span-4 space-y-4">
+            
+            {/* Live Camera & Mic Status Widget */}
+            {mediaStream && (
+              <div className="flex justify-end lg:justify-start">
+                <MediaPreviewWidget stream={mediaStream} />
+              </div>
+            )}
+
+            {/* Question Palette Card */}
+            <div className="bg-white rounded-2xl border border-slate-200/90 shadow-card p-6 space-y-5">
               <div>
                 <h3 className="text-sm font-bold text-slate-900">Question Navigator</h3>
                 <p className="text-xs text-slate-500 mt-0.5">Click any number to jump directly to the question.</p>
@@ -559,6 +734,73 @@ export const AssessmentPage = () => {
             >
               <CheckCircle2 className="w-4 h-4" />
               <span>Confirm & Submit</span>
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* FULLSCREEN REQUIRED ENTER MODAL */}
+      <Modal
+        isOpen={showEnterFullscreenModal}
+        onClose={() => {}}
+        title="🔒 Full-Screen Exam Environment Required"
+        subtitle="Anti-cheating & proctoring controls active"
+      >
+        <div className="space-y-4 text-xs text-slate-600 leading-relaxed">
+          <div className="p-4 bg-brand-50 border border-brand-200 rounded-2xl flex items-start gap-3">
+            <BrainCircuit className="w-5 h-5 text-brand-600 flex-shrink-0 mt-0.5" />
+            <div>
+              <h4 className="font-bold text-brand-900 text-sm">Exam Environment Rules</h4>
+              <p className="text-slate-600 mt-1">
+                To guarantee test integrity, this exam requires full-screen mode.
+              </p>
+              <ul className="list-disc list-inside mt-2 space-y-1 text-slate-700 font-semibold">
+                <li>Exiting full screen will issue a final warning. Exiting twice auto-submits the test.</li>
+                <li>Switching tabs or minimizing the browser will immediately auto-submit the exam.</li>
+              </ul>
+            </div>
+          </div>
+
+          <div className="flex justify-end pt-2">
+            <button
+              onClick={requestExamFullscreen}
+              className="w-full py-3 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold shadow-md shadow-brand-600/20 transition-all flex items-center justify-center gap-2"
+            >
+              <CheckCircle2 className="w-4 h-4" />
+              <span>Enter Full Screen & Start Exam</span>
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* FULLSCREEN EXIT WARNING MODAL (1ST VIOLATION) */}
+      <Modal
+        isOpen={showFullscreenWarning}
+        onClose={() => {}}
+        title="⚠️ WARNING: Fullscreen Mode Exited!"
+        subtitle="First proctoring violation warning"
+      >
+        <div className="space-y-4 text-xs text-slate-600 leading-relaxed">
+          <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl flex items-start gap-3">
+            <AlertCircle className="w-6 h-6 text-rose-600 flex-shrink-0 mt-0.5 animate-bounce" />
+            <div>
+              <h4 className="font-bold text-rose-900 text-sm">Proctoring Violation Warning!</h4>
+              <p className="text-rose-700 mt-1 font-medium">
+                You exited full-screen mode during an active assessment.
+              </p>
+              <div className="mt-3 p-3 bg-white/80 border border-rose-200 rounded-xl font-bold text-rose-800">
+                🚨 CRITICAL: Exiting full screen one more time will immediately auto-submit your test and grade your current answers!
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end pt-2">
+            <button
+              onClick={requestExamFullscreen}
+              className="w-full py-3 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold shadow-md shadow-rose-600/20 transition-all flex items-center justify-center gap-2"
+            >
+              <RotateCcw className="w-4 h-4" />
+              <span>Re-Enter Full Screen & Resume Exam</span>
             </button>
           </div>
         </div>

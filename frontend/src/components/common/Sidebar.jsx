@@ -12,11 +12,18 @@ import {
 } from 'lucide-react';
 
 export const Sidebar = ({ isOpen, onClose }) => {
-  const { role, currentView, navigateTo, logout } = useApp();
+  const { role, currentView, navigateTo, logout, candidatesList } = useApp();
 
+<<<<<<< HEAD
+=======
+  const candidateNavItems = [
+    { id: 'assessments', label: 'Assessments & Tests', icon: ClipboardCheck, badge: 'Live' },
+    { id: 'candidate-analytics', label: 'Candidate Analytics', icon: BarChart3, badge: 'AI' }
+  ];
+
+>>>>>>> 91e3ed14ab7ce4d3431d3f09dbe89f040f565b89
   const adminNavItems = [
-    { id: 'admin-dashboard', label: 'Dashboard', icon: LayoutDashboard, badge: null },
-    { id: 'admin-candidates', label: 'Candidates Roster', icon: Users, badge: '1,248' },
+    { id: 'admin-candidates', label: 'Candidates Roster', icon: Users, badge: candidatesList ? candidatesList.length.toString() : '0' },
     { id: 'admin-questions', label: 'Question Bank', icon: Database, badge: null },
     { id: 'admin-assessments', label: 'Assessments Wizard', icon: Layers, badge: '4' },
     { id: 'admin-analytics', label: 'Analytics', icon: BarChart3, badge: null },
@@ -65,7 +72,12 @@ export const Sidebar = ({ isOpen, onClose }) => {
             </p>
             {navItems.map((item) => {
               const Icon = item.icon;
+<<<<<<< HEAD
               const isActive = currentView === item.id;
+=======
+              const isActive = currentView === item.id || 
+                (item.id === 'assessments' && currentView === 'take-assessment');
+>>>>>>> 91e3ed14ab7ce4d3431d3f09dbe89f040f565b89
 
               return (
                 <button
@@ -94,6 +106,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
             })}
           </div>
 
+<<<<<<< HEAD
           {/* Admin Context Card */}
           <div className="p-3.5 bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl border border-slate-700">
             <div className="flex items-center gap-2 mb-1.5">
@@ -110,6 +123,9 @@ export const Sidebar = ({ isOpen, onClose }) => {
               Manage Assessments
             </button>
           </div>
+=======
+
+>>>>>>> 91e3ed14ab7ce4d3431d3f09dbe89f040f565b89
 
         </div>
 

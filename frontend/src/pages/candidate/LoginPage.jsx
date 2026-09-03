@@ -34,10 +34,15 @@ export const LoginPage = () => {
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        
+
         {/* Brand */}
+<<<<<<< HEAD
         <div 
           onClick={() => navigateTo('signup')}
+=======
+        <div
+          onClick={() => navigateTo('hero')}
+>>>>>>> 91e3ed14ab7ce4d3431d3f09dbe89f040f565b89
           className="flex items-center justify-center gap-3 cursor-pointer group mb-6"
         >
           <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-brand-600 to-brand-500 flex items-center justify-center text-white shadow-lg shadow-brand-500/25">
@@ -58,7 +63,7 @@ export const LoginPage = () => {
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
         <div className="bg-white py-8 px-6 sm:px-10 rounded-2xl border border-slate-200/90 shadow-card space-y-6">
-          
+
           {error && (
             <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 font-medium">
               {error}
@@ -128,6 +133,11 @@ export const LoginPage = () => {
             </button>
           </form>
 
+<<<<<<< HEAD
+=======
+
+
+>>>>>>> 91e3ed14ab7ce4d3431d3f09dbe89f040f565b89
           {/* Footer links */}
           <div className="text-center text-xs text-slate-500 pt-2">
             Don't have an account?{' '}
@@ -137,14 +147,6 @@ export const LoginPage = () => {
               className="font-bold text-brand-600 hover:underline"
             >
               Sign Up
-            </button>
-            <span className="mx-2 text-slate-300">|</span>
-            <button
-              type="button"
-              onClick={() => navigateTo('admin-login')}
-              className="font-bold text-slate-700 hover:underline inline-flex items-center gap-1"
-            >
-              <Shield className="w-3 h-3" /> Admin HR
             </button>
           </div>
 

@@ -62,6 +62,7 @@ export const INITIAL_CANDIDATE = {
   }
 };
 
+<<<<<<< HEAD
 export const INITIAL_ASSESSMENTS = [
   {
     id: "asm-tech-1",
@@ -522,89 +523,13 @@ marks: 2,
     tags: ["Graph", "BFS", "Queue"]
   }
 ];
+=======
+export const INITIAL_ASSESSMENTS = [];
 
-export const INITIAL_CANDIDATES_LIST = [
-  {
-    id: "cand-101",
-    name: "John Doe",
-    email: "john.doe@techgrad.edu",
-    college: "ABC University of Technology",
-    branch: "Computer Science & Engg",
-    graduationYear: "2026",
-    assessmentStatus: "Completed",
-    overallScore: 78,
-    readiness: "Job Ready",
-    readinessTag: "Job Ready — Improvement Areas",
-    lastAssessment: "Aug 30, 2026",
-    aptitude: 82,
-    reasoning: 74,
-    technical: 78
-  },
-  {
-    id: "cand-102",
-    name: "Sarah Chen",
-    email: "sarah.chen@stanford.edu",
-    college: "National Institute of Tech",
-    branch: "Information Technology",
-    graduationYear: "2026",
-    assessmentStatus: "Completed",
-    overallScore: 92,
-    readiness: "Highly Ready",
-    readinessTag: "Top Tier Candidate",
-    lastAssessment: "Aug 29, 2026",
-    aptitude: 94,
-    reasoning: 90,
-    technical: 92
-  },
-  {
-    id: "cand-103",
-    name: "Rohan Verma",
-    email: "rohan.v@mitcollege.ac.in",
-    college: "MIT College of Engineering",
-    branch: "Electronics & Comm",
-    graduationYear: "2025",
-    assessmentStatus: "In Progress",
-    overallScore: 68,
-    readiness: "Developing",
-    readinessTag: "Needs Aptitude Focus",
-    lastAssessment: "Aug 28, 2026",
-    aptitude: 62,
-    reasoning: 70,
-    technical: 72
-  },
-  {
-    id: "cand-104",
-    name: "Elena Rostova",
-    email: "elena.r@globaltech.org",
-    college: "State Engineering College",
-    branch: "Computer Science",
-    graduationYear: "2026",
-    assessmentStatus: "Completed",
-    overallScore: 85,
-    readiness: "Job Ready",
-    readinessTag: "Strong Technical",
-    lastAssessment: "Aug 26, 2026",
-    aptitude: 80,
-    reasoning: 84,
-    technical: 91
-  },
-  {
-    id: "cand-105",
-    name: "Marcus Vance",
-    email: "marcus.vance@cityuniv.edu",
-    college: "City University",
-    branch: "Data Science",
-    graduationYear: "2025",
-    assessmentStatus: "Pending",
-    overallScore: 54,
-    readiness: "Needs Training",
-    readinessTag: "Foundation Skills Required",
-    lastAssessment: "Aug 18, 2026",
-    aptitude: 52,
-    reasoning: 58,
-    technical: 52
-  }
-];
+export const INITIAL_QUESTION_BANK = [];
+>>>>>>> 91e3ed14ab7ce4d3431d3f09dbe89f040f565b89
+
+export const INITIAL_CANDIDATES_LIST = [];
 
 export const INITIAL_ADMIN_KPIS = {
   totalCandidates: 1248,

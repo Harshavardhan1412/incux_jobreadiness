@@ -32,10 +32,15 @@ export const AdminLoginPage = () => {
   return (
     <div className="min-h-screen bg-slate-900 flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8 text-white">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        
+
         {/* Logo */}
+<<<<<<< HEAD
         <div 
           onClick={() => navigateTo('admin-login')}
+=======
+        <div
+          onClick={() => navigateTo('hero')}
+>>>>>>> 91e3ed14ab7ce4d3431d3f09dbe89f040f565b89
           className="flex items-center justify-center gap-3 cursor-pointer group mb-6"
         >
           <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-brand-600 to-brand-400 flex items-center justify-center text-white shadow-lg shadow-brand-500/30">
@@ -61,7 +66,7 @@ export const AdminLoginPage = () => {
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
         <div className="bg-slate-850 py-8 px-6 sm:px-10 rounded-2xl border border-slate-800 shadow-2xl space-y-6">
-          
+
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
               <label className="block text-xs font-bold text-slate-300 mb-1">
@@ -135,28 +140,8 @@ export const AdminLoginPage = () => {
             </button>
           </form>
 
-          {/* Quick Demo Fill */}
-          <div className="pt-4 border-t border-slate-800 text-center">
-            <button
-              type="button"
-              onClick={loginAdmin}
-              className="w-full py-2 px-3 bg-slate-800 hover:bg-slate-750 text-slate-300 rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-2 border border-slate-700"
-            >
-              <ShieldCheck className="w-4 h-4 text-emerald-400" />
-              <span>1-Click Instant Admin Access</span>
-            </button>
-          </div>
 
-          <div className="text-center text-xs text-slate-500">
-            Candidate looking for assessments?{' '}
-            <button
-              type="button"
-              onClick={() => navigateTo('login')}
-              className="font-bold text-brand-400 hover:underline"
-            >
-              Candidate Login
-            </button>
-          </div>
+
 
         </div>
       </div>

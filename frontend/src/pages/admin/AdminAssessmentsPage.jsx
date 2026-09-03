@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Modal } from '../../components/common/Modal';
+import { parseQuestionsFromExcel, downloadExcelQuestionTemplate } from '../../utils/excelParser';
 import {
   Layers,
   Plus,
@@ -17,15 +18,19 @@ import {
   Sliders,
   Sparkles,
   BookOpen,
-  Filter
+  Filter,
+  Upload,
+  Download,
+  Trash2
 } from 'lucide-react';
 
 export const AdminAssessmentsPage = () => {
-  const { assessments, addAssessment, questionBank, addToast, startAssessment } = useApp();
+  const { assessments, addAssessment, updateAssessment, deleteAssessment, questionBank, addQuestion, addQuestionsBatch, addToast, startAssessment } = useApp();
 
   const [isWizardOpen, setIsWizardOpen] = useState(false);
   const [wizardStep, setWizardStep] = useState(1);
   const [previewAsm, setPreviewAsm] = useState(null);
+  const [editingAsmId, setEditingAsmId] = useState(null);
 
   // Wizard state
   const [newAssessment, setNewAssessment] = useState({
@@ -50,6 +55,117 @@ export const AdminAssessmentsPage = () => {
     { num: 7, name: 'Publish' }
   ];
 
+  const handleWizardExcelUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    try {
+      const parsedList = await parseQuestionsFromExcel(
+        file,
+        newAssessment.category || 'Technical',
+        'Assessment Questions'
+      );
+
+      if (parsedList.length === 0) {
+        addToast('No valid questions found in file', 'error');
+        return;
+      }
+
+      addQuestionsBatch(parsedList);
+
+      const existingNumIds = questionBank
+        .map(item => parseInt(item.id.replace('q-', ''), 10))
+        .filter(n => !isNaN(n));
+      let currentMax = existingNumIds.length > 0 ? Math.max(...existingNumIds) : 100;
+
+      const importedIds = parsedList.map(q => {
+        if (q.id && q.id !== 'q-101') return q.id;
+        currentMax += 1;
+        return `q-${currentMax}`;
+      });
+
+      // Automatically select all imported question IDs for this assessment!
+      setNewAssessment(prev => ({
+        ...prev,
+        selectedQuestionIds: Array.from(new Set([...prev.selectedQuestionIds, ...importedIds]))
+      }));
+    } catch (err) {
+      addToast(err.message || 'Failed to parse Excel file', 'error');
+    } finally {
+      e.target.value = '';
+    }
+  };
+
+  const handleAutoSelectRandomQuestions = () => {
+    const category = (newAssessment.category || 'Technical').trim();
+    const targetCount = Number(newAssessment.totalQuestions) || 10;
+
+    // Deduplicate question bank by ID and statement
+    const uniquePoolMap = new Map();
+    questionBank.forEach(q => {
+      if (q && q.id && q.question) {
+        const key = `${q.id}-${q.question.trim().toLowerCase()}`;
+        if (!uniquePoolMap.has(key)) {
+          uniquePoolMap.set(key, q);
+        }
+      }
+    });
+    const cleanBank = Array.from(uniquePoolMap.values());
+
+    const isAllMix = ['All', 'Full Length', 'All Mix', 'All Mix (Combined)'].some(m => m.toLowerCase() === category.toLowerCase());
+
+    let available = [];
+    if (isAllMix) {
+      available = cleanBank;
+    } else {
+      available = cleanBank.filter(q => q.category && q.category.trim().toLowerCase() === category.toLowerCase());
+    }
+
+    if (available.length === 0) {
+      addToast(`No questions available in database for category "${category}". Please upload or add ${category} questions to the bank first.`, 'error');
+      return;
+    }
+
+    let selectedIds = [];
+
+    if (isAllMix) {
+      // Balanced mix across categories (Aptitude, Reasoning, Technical, Verbal)
+      const categories = ['Aptitude', 'Reasoning', 'Technical', 'Verbal'];
+      const perCat = Math.max(1, Math.floor(targetCount / categories.length));
+      const mixPool = [];
+
+      categories.forEach(c => {
+        const catQList = cleanBank.filter(q => q.category && q.category.trim().toLowerCase() === c.toLowerCase());
+        const shuffledCat = [...catQList].sort(() => 0.5 - Math.random());
+        mixPool.push(...shuffledCat.slice(0, perCat));
+      });
+
+      if (mixPool.length < targetCount) {
+        const remaining = cleanBank.filter(q => !mixPool.some(m => m.id === q.id));
+        const shuffledRem = [...remaining].sort(() => 0.5 - Math.random());
+        mixPool.push(...shuffledRem.slice(0, targetCount - mixPool.length));
+      }
+
+      selectedIds = Array.from(new Set(mixPool.map(q => q.id)));
+    } else {
+      // Single category Fisher-Yates non-repeating shuffle
+      const pool = [...available];
+      for (let i = pool.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [pool[i], pool[j]] = [pool[j], pool[i]];
+      }
+      const numToPick = Math.min(targetCount, pool.length);
+      selectedIds = Array.from(new Set(pool.slice(0, numToPick).map(q => q.id)));
+    }
+
+    setNewAssessment(prev => ({
+      ...prev,
+      selectedQuestionIds: selectedIds
+    }));
+
+    addToast(`Auto-selected ${selectedIds.length} unique, non-repeating ${category} questions from DB!`, 'success');
+  };
+
   const handleToggleQuestionSelection = (id) => {
     if (newAssessment.selectedQuestionIds.includes(id)) {
       setNewAssessment(prev => ({
@@ -64,6 +180,23 @@ export const AdminAssessmentsPage = () => {
     }
   };
 
+  const handleEditAssessment = (asm) => {
+    setEditingAsmId(asm.id);
+    setNewAssessment({
+      title: asm.title || '',
+      category: asm.category || 'Technical',
+      description: asm.description || '',
+      difficulty: asm.difficulty || 'Medium',
+      durationMinutes: Number(asm.durationMinutes) || 30,
+      passingScore: Number(asm.passingScore) || 65,
+      selectedQuestionIds: asm.selectedQuestionIds || [],
+      totalQuestions: Number(asm.totalQuestions) || 20,
+      tags: asm.tags || ['DSA', 'Algorithms']
+    });
+    setWizardStep(1);
+    setIsWizardOpen(true);
+  };
+
   const handleFinishPublish = () => {
     if (!newAssessment.title.trim()) {
       addToast('Please enter an assessment title', 'error');
@@ -71,13 +204,23 @@ export const AdminAssessmentsPage = () => {
       return;
     }
 
-    addAssessment({
-      ...newAssessment,
-      totalQuestions: Math.max(newAssessment.selectedQuestionIds.length, 15),
-      estimatedTimeMin: newAssessment.durationMinutes
-    });
+    if (editingAsmId) {
+      updateAssessment({
+        ...newAssessment,
+        id: editingAsmId,
+        totalQuestions: Math.max(newAssessment.selectedQuestionIds.length, 10),
+        estimatedTimeMin: newAssessment.durationMinutes
+      });
+    } else {
+      addAssessment({
+        ...newAssessment,
+        totalQuestions: Math.max(newAssessment.selectedQuestionIds.length, 15),
+        estimatedTimeMin: newAssessment.durationMinutes
+      });
+    }
 
     setIsWizardOpen(false);
+    setEditingAsmId(null);
     setWizardStep(1);
     setNewAssessment({
       title: '',
@@ -102,12 +245,24 @@ export const AdminAssessmentsPage = () => {
             Assessments Management
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
-            Design, schedule, and publish standardized assessments with multi-step authoring.
+            Design, schedule, edit, and publish standardized assessments with multi-step authoring.
           </p>
         </div>
 
         <button
           onClick={() => {
+            setEditingAsmId(null);
+            setNewAssessment({
+              title: '',
+              category: 'Technical',
+              description: '',
+              difficulty: 'Medium',
+              durationMinutes: 30,
+              passingScore: 65,
+              selectedQuestionIds: ['q-101', 'q-102'],
+              totalQuestions: 20,
+              tags: ['DSA', 'Algorithms']
+            });
             setWizardStep(1);
             setIsWizardOpen(true);
           }}
@@ -161,16 +316,23 @@ export const AdminAssessmentsPage = () => {
                 <button
                   onClick={() => setPreviewAsm(asm)}
                   className="p-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors"
-                  title="Preview"
+                  title="Preview assessment"
                 >
                   <Eye className="w-4 h-4" />
                 </button>
                 <button
-                  onClick={() => addToast(`Assessment "${asm.title}" archived`, 'info')}
-                  className="p-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors"
-                  title="Archive"
+                  onClick={() => handleEditAssessment(asm)}
+                  className="p-2 rounded-lg bg-slate-100 hover:bg-brand-50 hover:text-brand-600 text-slate-600 transition-colors"
+                  title="Edit assessment"
                 >
-                  <Archive className="w-4 h-4" />
+                  <Edit2 className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => deleteAssessment(asm.id)}
+                  className="p-2 rounded-lg bg-slate-100 hover:bg-rose-50 hover:text-rose-600 text-slate-600 transition-colors"
+                  title="Delete assessment from database"
+                >
+                  <Trash2 className="w-4 h-4" />
                 </button>
               </div>
 
@@ -186,11 +348,14 @@ export const AdminAssessmentsPage = () => {
         ))}
       </div>
 
-      {/* 7-STEP CREATE ASSESSMENT WIZARD MODAL */}
+      {/* 7-STEP CREATE / EDIT ASSESSMENT WIZARD MODAL */}
       <Modal
         isOpen={isWizardOpen}
-        onClose={() => setIsWizardOpen(false)}
-        title="Assessment Authoring Wizard"
+        onClose={() => {
+          setIsWizardOpen(false);
+          setEditingAsmId(null);
+        }}
+        title={editingAsmId ? 'Edit Assessment Specification' : 'Assessment Authoring Wizard'}
         subtitle={`Step ${wizardStep} of 7: ${steps[wizardStep - 1].name}`}
         maxWidth="max-w-3xl"
       >
@@ -234,23 +399,37 @@ export const AdminAssessmentsPage = () => {
                   type="text"
                   value={newAssessment.title}
                   onChange={(e) => setNewAssessment({ ...newAssessment, title: e.target.value })}
-                  placeholder="e.g. Backend Engineering Job Readiness Test"
+                  placeholder="e.g. Aptitude & Reasoning Speed Assessment"
                   className="w-full px-3.5 py-2.5 bg-slate-50 rounded-xl border border-slate-200 focus:border-brand-500 outline-none"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">Category</label>
+                  <label className="block font-bold text-slate-700 mb-1">Category *</label>
                   <select
                     value={newAssessment.category}
                     onChange={(e) => setNewAssessment({ ...newAssessment, category: e.target.value })}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 rounded-xl border border-slate-200 outline-none"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 rounded-xl border border-slate-200 outline-none font-bold"
                   >
-                    <option value="Technical">Technical</option>
-                    <option value="Aptitude">Aptitude</option>
-                    <option value="Reasoning">Reasoning</option>
+                    <option value="Aptitude">Aptitude Only</option>
+                    <option value="Reasoning">Reasoning Only</option>
+                    <option value="Technical">Technical Only</option>
+                    <option value="Verbal">Verbal Only</option>
+                    <option value="All Mix">All Mix (Aptitude + Reasoning + Technical + Verbal)</option>
                   </select>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">No. of Questions *</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="100"
+                    value={newAssessment.totalQuestions}
+                    onChange={(e) => setNewAssessment({ ...newAssessment, totalQuestions: Number(e.target.value) })}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 rounded-xl border border-slate-200 outline-none font-bold text-slate-900"
+                  />
                 </div>
 
                 <div>
@@ -273,7 +452,7 @@ export const AdminAssessmentsPage = () => {
                   rows={3}
                   value={newAssessment.description}
                   onChange={(e) => setNewAssessment({ ...newAssessment, description: e.target.value })}
-                  placeholder="Evaluates Core Data Structures, Algorithms, SQL, and OOP proficiency."
+                  placeholder="Evaluates quantitative speed, analytical logic, and problem solving."
                   className="w-full p-3 bg-slate-50 rounded-xl border border-slate-200 outline-none"
                 />
               </div>
@@ -281,50 +460,104 @@ export const AdminAssessmentsPage = () => {
           )}
 
           {/* STEP 2: SELECT QUESTION BANK */}
-          {wizardStep === 2 && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-bold text-slate-900">2. Select Questions from Bank</h3>
-                <span className="font-bold text-brand-600">
-                  {newAssessment.selectedQuestionIds.length} Questions Selected
-                </span>
-              </div>
+          {wizardStep === 2 && (() => {
+            const activeCategory = newAssessment.category || 'Technical';
+            const catQuestionsInDb = activeCategory === 'All' || activeCategory === 'Full Length'
+              ? questionBank
+              : questionBank.filter(q => q.category.toLowerCase() === activeCategory.toLowerCase());
 
-              <div className="max-h-60 overflow-y-auto space-y-2 divide-y divide-slate-100 pr-1">
-                {questionBank.map((q) => {
-                  const isSelected = newAssessment.selectedQuestionIds.includes(q.id);
-                  return (
-                    <div
-                      key={q.id}
-                      onClick={() => handleToggleQuestionSelection(q.id)}
-                      className={`p-3 rounded-xl border cursor-pointer flex items-center justify-between transition-all ${
-                        isSelected
-                          ? 'bg-brand-50/80 border-brand-400'
-                          : 'bg-slate-50 border-slate-200 hover:bg-slate-100'
-                      }`}
-                    >
-                      <div className="space-y-0.5">
-                        <span className="font-bold text-slate-900 line-clamp-1">{q.question}</span>
-                        <div className="flex items-center gap-2 text-[10px] text-slate-500">
-                          <span className="font-semibold text-brand-600">{q.category}</span>
-                          <span>•</span>
-                          <span>{q.topic}</span>
-                          <span>•</span>
-                          <span>{q.difficulty}</span>
-                        </div>
+            return (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-bold text-slate-900">2. Questions Assignment</h3>
+                  <span className="font-bold text-brand-600 text-xs bg-brand-50 px-2.5 py-1 rounded-md border border-brand-200">
+                    {newAssessment.selectedQuestionIds.length > 0 ? `${newAssessment.selectedQuestionIds.length} Questions Sampled` : 'Automatic Random Mode Active'}
+                  </span>
+                </div>
+
+                {/* Random Category Selector Card */}
+                <div className="p-4 bg-brand-50/60 border border-brand-200 rounded-2xl space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <div className="text-xs font-bold text-brand-900">
+                        Category: <span className="bg-brand-100 text-brand-700 px-2 py-0.5 rounded-md">{activeCategory}</span>
+                        <span className="ml-2 font-normal text-slate-600">({catQuestionsInDb.length} questions available in DB)</span>
                       </div>
-
-                      <div className={`w-5 h-5 rounded-md flex items-center justify-center font-bold text-xs ${
-                        isSelected ? 'bg-brand-600 text-white' : 'border border-slate-300 bg-white'
-                      }`}>
-                        {isSelected ? '✓' : ''}
+                      <div className="text-[11px] text-slate-600 mt-0.5">
+                        Test will give <strong>{newAssessment.totalQuestions} questions</strong> randomly from <strong>{activeCategory}</strong> in the database.
                       </div>
                     </div>
-                  );
-                })}
+
+                    <button
+                      type="button"
+                      onClick={handleAutoSelectRandomQuestions}
+                      className="px-3.5 py-2 bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center gap-1.5"
+                    >
+                      <Sparkles className="w-4 h-4" />
+                      <span>Auto-Pick {newAssessment.totalQuestions} Random Questions</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Excel Upload Banner */}
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-xs text-slate-700 font-bold">
+                    <Upload className="w-4 h-4 text-brand-600" />
+                    <span>Upload Questions from Excel (.xlsx) / CSV</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={downloadExcelQuestionTemplate}
+                      className="px-2.5 py-1 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-all"
+                    >
+                      <Download className="w-3 h-3 text-brand-600" />
+                      <span>Download .xlsx Template</span>
+                    </button>
+                    <label className="px-3 py-1 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-[11px] font-bold cursor-pointer transition-all flex items-center gap-1 shadow-2xs">
+                      <Upload className="w-3 h-3" />
+                      <span>Upload Excel File</span>
+                      <input type="file" accept=".xlsx, .xls, .csv" onChange={handleWizardExcelUpload} className="hidden" />
+                    </label>
+                  </div>
+                </div>
+
+                <div className="max-h-60 overflow-y-auto space-y-2 divide-y divide-slate-100 pr-1">
+                  {questionBank.map((q) => {
+                    const isSelected = newAssessment.selectedQuestionIds.includes(q.id);
+                    return (
+                      <div
+                        key={q.id}
+                        onClick={() => handleToggleQuestionSelection(q.id)}
+                        className={`p-3 rounded-xl border cursor-pointer flex items-center justify-between transition-all ${
+                          isSelected
+                            ? 'bg-brand-50/80 border-brand-400'
+                            : 'bg-slate-50 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        <div className="space-y-0.5">
+                          <span className="font-bold text-slate-900 line-clamp-1">{q.question}</span>
+                          <div className="flex items-center gap-2 text-[10px] text-slate-500">
+                            <span className="font-semibold text-brand-600">{q.category}</span>
+                            <span>•</span>
+                            <span>{q.topic}</span>
+                            <span>•</span>
+                            <span>{q.difficulty}</span>
+                          </div>
+                        </div>
+
+                        <div className={`w-5 h-5 rounded-md flex items-center justify-center font-bold text-xs ${
+                          isSelected ? 'bg-brand-600 text-white' : 'border border-slate-300 bg-white'
+                        }`}>
+                          {isSelected ? '✓' : ''}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* STEP 3: CONFIGURE QUESTIONS */}
           {wizardStep === 3 && (
@@ -450,7 +683,7 @@ export const AdminAssessmentsPage = () => {
                 onClick={handleFinishPublish}
                 className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold shadow-md shadow-emerald-600/20"
               >
-                Publish Assessment
+                {editingAsmId ? 'Save Assessment Changes' : 'Publish Assessment'}
               </button>
             )}
           </div>

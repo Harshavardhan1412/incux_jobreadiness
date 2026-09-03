@@ -1,6 +1,7 @@
 import { pool } from '../db/pool.js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 
 const signToken = (payload) =>
   jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '7d' });
@@ -85,8 +86,8 @@ export const register = async (req, res) => {
       return res.status(409).json({ error: 'An account with this email address already exists. Please login instead.' });
     }
 
-    const id = `cand-${Date.now()}`;
-    const hash = await bcrypt.hash(password, 10);
+    const id = `cand-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
+    const hash = await bcrypt.hash(password, 6);
 
     // 3. Insert into users authentication table
     await pool.query(
