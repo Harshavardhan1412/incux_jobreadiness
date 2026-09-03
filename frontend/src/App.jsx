@@ -20,7 +20,8 @@ import { AdminQuestionBankPage } from './pages/admin/AdminQuestionBankPage';
 import { AdminAssessmentsPage } from './pages/admin/AdminAssessmentsPage';
 import { AdminAnalyticsPage } from './pages/admin/AdminAnalyticsPage';
 
-import { ShieldAlert, Lock, ArrowRight } from 'lucide-react';
+import { ShieldAlert, Lock } from 'lucide-react';
+import { JobReadinessHero } from './pages/JobReadinessHero';
 
 function AccessDenied({ message = "You do not have permission to view this portal area.", requiredRole = "admin" }) {
   const { navigateTo } = useApp();
@@ -54,8 +55,6 @@ function AccessDenied({ message = "You do not have permission to view this porta
   );
 }
 
-import { JobReadinessHero } from './pages/JobReadinessHero';
-
 function AppContent() {
   const { currentView, role, navigateTo } = useApp();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -74,7 +73,7 @@ function AppContent() {
   if (safeView === 'admin' || safeView === '/admin' || safeView === 'admin-login' || safeView === '/admin-login') return <><AdminLoginPage /><ToastContainer /></>;
   if (safeView === 'signup' || safeView === '/signup') return <><SignupPage /><ToastContainer /></>;
 
-  // 2. DISTRACTION-FREE ASSESSMENT RUNNER (Guarded)
+  // 3. DISTRACTION-FREE ASSESSMENT RUNNER (Guarded)
   if (safeView === 'take-assessment') {
     if (role !== 'candidate' && role !== 'admin') {
       return (
@@ -87,7 +86,7 @@ function AppContent() {
     return <><AssessmentPage /><ToastContainer /></>;
   }
 
-  // 3. ROLE-BASED ROUTE GUARD RENDERER
+  // 4. ROLE-BASED ROUTE GUARD RENDERER
   const renderMainContent = () => {
     // Admin Module Routes (Strictly Guarded for role === 'admin')
     if (safeView.startsWith('admin-')) {
