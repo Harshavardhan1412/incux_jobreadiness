@@ -18,7 +18,7 @@ export const pool = new Pool({
   ssl: isLocalhost ? false : { rejectUnauthorized: false },
   connectionTimeoutMillis: parseInt(process.env.DB_CONNECTION_TIMEOUT || '15000', 10),
   idleTimeoutMillis: parseInt(process.env.DB_IDLE_TIMEOUT || '30000', 10),
-  max: parseInt(process.env.DB_POOL_MAX || '20', 10),
+  max: parseInt(process.env.DB_POOL_MAX || '50', 10),
 });
 
 if (pool) {

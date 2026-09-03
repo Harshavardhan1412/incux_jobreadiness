@@ -22,7 +22,7 @@ export const Sidebar = ({ isOpen, onClose }) => {
 
   const candidateNavItems = [
     { id: 'assessments', label: 'Assessments & Tests', icon: ClipboardCheck, badge: 'Live' },
-    { id: 'final-report', label: 'Job Readiness Report', icon: FileText, badge: 'PDF' },
+    { id: 'candidate-analytics', label: 'Candidate Analytics', icon: BarChart3, badge: 'AI' }
   ];
 
   const adminNavItems = [

@@ -89,7 +89,7 @@ export const AssessmentPage = () => {
       assessmentAnswers,
       Math.max(1, Math.round(((activeAssessment?.durationMinutes * 60 || 1800) - timeRemainingSeconds) / 60))
     );
-    navigateTo('final-report');
+    navigateTo('assessments');
   };
 
   const handleSubmit = () => {
@@ -107,7 +107,7 @@ export const AssessmentPage = () => {
       assessmentAnswers,
       Math.max(1, Math.round(((activeAssessment?.durationMinutes * 60 || 1800) - timeRemainingSeconds) / 60))
     );
-    navigateTo('final-report');
+    navigateTo('assessments');
   };
 
   // Fullscreen, Keydown & Tab Switch Violation Listeners

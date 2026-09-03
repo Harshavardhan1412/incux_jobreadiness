@@ -1,18 +1,42 @@
 import { pool } from '../db/pool.js';
 import crypto from 'crypto';
 
+let questionsCache = null;
+let lastQuestionsFetch = 0;
+const CACHE_TTL_MS = 3000;
+
+export const clearQuestionsCache = () => {
+  questionsCache = null;
+  lastQuestionsFetch = 0;
+};
+
 // GET /api/questions
 export const getAllQuestions = async (req, res) => {
   try {
     const { category, difficulty, topic } = req.query;
+    const isFiltered = category || difficulty || topic;
+
+    const now = Date.now();
+    if (!isFiltered && questionsCache && (now - lastQuestionsFetch < CACHE_TTL_MS)) {
+      return res.json(questionsCache);
+    }
+
     let sql = 'SELECT * FROM questions WHERE 1=1';
     const params = [];
     if (category) { params.push(category); sql += ` AND category=$${params.length}`; }
     if (difficulty) { params.push(difficulty); sql += ` AND difficulty=$${params.length}`; }
     if (topic) { params.push(`%${topic}%`); sql += ` AND topic ILIKE $${params.length}`; }
     sql += ' ORDER BY created_at DESC';
+
     const result = await pool.query(sql, params);
-    res.json({ success: true, data: result.rows, total: result.rowCount });
+    const responsePayload = { success: true, data: result.rows, total: result.rowCount };
+
+    if (!isFiltered) {
+      questionsCache = responsePayload;
+      lastQuestionsFetch = now;
+    }
+
+    res.json(responsePayload);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -23,6 +47,7 @@ export const createQuestion = async (req, res) => {
   const { id: customId, category, topic, difficulty, type, question, codeSnippet, language, options, correctAnswer, explanation, marks, timeLimitSec, tags } = req.body;
   const id = customId || `q-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
   try {
+    clearQuestionsCache();
     const result = await pool.query(
       `INSERT INTO questions (id, category, topic, difficulty, type, question, code_snippet, language, options, correct_answer, explanation, marks, time_limit_sec, tags)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
@@ -55,6 +80,7 @@ export const createQuestion = async (req, res) => {
 export const updateQuestion = async (req, res) => {
   const { category, topic, difficulty, type, question, options, correctAnswer, explanation } = req.body;
   try {
+    clearQuestionsCache();
     const result = await pool.query(
       `UPDATE questions SET category=$1, topic=$2, difficulty=$3, type=$4, question=$5,
        options=$6, correct_answer=$7, explanation=$8 WHERE id=$9 RETURNING *`,
@@ -69,6 +95,7 @@ export const updateQuestion = async (req, res) => {
 // DELETE /api/questions/:id
 export const deleteQuestion = async (req, res) => {
   try {
+    clearQuestionsCache();
     await pool.query('DELETE FROM questions WHERE id=$1', [req.params.id]);
     res.json({ success: true, message: 'Question deleted.' });
   } catch (err) {
