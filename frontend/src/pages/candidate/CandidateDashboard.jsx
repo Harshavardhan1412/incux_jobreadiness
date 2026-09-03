@@ -127,17 +127,17 @@ export const CandidateDashboard = () => {
               Welcome back, {currentUser?.name || 'Candidate'}!
             </h1>
             <p className="text-sm text-slate-300 leading-relaxed">
-              Continue your journey toward becoming job-ready. Take assessments, evaluate your gap matrix, and review your verified AI report.
+              Continue your journey toward becoming job-ready. Take standardized skill assessments and track your test progress.
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
             <button
-              onClick={() => navigateTo('final-report')}
+              onClick={() => navigateTo('assessments')}
               className="px-4 py-2.5 bg-brand-500 hover:bg-brand-400 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-brand-500/30 flex items-center gap-2"
             >
-              <FileText className="w-4 h-4" />
-              <span>Job Readiness Report</span>
+              <ClipboardCheck className="w-4 h-4" />
+              <span>Assessments & Tests</span>
             </button>
           </div>
         </div>

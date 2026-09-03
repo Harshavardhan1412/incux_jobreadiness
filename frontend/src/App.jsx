@@ -12,6 +12,7 @@ import { AssessmentsListPage } from './pages/candidate/AssessmentsListPage';
 import { AssessmentPage } from './pages/candidate/AssessmentPage';
 
 import { FinalReportPage } from './pages/candidate/FinalReportPage';
+import CandidateAnalyticsPage from './pages/candidate/CandidateAnalyticsPage';
 
 // Admin Pages
 import { AdminLoginPage } from './pages/admin/AdminLoginPage';
@@ -22,6 +23,7 @@ import { AdminAnalyticsPage } from './pages/admin/AdminAnalyticsPage';
 
 import { ShieldAlert, Lock } from 'lucide-react';
 import { JobReadinessHero } from './pages/JobReadinessHero';
+import { HowItWorksPage } from './pages/HowItWorksPage';
 
 function AccessDenied({ message = "You do not have permission to view this portal area.", requiredRole = "admin" }) {
   const { navigateTo } = useApp();
@@ -61,66 +63,46 @@ function AppContent() {
 
   const safeView = (currentView && typeof currentView === 'string')
     ? currentView
-    : 'hero';
+    : (role === 'admin' ? 'admin-candidates' : (role === 'candidate' ? 'dashboard' : 'hero'));
 
-  // 1. LANDING PAGE (Hero Page - Accessible on / or hero)
-  if (safeView === 'hero' || safeView === '/' || safeView === 'landing') {
+  // 1. PUBLIC GUEST AUTH & LANDING VIEWS (Only when NOT logged in)
+  if (role !== 'candidate' && role !== 'admin') {
+    if (safeView === 'how-it-works' || safeView === '/how-it-works') return <><HowItWorksPage /><ToastContainer /></>;
+    if (safeView === 'login' || safeView === '/login') return <><LoginPage /><ToastContainer /></>;
+    if (safeView === 'admin' || safeView === '/admin' || safeView === 'admin-login' || safeView === '/admin-login') return <><AdminLoginPage /><ToastContainer /></>;
+    if (safeView === 'signup' || safeView === '/signup') return <><SignupPage /><ToastContainer /></>;
     return <><JobReadinessHero /><ToastContainer /></>;
   }
 
-  // 2. PUBLIC AUTH VIEWS
-  if (safeView === 'login' || safeView === '/login') return <><LoginPage /><ToastContainer /></>;
-  if (safeView === 'admin' || safeView === '/admin' || safeView === 'admin-login' || safeView === '/admin-login') return <><AdminLoginPage /><ToastContainer /></>;
-  if (safeView === 'signup' || safeView === '/signup') return <><SignupPage /><ToastContainer /></>;
-
-  // 3. DISTRACTION-FREE ASSESSMENT RUNNER (Guarded)
+  // 2. DISTRACTION-FREE ASSESSMENT RUNNER (For active logged in attempt)
   if (safeView === 'take-assessment') {
-    if (role !== 'candidate' && role !== 'admin') {
-      return (
-        <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-          <AccessDenied message="Please sign in to take assessments." requiredRole="candidate" />
-          <ToastContainer />
-        </div>
-      );
-    }
     return <><AssessmentPage /><ToastContainer /></>;
   }
 
-  // 4. ROLE-BASED ROUTE GUARD RENDERER
+  // 3. ROLE-BASED AUTHENTICATED PORTAL RENDERER
   const renderMainContent = () => {
-    // Admin Module Routes (Strictly Guarded for role === 'admin')
-    if (safeView.startsWith('admin-')) {
-      if (role !== 'admin') {
-        return <AccessDenied message="Admin authentication required to access recruiter and management modules." requiredRole="admin" />;
-      }
-
+    // Admin Portal Module Routes
+    if (role === 'admin') {
       switch (safeView) {
-        case 'admin-candidates':
-          return <AdminCandidatesPage />;
         case 'admin-questions':
           return <AdminQuestionBankPage />;
         case 'admin-assessments':
           return <AdminAssessmentsPage />;
         case 'admin-analytics':
           return <AdminAnalyticsPage />;
-
+        case 'admin-candidates':
         default:
           return <AdminCandidatesPage />;
       }
     }
 
-    // Candidate / Student Routes (Guarded for candidate or admin review)
-    if (role !== 'candidate' && role !== 'admin') {
-      return <SignupPage />;
-    }
-
+    // Candidate / Student Portal Module Routes
     switch (safeView) {
-      case 'dashboard':
-        return <CandidateDashboard />;
       case 'assessments':
         return <AssessmentsListPage />;
-      case 'final-report':
-        return <FinalReportPage />;
+      case 'candidate-analytics':
+        return <CandidateAnalyticsPage />;
+      case 'dashboard':
       default:
         return <CandidateDashboard />;
     }

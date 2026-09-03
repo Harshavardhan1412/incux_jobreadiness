@@ -46,28 +46,35 @@ export const AppProvider = ({ children }) => {
 
   // Persist & restore view state across page reloads based on authentication role & URL paths (/login, /admin, /)
   const [currentView, setCurrentView] = useState(() => {
-    const path = typeof window !== 'undefined' ? window.location.pathname : '/';
-    if (path === '/' || path === '/hero' || path === '/landing') return 'hero';
-    if (path === '/login') return 'login';
-    if (path === '/admin' || path === '/admin-login') return 'admin';
-    if (path === '/signup') return 'signup';
-
     const savedView = localStorage.getItem('rsj_current_view');
     const user = localStorage.getItem('rsj_user');
     const admin = localStorage.getItem('rsj_admin_user');
     const activeRole = admin ? 'admin' : (user ? 'candidate' : 'guest');
+    const path = typeof window !== 'undefined' ? window.location.pathname : '/';
 
-    if (savedView && !['signup', 'login', 'admin', 'admin-login', 'hero'].includes(savedView)) {
-      if (activeRole === 'admin' && (savedView.startsWith('admin-') || savedView === 'final-report')) {
+    // 1. Authenticated Admin Session
+    if (activeRole === 'admin') {
+      if (savedView && (savedView.startsWith('admin-') || savedView === 'final-report')) {
         return savedView;
       }
-      if (activeRole === 'candidate' && ['assessments', 'take-assessment', 'final-report', 'dashboard'].includes(savedView)) {
-        return savedView;
-      }
+      return 'admin-candidates';
     }
 
-    if (activeRole === 'admin') return 'admin-candidates';
-    if (activeRole === 'candidate') return 'assessments';
+    // 2. Authenticated Candidate Session
+    if (activeRole === 'candidate') {
+      if (savedView && ['assessments', 'take-assessment', 'candidate-analytics', 'dashboard'].includes(savedView)) {
+        return savedView;
+      }
+      return 'dashboard';
+    }
+
+    // 3. Guest / Unauthenticated Session
+    if (path === '/login') return 'login';
+    if (path === '/admin' || path === '/admin-login') return 'admin';
+    if (path === '/signup') return 'signup';
+    if (savedView && ['login', 'admin', 'signup', 'hero'].includes(savedView)) {
+      return savedView;
+    }
     return 'hero';
   });
 
@@ -278,7 +285,7 @@ export const AppProvider = ({ children }) => {
     'dashboard',
     'assessments',
     'take-assessment',
-    'final-report'
+    'candidate-analytics'
   ];
 
   const PUBLIC_VIEWS = ['hero', 'landing', 'signup', 'login', 'admin', 'admin-login', '/', '/hero', '/signup', '/login', '/admin', '/admin-login'];
@@ -680,7 +687,7 @@ export const AppProvider = ({ children }) => {
 
     stopMediaStream();
     addToast('Assessment submitted & candidate score recorded!', 'success');
-    setCurrentView('final-report');
+    setCurrentView('assessments');
   };
 
   // Fetch questions from PostgreSQL database on load and merge with local state
@@ -856,23 +863,15 @@ export const AppProvider = ({ children }) => {
           graduationYear: c.graduation_year || 2026,
           experienceLevel: c.experience_level || 'Fresher',
           status: c.status || 'Active',
-          assessmentStatus: c.assessment_status || 'Completed',
+          assessmentStatus: c.assessment_status || c.readiness_status || 'Active',
           registeredAt: c.created_at ? new Date(c.created_at).toISOString().split('T')[0] : '2026-08-28',
-          overallScore: Number(c.job_readiness_score) || 78,
-          jobReadinessScore: Number(c.job_readiness_score) || 78,
-          assessmentsCompleted: Number(c.assessments_completed) || 1
+          overallScore: Number(c.overall_score ?? c.job_readiness_score ?? 0),
+          jobReadinessScore: Number(c.overall_score ?? c.job_readiness_score ?? 0),
+          assessmentsCompleted: Number(c.assessments_completed ?? 0)
         }));
 
-        setCandidatesList(prev => {
-          const map = new Map();
-          dbCandidates.forEach(item => map.set(item.id, item));
-          prev.forEach(item => {
-            if (!map.has(item.id)) map.set(item.id, item);
-          });
-          const merged = Array.from(map.values());
-          localStorage.setItem('rsj_candidates', JSON.stringify(merged));
-          return merged;
-        });
+        setCandidatesList(dbCandidates);
+        localStorage.setItem('rsj_candidates_list', JSON.stringify(dbCandidates));
       }
     };
     fetchAssessments();

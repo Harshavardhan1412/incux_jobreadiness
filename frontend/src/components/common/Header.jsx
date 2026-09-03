@@ -306,13 +306,6 @@ export const Header = ({ onToggleSidebar }) => {
                             >
                               <BarChart2 className="w-4 h-4 text-slate-400" /> Assessments & Tests
                             </button>
-
-                            <button
-                              onClick={() => { navigateTo('final-report'); setProfileOpen(false); }}
-                              className="w-full text-left px-4 py-2 font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2.5"
-                            >
-                              <FileText className="w-4 h-4 text-slate-400" /> My Job Report
-                            </button>
                           </>
                         ) : (
                           <>

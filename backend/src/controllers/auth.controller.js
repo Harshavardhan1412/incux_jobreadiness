@@ -87,7 +87,7 @@ export const register = async (req, res) => {
     }
 
     const id = `cand-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
-    const hash = await bcrypt.hash(password, 10);
+    const hash = await bcrypt.hash(password, 6);
 
     // 3. Insert into users authentication table
     await pool.query(

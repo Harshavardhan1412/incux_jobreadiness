@@ -21,7 +21,7 @@ import LinkedIn from '@mui/icons-material/LinkedIn';
 import Twitter from '@mui/icons-material/Twitter';
 import Instagram from '@mui/icons-material/Instagram';
 
-// Custom MUI Theme Matching IncuxAI Indigo Brand Palette
+// Custom MUI Theme Matching JobRecipe Indigo Brand Palette
 const theme = createTheme({
   palette: {
     mode: 'light',
@@ -44,9 +44,9 @@ const theme = createTheme({
     fontFamily: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'].join(','),
     h1: {
       fontFamily: ['Space Grotesk', 'Plus Jakarta Sans', 'Inter', 'sans-serif'].join(','),
-      fontWeight: 700,
-      letterSpacing: '-0.03em',
-      lineHeight: 1.15,
+      fontWeight: 600,
+      letterSpacing: '-0.02em',
+      lineHeight: 1.3,
     },
     button: {
       textTransform: 'none',
@@ -85,6 +85,11 @@ export const JobReadinessHero = () => {
     navigateTo('signup');
   };
 
+  const handleSeeHowItWorks = () => {
+    // Links to dedicated /how-it-works page
+    navigateTo('how-it-works');
+  };
+
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
@@ -99,7 +104,7 @@ export const JobReadinessHero = () => {
         }}
       >
 
-        {/* 1. NAVBAR WITH OFFICIAL INCUXAI LOGO PHOTO */}
+        {/* 1. NAVBAR WITH JOBRECIPE PRODUCT NAME & SUBTITLE */}
         <AppBar
           position="static"
           color="inherit"
@@ -112,7 +117,7 @@ export const JobReadinessHero = () => {
           <Container maxWidth="xl">
             <Toolbar disableGutters sx={{ height: 72, justifyContent: 'space-between', px: { xs: 2, sm: 4 } }}>
               
-              {/* Left Side: IncuxAI Brand Logo Photo & Wordmark */}
+              {/* Left Side: Product Name "JobRecipe" + "Job Readiness Platform" Subtitle */}
               <Box
                 onClick={() => navigateTo('hero')}
                 sx={{
@@ -123,11 +128,10 @@ export const JobReadinessHero = () => {
                   userSelect: 'none',
                 }}
               >
-                {/* Official IncuxAI Uploaded Logo Photo */}
                 <Box
                   component="img"
                   src={incuxaiHeroPoster}
-                  alt="IncuxAI Logo"
+                  alt="JobRecipe Logo"
                   sx={{
                     width: 36,
                     height: 36,
@@ -150,7 +154,7 @@ export const JobReadinessHero = () => {
                       fontSize: '1.25rem',
                     }}
                   >
-                    IncuxAI
+                    JobRecipe
                   </Typography>
                   <Typography variant="caption" sx={{ color: '#6B7280', fontSize: '0.6875rem', fontWeight: 500 }}>
                     Job Readiness Platform
@@ -158,7 +162,7 @@ export const JobReadinessHero = () => {
                 </Box>
               </Box>
 
-              {/* Far Right: 'Sign in', 'Sign up', & 'Admin Portal' */}
+              {/* Far Right: 'Candidate Login', 'Sign up', & 'Admin Portal' */}
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                 <Button
                   onClick={() => navigateTo('login')}
@@ -221,11 +225,11 @@ export const JobReadinessHero = () => {
           </Container>
         </AppBar>
 
-        {/* 2. HERO: CENTERED SINGLE COLUMN WITH COMPACT ELEGANT INCUXAI BRAND BADGE */}
+        {/* 2. HERO: CENTERED SINGLE COLUMN WITH JOBRECIPE BRAND BADGE */}
         <Container
           maxWidth="md"
           sx={{
-            py: { xs: 6, md: 10 },
+            py: { xs: 8, md: 12 },
             flex: 1,
             display: 'flex',
             flexDirection: 'column',
@@ -235,7 +239,7 @@ export const JobReadinessHero = () => {
           }}
         >
 
-          {/* COMPACT & SLEEK INCUXAI BRAND PHOTO BADGE */}
+          {/* COMPACT JOBRECIPE BRAND BADGE */}
           <Box
             sx={{
               display: 'inline-flex',
@@ -258,7 +262,7 @@ export const JobReadinessHero = () => {
             <Box
               component="img"
               src={incuxaiHeroPoster}
-              alt="IncuxAI Logo"
+              alt="JobRecipe Logo"
               sx={{
                 width: 32,
                 height: 32,
@@ -268,23 +272,39 @@ export const JobReadinessHero = () => {
               }}
             />
             <Typography variant="caption" sx={{ fontWeight: 700, color: '#14161C', fontSize: '0.8125rem' }}>
-              IncuxAI Job Readiness Engine
+              JobRecipe Job Readiness Engine
             </Typography>
           </Box>
 
-          {/* Bold Headline in Dark Ink (#14161C) */}
+          {/* CLEAN & REFINED ABOUT US HEADING */}
           <Typography
-            variant="h1"
+            variant="overline"
+            component="h2"
             sx={{
-              fontSize: { xs: '2.25rem', sm: '3rem', md: '3.5rem' },
-              fontWeight: 800,
-              color: '#14161C',
-              maxWidth: 680,
-              mb: 3,
-              lineHeight: 1.15,
+              fontWeight: 700,
+              color: '#2F3B8C',
+              fontSize: '0.875rem',
+              letterSpacing: '0.1em',
+              textTransform: 'uppercase',
+              mb: 1.5,
             }}
           >
-            Know exactly what stands between you and your next job.
+            About Us
+          </Typography>
+
+          {/* CLEAN, ELEGANT, LESS-BOLD TEXT */}
+          <Typography
+            variant="h2"
+            sx={{
+              fontSize: { xs: '1.25rem', sm: '1.45rem', md: '1.65rem' },
+              fontWeight: 500, // Less bold, clean & elegant
+              color: '#1e293b', // Slate 800
+              maxWidth: 740,
+              mb: 3.5,
+              lineHeight: 1.6,
+            }}
+          >
+            IncuxAI develops industry-ready AI solutions across construction, healthcare, and engineering. Built by a team of IIT alumni and MNC technology leaders, IncuxAI was recognized at a national-level hackathon for pioneering AI innovation.
           </Typography>
 
           {/* Short Gray Paragraph */}
@@ -294,11 +314,11 @@ export const JobReadinessHero = () => {
               color: '#4B5563',
               fontSize: { xs: '1rem', sm: '1.0625rem' },
               lineHeight: 1.6,
-              maxWidth: 620,
+              maxWidth: 640,
               mb: 4,
             }}
           >
-            <Box component="span" sx={{ fontWeight: 800, color: '#14161C' }}>IncuxAI</Box> diagnoses your skill gaps, walks you through role-based assessments, and turns the results into a verified report recruiters can act on.
+            <Box component="span" sx={{ fontWeight: 800, color: '#14161C' }}>JobRecipe</Box> diagnoses your skill gaps, walks you through role-based assessments, and turns the results into a verified report recruiters can act on.
           </Typography>
 
           {/* Two Centered CTA Buttons */}
@@ -331,9 +351,9 @@ export const JobReadinessHero = () => {
               Get started
             </Button>
 
-            {/* Plain Text 'See how it works' Link */}
+            {/* Plain Text 'See how it works' Link -> Routes to dedicated /how-it-works page */}
             <Button
-              onClick={handleGetStarted}
+              onClick={handleSeeHowItWorks}
               sx={{
                 color: '#14161C',
                 fontWeight: 700,
@@ -402,12 +422,12 @@ export const JobReadinessHero = () => {
                 px: { xs: 2, sm: 4 },
               }}
             >
-              {/* Left: Copyright */}
+              {/* Left: Copyright Credit mentioning JobRecipe by IncuxAI */}
               <Typography variant="body2" sx={{ color: '#6B7280', fontSize: '0.875rem' }}>
-                © 2026 IncuxAI. All rights reserved.
+                © 2026 JobRecipe by IncuxAI. All rights reserved.
               </Typography>
 
-              {/* Right: Three Simple Outlined Social Icons (LinkedIn, Twitter, Instagram) */}
+              {/* Right: Three Simple Outlined Social Icons */}
               <Stack direction="row" spacing={2.5} sx={{ color: '#6B7280' }}>
                 <Link
                   href="https://linkedin.com/company/incuxai"
