@@ -49,10 +49,11 @@ export const AppProvider = ({ children }) => {
     const savedView = localStorage.getItem('rsj_current_view');
     const user = localStorage.getItem('rsj_user');
     const admin = localStorage.getItem('rsj_admin_user');
-    const activeRole = admin ? 'admin' : (user ? 'candidate' : 'guest');
     const path = typeof window !== 'undefined' ? window.location.pathname : '/';
-
-    // 1. Authenticated Admin Session
+    // Root URL or Landing Path always loads JobReadinessHero landing page
+    if (path === '/' || path === '/hero' || path === '/landing') {
+      return 'hero';
+    }
     if (activeRole === 'admin') {
       if (savedView && (savedView.startsWith('admin-') || savedView === 'final-report')) {
         return savedView;

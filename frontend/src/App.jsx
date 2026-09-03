@@ -66,7 +66,12 @@ function AppContent() {
     ? currentView
     : (role === 'admin' ? 'admin-candidates' : (role === 'candidate' ? 'dashboard' : 'hero'));
 
-  // 1. PUBLIC GUEST AUTH & LANDING VIEWS (Only when NOT logged in)
+  // 1. LANDING PAGE & HERO VIEW (Always renders JobReadinessHero on root/hero/landing)
+  if (safeView === 'hero' || safeView === 'landing' || safeView === '/') {
+    return <><JobReadinessHero /><ToastContainer /></>;
+  }
+
+  // 2. PUBLIC GUEST AUTH VIEWS (Only when NOT logged in)
   if (role !== 'candidate' && role !== 'admin') {
     if (safeView === 'login' || safeView === '/login') return <><LoginPage /><ToastContainer /></>;
     if (safeView === 'admin' || safeView === '/admin' || safeView === 'admin-login' || safeView === '/admin-login') return <><AdminLoginPage /><ToastContainer /></>;
