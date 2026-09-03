@@ -67,18 +67,18 @@ export const INITIAL_ASSESSMENTS = [
     id: "asm-tech-1",
     title: "Technical Assessment",
     category: "Technical",
-    description: "Evaluates Data Structures, Algorithms, DBMS, SQL, OOP, and Modern Programming Fundamentals.",
+    description: "Evaluates Data Structures, Algorithms, DBMS, SQL, OOP, Aptitude, and Reasoning Fundamentals.",
     difficulty: "Medium",
-    durationMinutes: 30,
+    durationMinutes: 25,
     totalQuestions: 20,
-    passingScore: 65,
+    passingScore: 60,
     status: "In Progress",
     progress: 70,
     completedQuestions: 14,
-    estimatedTimeMin: 10,
+    estimatedTimeMin: 25,
     lastScore: null,
     badge: "Core Requirement",
-    tags: ["Data Structures", "SQL", "OOP", "Algorithms"]
+    tags: ["Data Structures", "SQL", "OOP", "Algorithms", "Aptitude", "Reasoning"]
   },
   {
     id: "asm-apt-1",
@@ -292,6 +292,234 @@ function searchBST(root, val) {
     marks: 3,
     timeLimitSec: 60,
     tags: ["Series", "Pattern"]
+  },
+  {
+    id: "q-109",
+    category: "Aptitude",
+    topic: "Percentages",
+    difficulty: "Easy",
+    type: "Single Choice",
+    question: "A candidate scored 88 marks in an exam out of 120. What is the approximate percentage of marks scored?",
+    options: [
+      { id: "A", text: "70%" },
+      { id: "B", text: "73%" },
+      { id: "C", text: "76%" },
+      { id: "D", text: "80%" }
+    ],
+    correctAnswer: "B",
+    explanation: "Percentage = (88 / 120) * 100 = 73.33%, approximately 73%.",
+    marks: 2,
+    timeLimitSec: 45,
+    tags: ["Percentages", "Arithmetic"]
+  },
+  {
+    id: "q-110",
+    category: "Technical",
+    topic: "SQL / DBMS",
+    difficulty: "Medium",
+    type: "Single Choice",
+    question: "Which of the following is a valid SQL command to retrieve all rows from a table named 'students'?",
+    options: [
+      { id: "A", text: "GET * FROM students" },
+      { id: "B", text: "SELECT * FROM students" },
+      { id: "C", text: "FETCH all students" },
+      { id: "D", text: "SELECT ALL students" }
+    ],
+    correctAnswer: "B",
+    explanation: "The SELECT statement is used to query data from a database table.",
+    marks: 2,
+    timeLimitSec: 45,
+    tags: ["SQL", "Basics"]
+  },
+  {
+    id: "q-111",
+    category: "Reasoning",
+    topic: "Blood Relations",
+    difficulty: "Medium",
+    type: "Single Choice",
+    question: "Pointing to a photograph, a man said, 'She is the daughter of my grandfather's only son.' How is the lady related to that man?",
+    options: [
+      { id: "A", text: "Sister" },
+      { id: "B", text: "Daughter" },
+      { id: "C", text: "Mother" },
+      { id: "D", text: "Cousin" }
+    ],
+    correctAnswer: "A",
+    explanation: "My grandfather's only son is my father. My father's daughter is my sister.",
+    marks: 3,
+    timeLimitSec: 60,
+    tags: ["Blood Relations", "Reasoning"]
+  },
+  {
+    id: "q-112",
+    category: "English",
+    topic: "Reading Comprehension",
+    difficulty: "Easy",
+    type: "Single Choice",
+    question: "Choose the word that is the closest synonym of 'Meticulous'.",
+    options: [
+      { id: "A", text: "Careless" },
+      { id: "B", text: "Careful" },
+      { id: "C", text: "Hasty" },
+      { id: "D", text: "Rough" }
+    ],
+    correctAnswer: "B",
+    explanation: "'Meticulous' means showing great attention to detail, so 'Careful' is the closest synonym.",
+    marks: 2,
+    timeLimitSec: 45,
+    tags: ["Vocabulary", "Synonyms"]
+  },
+  {
+    id: "q-113",
+    category: "Aptitude",
+    topic: "Time & Work",
+    difficulty: "Medium",
+    type: "Single Choice",
+    question: "A alone can complete a task in 12 days and B alone can complete the same task in 6 days. In how many days can both complete it together?",
+    options: [
+      { id: "A", text: "4 days" },
+      { id: "B", text: "6 days" },
+      { id: "C", text: "8 days" },
+      { id: "D", text: "3 days" }
+    ],
+    correctAnswer: "A",
+    explanation: "A's rate = 1/12, B's rate = 1/6. Combined = 1/12 + 1/6 = 3/12 = 1/4. So time = 4 days.",
+    marks: 3,
+    timeLimitSec: 60,
+    tags: ["Time & Work", "Arithmetic"]
+  },
+  {
+    id: "q-114",
+    category: "Technical",
+    topic: "OS Concepts",
+    difficulty: "Easy",
+    type: "Single Choice",
+    question: "Which scheduling algorithm grants CPU to the process that has waited the longest?",
+    options: [
+      { id: "A", text: "Round Robin" },
+      { id: "B", text: "First Come First Served" },
+      { id: "C", text: "Shortest Job First" },
+      { id: "D", text: "Priority Scheduling" }
+    ],
+    correctAnswer: "B",
+    explanation: "FCFS schedules processes in the order they arrive; the one waiting longest runs first.",
+    marks: 2,
+    timeLimitSec: 45,
+    tags: ["OS", "Scheduling"]
+  },
+  {
+    id: "q-115",
+    category: "Reasoning",
+    topic: "Direction Sense",
+    difficulty: "Medium",
+    type: "Single Choice",
+    question: "A person walks 5 km north, then turns right and walks 3 km, then turns right again and walks 5 km. How far is he from his starting point?",
+    options: [
+      { id: "A", text: "5 km" },
+      { id: "B", text: "3 km" },
+      { id: "C", text: "8 km" },
+      { id: "D", text: "6 km" }
+    ],
+    correctAnswer: "B",
+    explanation: "North 5 km then south 5 km cancels out, leaving only the 3 km east movement, so he is 3 km from the start.",
+    marks: 3,
+    timeLimitSec: 60,
+    tags: ["Direction", "Reasoning"]
+  },
+  {
+    id: "q-116",
+    category: "Aptitude",
+    topic: "Profit & Loss",
+    difficulty: "Easy",
+    type: "Single Choice",
+    question: "An item is bought for ₹800 and sold for ₹1000. What is the profit percentage?",
+    options: [
+      { id: "A", text: "20%" },
+      { id: "B", text: "25%" },
+      { id: "C", text: "15%" },
+      { id: "D", text: "30%" }
+    ],
+    correctAnswer: "B",
+    explanation: "Profit = 1000 - 800 = 200. Profit% = (200/800)*100 = 25%.",
+    marks: 2,
+    timeLimitSec: 45,
+    tags: ["Profit & Loss", "Arithmetic"]
+  },
+  {
+    id: "q-117",
+    category: "Technical",
+    topic: "DBMS",
+    difficulty: "Medium",
+    type: "Single Choice",
+    question: "Which of the following is NOT a type of database relationship?",
+    options: [
+      { id: "A", text: "One-to-One" },
+      { id: "B", text: "One-to-Many" },
+      { id: "C", text: "Many-to-Many" },
+      { id: "D", text: "Circular-to-Linear" }
+    ],
+    correctAnswer: "D",
+    explanation: "Common relationship cardinalities are one-to-one, one-to-many, and many-to-many. 'Circular-to-Linear' is not a valid relationship type.",
+    marks: 2,
+    timeLimitSec: 45,
+    tags: ["DBMS", "Relationships"]
+  },
+  {
+    id: "q-118",
+    category: "English",
+    topic: "Error Detection",
+    difficulty: "Medium",
+    type: "Single Choice",
+    question: "Identify the error in the sentence: 'Each of the students have submitted their assignment.'",
+    options: [
+      { id: "A", text: "Each of the students" },
+      { id: "B", text: "have submitted" },
+      { id: "C", text: "their assignment" },
+      { id: "D", text: "No error" }
+    ],
+    correctAnswer: "B",
+    explanation: "'Each' is singular, so the verb should be 'has submitted' not 'have submitted'.",
+    marks: 3,
+    timeLimitSec: 60,
+    tags: ["Grammar", "Subject-Verb Agreement"]
+  },
+  {
+    id: "q-119",
+    category: "Aptitude",
+    topic: "Ratio & Proportion",
+    difficulty: "Easy",
+    type: "Single Choice",
+    question: "If the ratio of the ages of A and B is 3:5 and the sum of their ages is 40, what is the age of A?",
+    options: [
+      { id: "A", text: "12 years" },
+      { id: "B", text: "15 years" },
+      { id: "C", text: "18 years" },
+      { id: "D", text: "20 years" }
+    ],
+    correctAnswer: "B",
+    explanation: "Sum of ratio parts = 3+5 = 8. A's age = (3/8)*40 = 15 years.",
+marks: 2,
+    timeLimitSec: 45,
+    tags: ["Ratio", "Proportion"]
+  },
+  {
+    id: "q-120",
+    category: "Technical",
+    topic: "Data Structures",
+    difficulty: "Medium",
+    type: "Single Choice",
+    question: "Which data structure is best suited for implementing Breadth-First Search (BFS) in a graph?",
+    options: [
+      { id: "A", text: "Stack" },
+      { id: "B", text: "Queue" },
+      { id: "C", text: "Priority Queue" },
+      { id: "D", text: "Hash Table" }
+    ],
+    correctAnswer: "B",
+    explanation: "BFS explores nodes level by level, which naturally maps to a First-In-First-Out ordering, i.e., a Queue.",
+    marks: 3,
+    timeLimitSec: 60,
+    tags: ["Graph", "BFS", "Queue"]
   }
 ];
 

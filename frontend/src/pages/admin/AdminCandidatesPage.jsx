@@ -405,16 +405,6 @@ export const AdminCandidatesPage = () => {
               >
                 Close
               </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setViewCandidate(null);
-                  navigateTo('final-report');
-                }}
-                className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl font-bold"
-              >
-                View Full Final Report
-              </button>
             </div>
           </div>
         </Modal>

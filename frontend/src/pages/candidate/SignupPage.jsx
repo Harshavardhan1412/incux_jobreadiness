@@ -8,7 +8,6 @@ import {
   AlertCircle,
   ArrowRight,
   ShieldCheck,
-  Sparkles,
   Lock,
   Mail,
   User,
@@ -125,28 +124,6 @@ export const SignupPage = () => {
     validateField(name, val);
   };
 
-  // Auto-Fill Sample Test Candidate
-  const handleAutoFill = () => {
-    const randomNum = Math.floor(1000 + Math.random() * 9000);
-    const sampleData = {
-      name: 'Harsha Vardhan',
-      email: `harsha.student${randomNum}@university.edu`,
-      phoneNo: `98765${randomNum}`,
-      collegeName: 'BITS Pilani (Hyderabad Campus)',
-      branch: 'Computer Science & Engineering (CSE)',
-      specialization: 'Artificial Intelligence & Machine Learning (AI/ML)',
-      country: 'India',
-      state: 'Telangana',
-      city: 'Hyderabad',
-      password: 'Password@123',
-      confirmPassword: 'Password@123',
-      agreeTerms: true
-    };
-    setFormData(sampleData);
-    setErrors({});
-    if (addToast) addToast('Sample candidate details populated!', 'info');
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -233,7 +210,7 @@ export const SignupPage = () => {
         {/* Top Header Logo */}
         <div className="text-center mb-6">
           <div 
-            onClick={() => navigateTo('dashboard')}
+            onClick={() => navigateTo('signup')}
             className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-tr from-brand-600 to-brand-500 text-white shadow-xl shadow-brand-500/20 mb-3 ring-4 ring-slate-100 cursor-pointer group"
           >
             <BrainCircuit className="w-8 h-8 group-hover:scale-105 transition-transform" />
@@ -257,15 +234,6 @@ export const SignupPage = () => {
               </h3>
               <p className="text-xs text-slate-500 mt-0.5">Please provide your details below to create your student account.</p>
             </div>
-            
-            <button
-              type="button"
-              onClick={handleAutoFill}
-              className="px-3 py-1.5 bg-brand-50 hover:bg-brand-100 border border-brand-200 text-brand-700 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-brand-600" />
-              <span>Auto-Fill Sample</span>
-            </button>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5" noValidate>

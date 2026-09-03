@@ -35,7 +35,7 @@ export const AdminLoginPage = () => {
         
         {/* Logo */}
         <div 
-          onClick={() => navigateTo('dashboard')}
+          onClick={() => navigateTo('admin-login')}
           className="flex items-center justify-center gap-3 cursor-pointer group mb-6"
         >
           <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-brand-600 to-brand-400 flex items-center justify-center text-white shadow-lg shadow-brand-500/30">

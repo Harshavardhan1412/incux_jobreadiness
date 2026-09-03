@@ -103,13 +103,10 @@ export const Header = ({ onToggleSidebar }) => {
         navigateTo('admin-dashboard');
       }
     } else {
-      if (q.includes('test') || q.includes('tech') || q.includes('apt') || q.includes('reason')) {
-        navigateTo('assessments');
-
-      } else if (q.includes('report') || q.includes('cert')) {
-        navigateTo('final-report');
+      if (q.includes('anal') || q.includes('stat') || q.includes('report') || q.includes('cert')) {
+        navigateTo('analytics');
       } else {
-        navigateTo('dashboard');
+        navigateTo('home');
       }
     }
     setSearchQuery('');
@@ -138,7 +135,7 @@ export const Header = ({ onToggleSidebar }) => {
             <div 
               onClick={() => {
                 if (role === 'admin') navigateTo('admin-dashboard');
-                else if (role === 'candidate') navigateTo('dashboard');
+                else if (role === 'candidate') navigateTo('home');
                 else navigateTo('signup');
               }}
               className="flex items-center gap-2.5 cursor-pointer group select-none"
@@ -298,17 +295,17 @@ export const Header = ({ onToggleSidebar }) => {
                         {role === 'candidate' ? (
                           <>
                             <button
-                              onClick={() => { navigateTo('dashboard'); setProfileOpen(false); }}
+                              onClick={() => { navigateTo('home'); setProfileOpen(false); }}
                               className="w-full text-left px-4 py-2 font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2.5"
                             >
-                              <BarChart2 className="w-4 h-4 text-slate-400" /> My Dashboard
+                              <BarChart2 className="w-4 h-4 text-slate-400" /> Home
                             </button>
 
                             <button
-                              onClick={() => { navigateTo('final-report'); setProfileOpen(false); }}
+                              onClick={() => { navigateTo('analytics'); setProfileOpen(false); }}
                               className="w-full text-left px-4 py-2 font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2.5"
                             >
-                              <FileText className="w-4 h-4 text-slate-400" /> My Job Report
+                              <FileText className="w-4 h-4 text-slate-400" /> My Analytics
                             </button>
                           </>
                         ) : (

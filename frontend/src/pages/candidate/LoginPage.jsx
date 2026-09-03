@@ -5,7 +5,6 @@ import {
   Lock,
   Mail,
   ArrowRight,
-  UserCheck,
   Shield,
   Eye,
   EyeOff
@@ -13,8 +12,8 @@ import {
 
 export const LoginPage = () => {
   const { loginCandidate, navigateTo } = useApp();
-  const [email, setEmail] = useState('john.doe@techgrad.edu');
-  const [password, setPassword] = useState('Password@123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -32,19 +31,13 @@ export const LoginPage = () => {
     }, 600);
   };
 
-  const handleQuickLogin = (sampleEmail) => {
-    setEmail(sampleEmail);
-    setPassword('Password@123');
-    loginCandidate(sampleEmail);
-  };
-
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         
         {/* Brand */}
         <div 
-          onClick={() => navigateTo('dashboard')}
+          onClick={() => navigateTo('signup')}
           className="flex items-center justify-center gap-3 cursor-pointer group mb-6"
         >
           <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-brand-600 to-brand-500 flex items-center justify-center text-white shadow-lg shadow-brand-500/25">
@@ -134,38 +127,6 @@ export const LoginPage = () => {
               )}
             </button>
           </form>
-
-          {/* Quick 1-Click Demo Profiles */}
-          <div className="pt-4 border-t border-slate-100">
-            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 text-center mb-2.5">
-              1-Click Demo Login
-            </p>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('john.doe@techgrad.edu')}
-                className="p-2 bg-slate-50 hover:bg-brand-50 hover:border-brand-200 border border-slate-200 rounded-xl text-left transition-all"
-              >
-                <div className="flex items-center gap-1.5">
-                  <UserCheck className="w-3.5 h-3.5 text-brand-600" />
-                  <span className="text-xs font-bold text-slate-800">John Doe</span>
-                </div>
-                <span className="text-[10px] text-slate-600 block mt-0.5">Score: 78 / 100</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleQuickLogin('sarah.chen@stanford.edu')}
-                className="p-2 bg-slate-50 hover:bg-emerald-50 hover:border-emerald-200 border border-slate-200 rounded-xl text-left transition-all"
-              >
-                <div className="flex items-center gap-1.5">
-                  <UserCheck className="w-3.5 h-3.5 text-emerald-600" />
-                  <span className="text-xs font-bold text-slate-800">Sarah Chen</span>
-                </div>
-                <span className="text-[10px] text-slate-600 block mt-0.5">Score: 92 / 100</span>
-              </button>
-            </div>
-          </div>
 
           {/* Footer links */}
           <div className="text-center text-xs text-slate-500 pt-2">

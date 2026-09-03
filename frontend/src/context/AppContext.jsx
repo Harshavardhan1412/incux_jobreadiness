@@ -42,7 +42,14 @@ export const AppProvider = ({ children }) => {
   });
 
   const [questionBank, setQuestionBank] = useState(() => {
+    const QB_VERSION = 'qb-v3'; // bump to refresh cached bank after data changes
+    const cachedVer = localStorage.getItem('rsj_question_bank_ver');
     const saved = localStorage.getItem('rsj_question_bank');
+    if (cachedVer !== QB_VERSION) {
+      localStorage.removeItem('rsj_question_bank');
+      localStorage.setItem('rsj_question_bank_ver', QB_VERSION);
+      return INITIAL_QUESTION_BANK;
+    }
     return saved ? JSON.parse(saved) : INITIAL_QUESTION_BANK;
   });
 
@@ -58,7 +65,15 @@ export const AppProvider = ({ children }) => {
   const [assessmentAnswers, setAssessmentAnswers] = useState({});
   const [markedForReview, setMarkedForReview] = useState([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-  const [timeRemainingSeconds, setTimeRemainingSeconds] = useState(18 * 60 + 42);
+  const [timeRemainingSeconds, setTimeRemainingSeconds] = useState(25 * 60);
+  // 'idle' | 'instructions' | 'proctoring' | 'running'
+  const [examPhase, setExamPhase] = useState('idle');
+  // Tracks seconds spent on each question id -> number
+  const [questionTimeLog, setQuestionTimeLog] = useState({});
+  const [hasCompletedAssessment, setHasCompletedAssessment] = useState(() => {
+    const saved = localStorage.getItem('rsj_completed');
+    return saved === 'true';
+  });
   const [latestResult, setLatestResult] = useState(() => {
     const saved = localStorage.getItem('rsj_latest_result');
     return saved ? JSON.parse(saved) : {
@@ -159,11 +174,13 @@ export const AppProvider = ({ children }) => {
     'admin-analytics'  ];
 
   const CANDIDATE_PROTECTED_VIEWS = [
-    'dashboard',
-    'assessments',
+    'home',
+    'results',
+    'analytics',
+    'college-management',
     'take-assessment',
-
-    'final-report'
+    'exam-instructions',
+    'exam-proctoring'
   ];
 
   const PUBLIC_VIEWS = ['signup', 'login', 'admin-login'];
@@ -174,7 +191,7 @@ export const AppProvider = ({ children }) => {
     if (ADMIN_ONLY_VIEWS.includes(view)) {
       if (role !== 'admin') {
         addToast('Access Denied: Admin privileges required to access this portal.', 'error');
-        setCurrentView(role === 'candidate' ? 'dashboard' : 'admin-login');
+        setCurrentView(role === 'candidate' ? 'home' : 'admin-login');
         return;
       }
     }
@@ -246,7 +263,7 @@ export const AppProvider = ({ children }) => {
       setRole('candidate');
       setCandidatesList(prev => [registeredCand, ...prev.filter(c => c.id !== registeredCand.id)]);
       addToast(`Account created & saved to database! Welcome, ${registeredCand.name}.`, 'success');
-      setCurrentView('dashboard');
+      setCurrentView('home');
       return true;
     } catch (err) {
       console.error('Registration API error:', err);
@@ -260,7 +277,7 @@ export const AppProvider = ({ children }) => {
     setCurrentUser(existing);
     setRole('candidate');
     addToast(`Welcome back, ${existing.name}! Logged into Student Portal.`, 'success');
-    setCurrentView('dashboard');
+    setCurrentView('home');
   };
 
   const logoutCandidate = () => {
@@ -295,12 +312,35 @@ export const AppProvider = ({ children }) => {
 
   // Start / Submit Assessment
   const startAssessment = (assessmentId) => {
+    // One attempt per student: block if this email already wrote the exam
+    const email = currentUser?.email || currentUser?.emailId;
+    const completedEmails = (() => {
+      try { return JSON.parse(localStorage.getItem('rsj_completed_emails') || '[]'); }
+      catch { return []; }
+    })();
+    if (email && completedEmails.some(e => e.toLowerCase() === email.toLowerCase())) {
+      addToast('You have already written the exam. You cannot write it again.', 'error');
+      setCurrentView('home');
+      return;
+    }
     const asm = assessments.find(a => a.id === assessmentId) || assessments[0];
     setActiveAssessment(asm);
     setAssessmentAnswers({});
     setMarkedForReview([]);
     setCurrentQuestionIndex(0);
     setTimeRemainingSeconds(asm.durationMinutes * 60);
+    setQuestionTimeLog({});
+    setExamPhase('instructions');
+    setCurrentView('exam-instructions');
+  };
+
+  const beginProctoring = () => {
+    setExamPhase('proctoring');
+    setCurrentView('exam-proctoring');
+  };
+
+  const beginExam = () => {
+    setExamPhase('running');
     setCurrentView('take-assessment');
   };
 
@@ -343,17 +383,32 @@ export const AppProvider = ({ children }) => {
       ],
       strengths: ['Logical reasoning', 'Programming fundamentals', 'Problem solving'],
       weaknesses: ['SQL joins & window queries', 'Quantitative aptitude (Probability)', 'Data structures (Advanced)'],
-      recommendedTopics: ['SQL Window Functions', 'Probability & Combinatorics', 'Graph Search Algorithms']
+      recommendedTopics: ['SQL Window Functions', 'Probability & Combinatorics', 'Graph Search Algorithms'],
+      questionTimeLog: { ...questionTimeLog }
     };
 
     setLatestResult(result);
+    setHasCompletedAssessment(true);
+    localStorage.setItem('rsj_completed', 'true');
+    // Record this candidate's email so they cannot rewrite the exam
+    const email = currentUser?.email || currentUser?.emailId;
+    if (email) {
+      try {
+        const completedEmails = JSON.parse(localStorage.getItem('rsj_completed_emails') || '[]');
+        if (!completedEmails.some(e => e.toLowerCase() === email.toLowerCase())) {
+          completedEmails.push(email);
+        }
+        localStorage.setItem('rsj_completed_emails', JSON.stringify(completedEmails));
+      } catch {}
+    }
+    setExamPhase('idle');
 
     // Update candidate score
-    setCurrentUser(prev => ({
+    setCurrentUser(prev => prev ? {
       ...prev,
       jobReadinessScore: Math.round((prev.jobReadinessScore + calculatedScore) / 2),
-      assessmentsCompleted: prev.assessmentsCompleted + 1
-    }));
+      assessmentsCompleted: (prev.assessmentsCompleted || 0) + 1
+    } : prev);
 
     // Mark assessment completed
     if (activeAssessment) {
@@ -367,7 +422,7 @@ export const AppProvider = ({ children }) => {
     }
 
     addToast('Assessment submitted successfully!', 'success');
-    setCurrentView('dashboard');
+    setCurrentView('results');
   };
 
   // Question Bank CRUD
@@ -444,6 +499,11 @@ export const AppProvider = ({ children }) => {
         setCurrentQuestionIndex,
         timeRemainingSeconds,
         setTimeRemainingSeconds,
+        examPhase,
+        setExamPhase,
+        questionTimeLog,
+        setQuestionTimeLog,
+        hasCompletedAssessment,
         latestResult,
         toasts,
         addToast,
@@ -453,6 +513,8 @@ export const AppProvider = ({ children }) => {
         loginAdmin,
         logout,
         startAssessment,
+        beginProctoring,
+        beginExam,
         submitAssessment,
         addQuestion,
         updateQuestion,

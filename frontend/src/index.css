@@ -39,4 +39,12 @@
   .print-page-break {
     page-break-before: always;
   }
+  #college-report {
+    border: none !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+  }
+  #college-report .print\:hidden {
+    display: none !important;
+  }
 }

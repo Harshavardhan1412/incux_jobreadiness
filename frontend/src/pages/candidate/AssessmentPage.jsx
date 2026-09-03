@@ -1,20 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Modal } from '../../components/common/Modal';
+import { stopProctoringStream, getProctoringStream } from '../../utils/proctoring';
 import {
   Clock,
-  Bookmark,
   ChevronLeft,
   ChevronRight,
   CheckCircle2,
   AlertCircle,
   BrainCircuit,
   Flag,
-  RotateCcw,
-  CheckSquare,
-  HelpCircle,
   Copy,
-  Check
+  Check,
+  Video,
+  Expand,
+  ShieldAlert
 } from 'lucide-react';
 
 export const AssessmentPage = () => {
@@ -29,12 +29,87 @@ export const AssessmentPage = () => {
     setCurrentQuestionIndex,
     timeRemainingSeconds,
     setTimeRemainingSeconds,
-    submitAssessment,
-    navigateTo
+    questionTimeLog,
+    setQuestionTimeLog,
+    submitAssessment
   } = useApp();
 
   const [showSubmitModal, setShowSubmitModal] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
+  const [tabWarning, setTabWarning] = useState(0);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [terminated, setTerminated] = useState(false);
+  const terminatedRef = useRef(false);
+  const proctorVideoRef = useRef(null);
+  const tabSwitchCountRef = useRef(0);
+  const MAX_TAB_SWITCHES = 3;
+
+  const questions = questionBank || [];
+  const currentQuestion = questions[currentQuestionIndex] || questions[0];
+  const totalQuestions = questions.length;
+
+  // Request fullscreen + attach the live proctoring camera to the indicator
+  useEffect(() => {
+    const el = document.documentElement;
+    const enterFullscreen = () => {
+      if (!document.fullscreenElement) {
+        el.requestFullscreen?.().catch(() => {});
+      }
+    };
+    enterFullscreen();
+
+    const onFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+      // Re-enter fullscreen if the user exits mid-exam (block attempts to leave)
+      if (!document.fullscreenElement) {
+        setTimeout(() => enterFullscreen(), 300);
+      }
+    };
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape' && document.fullscreenElement) {
+        e.preventDefault();
+      }
+    };
+
+    // Attach the persistent proctoring stream to the thumbnail
+    const stream = getProctoringStream();
+    if (stream && proctorVideoRef.current) {
+      proctorVideoRef.current.srcObject = stream;
+      proctorVideoRef.current.play?.().catch(() => {});
+    }
+
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('fullscreenchange', onFullscreenChange);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, []);
+
+  // Detect tab switching (visibility change) -> warn & terminate exam
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden' && !terminatedRef.current) {
+        const prev = tabSwitchCountRef.current;
+        const next = prev + 1;
+        tabSwitchCountRef.current = next;
+        setTabWarning(next);
+        if (next >= MAX_TAB_SWITCHES) {
+          terminateExam();
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Stop proctoring stream when leaving the exam page
+  useEffect(() => {
+    return () => {
+      stopProctoringStream();
+    };
+  }, []);
 
   // Live Timer Countdown
   useEffect(() => {
@@ -52,15 +127,23 @@ export const AssessmentPage = () => {
     return () => clearInterval(timer);
   }, []);
 
+  // Track time spent on the current question (increments every second)
+  useEffect(() => {
+    if (!currentQuestion) return;
+    const t = setInterval(() => {
+      setQuestionTimeLog((prev) => ({
+        ...prev,
+        [currentQuestion.id]: (prev[currentQuestion.id] || 0) + 1
+      }));
+    }, 1000);
+    return () => clearInterval(t);
+  }, [currentQuestion?.id, setQuestionTimeLog]);
+
   const formatTime = (seconds) => {
     const m = Math.floor(seconds / 60);
     const s = seconds % 60;
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
-
-  const questions = questionBank || [];
-  const currentQuestion = questions[currentQuestionIndex] || questions[0];
-  const totalQuestions = questions.length;
 
   const handleSelectOption = (optionId) => {
     setAssessmentAnswers(prev => ({
@@ -101,7 +184,19 @@ export const AssessmentPage = () => {
 
   const handleSubmit = () => {
     setShowSubmitModal(false);
-    submitAssessment(assessmentAnswers, 28);
+    const totalSec = activeAssessment?.durationMinutes * 60 || 1500;
+    const spent = Math.max(0, Math.round((totalSec - timeRemainingSeconds) / 60));
+    submitAssessment(assessmentAnswers, spent);
+  };
+
+  // Terminate the exam (auto-submit current answers) after repeated tab-switching
+  const terminateExam = () => {
+    if (terminatedRef.current) return;
+    terminatedRef.current = true;
+    setTerminated(true);
+    const totalSec = activeAssessment?.durationMinutes * 60 || 1500;
+    const spent = Math.max(0, Math.round((totalSec - timeRemainingSeconds) / 60));
+    submitAssessment(assessmentAnswers, spent);
   };
 
   const isMarked = markedForReview.includes(currentQuestion?.id);
@@ -132,8 +227,24 @@ export const AssessmentPage = () => {
               </div>
             </div>
 
-            {/* Live Countdown Timer & Submit Button */}
+            {/* Proctoring indicator + Live Countdown Timer & Submit Button */}
             <div className="flex items-center gap-4">
+              {/* Live Proctoring Camera */}
+              <div className="relative hidden sm:flex items-center gap-2 px-2.5 py-1.5 rounded-xl border border-emerald-200 bg-emerald-50">
+                <div className="relative w-8 h-8 rounded-lg overflow-hidden bg-slate-800">
+                  <video ref={proctorVideoRef} playsInline muted className="w-full h-full object-cover" />
+                  <span className="absolute bottom-0 left-0 right-0 bg-emerald-600 text-[8px] text-white text-center font-bold">
+                    LIVE
+                  </span>
+                </div>
+                <div className="leading-tight">
+                  <p className="text-[10px] font-bold text-emerald-700 flex items-center gap-1">
+                    <Video className="w-3 h-3" /> Proctoring
+                  </p>
+                  <p className="text-[9px] text-emerald-600">Camera • Mic Active</p>
+                </div>
+              </div>
+
               <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border font-mono text-sm font-bold shadow-2xs ${
                 timeRemainingSeconds < 300
                   ? 'bg-rose-50 border-rose-200 text-rose-600 animate-pulse'
@@ -142,6 +253,17 @@ export const AssessmentPage = () => {
                 <Clock className="w-4 h-4 text-slate-500" />
                 <span>{formatTime(timeRemainingSeconds)}</span>
               </div>
+
+              {!isFullscreen && (
+                <button
+                  onClick={() => document.documentElement.requestFullscreen?.().catch(() => {})}
+                  className="hidden sm:flex flex-col items-center justify-center px-3 py-1.5 rounded-xl border border-amber-200 bg-amber-50 text-amber-700 text-[10px] font-bold gap-0.5"
+                  title="Exit fullscreen to rebook"
+                >
+                  <Expand className="w-3.5 h-3.5" />
+                  Fullscreen
+                </button>
+              )}
 
               <button
                 onClick={() => setShowSubmitModal(true)}
@@ -154,6 +276,21 @@ export const AssessmentPage = () => {
           </div>
         </div>
       </header>
+
+      {/* TAB SWITCH WARNING */}
+      {tabWarning > 0 && !terminated && (
+        <div className="sticky top-16 z-30 bg-rose-600 text-white">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2.5 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-xs sm:text-sm font-bold">
+              <ShieldAlert className="w-4 h-4 flex-shrink-0" />
+              <span>
+                Warning: Do not switch tabs. You have {MAX_TAB_SWITCHES - tabWarning} {MAX_TAB_SWITCHES - tabWarning === 1 ? 'attempt' : 'attempts'} left. If you continue, the exam will be{' '}
+                terminated and you cannot write or continue the exam again.
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* MAIN CONTENT AREA */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6">
@@ -363,7 +500,7 @@ export const AssessmentPage = () => {
                 className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-600/20 transition-all flex items-center justify-center gap-2"
               >
                 <CheckCircle2 className="w-4 h-4" />
-                <span>Submit & View AI Analysis</span>
+                <span>Submit Assessment</span>
               </button>
 
             </div>
@@ -377,11 +514,11 @@ export const AssessmentPage = () => {
         isOpen={showSubmitModal}
         onClose={() => setShowSubmitModal(false)}
         title="Confirm Assessment Submission"
-        subtitle="Review your responses before finalizing AI evaluation"
+        subtitle="Review your responses before finalizing submission"
       >
         <div className="space-y-5">
           <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
-            Are you sure you want to finish and submit the <strong>{activeAssessment?.title || 'Technical Assessment'}</strong>? Once submitted, your answers will be locked and processed by the AI evaluation engine.
+            Are you sure you want to finish and submit the <strong>{activeAssessment?.title || 'Technical Assessment'}</strong>? Once submitted, your answers will be locked and your result will be generated instantly.
           </p>
 
           {/* Submission Summary Table */}
