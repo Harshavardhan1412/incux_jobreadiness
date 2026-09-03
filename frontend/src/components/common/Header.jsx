@@ -142,7 +142,7 @@ export const Header = ({ onToggleSidebar }) => {
               onClick={() => {
                 if (role === 'admin') navigateTo('admin-candidates');
                 else if (role === 'candidate') navigateTo('assessments');
-                else navigateTo('signup');
+                else navigateTo('hero');
               }}
               className="flex items-center gap-2.5 cursor-pointer group select-none font-sans"
             >
@@ -207,7 +207,7 @@ export const Header = ({ onToggleSidebar }) => {
                   Create Account
                 </button>
                 <button
-                  onClick={() => navigateTo('admin-login')}
+                  onClick={() => navigateTo('admin')}
                   className="px-3 py-1.5 border border-slate-200 text-slate-600 hover:bg-slate-50 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5"
                 >
                   <Lock className="w-3.5 h-3.5 text-slate-400" />

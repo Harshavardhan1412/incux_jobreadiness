@@ -8,7 +8,6 @@ import {
   AlertCircle,
   ArrowRight,
   ShieldCheck,
-  Sparkles,
   Lock,
   Mail,
   User,
@@ -125,28 +124,6 @@ export const SignupPage = () => {
     validateField(name, val);
   };
 
-  // Auto-Fill Sample Test Candidate
-  const handleAutoFill = () => {
-    const randomNum = Math.floor(1000 + Math.random() * 9000);
-    const sampleData = {
-      name: 'Harsha Vardhan',
-      email: `harsha.student${randomNum}@university.edu`,
-      phoneNo: `98765${randomNum}`,
-      collegeName: 'BITS Pilani (Hyderabad Campus)',
-      branch: 'Computer Science & Engineering (CSE)',
-      specialization: 'Artificial Intelligence & Machine Learning (AI/ML)',
-      country: 'India',
-      state: 'Telangana',
-      city: 'Hyderabad',
-      password: 'Password@123',
-      confirmPassword: 'Password@123',
-      agreeTerms: true
-    };
-    setFormData(sampleData);
-    setErrors({});
-    if (addToast) addToast('Sample candidate details populated!', 'info');
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -223,17 +200,17 @@ export const SignupPage = () => {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8 relative overflow-hidden font-sans">
-      
+
       {/* Subtle Ambient Background Accents */}
       <div className="absolute top-0 left-1/4 w-96 h-96 bg-brand-500/10 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
 
       <div className="sm:mx-auto sm:w-full sm:max-w-2xl relative z-10">
-        
+
         {/* Top Header Logo */}
         <div className="text-center mb-6">
-          <div 
-            onClick={() => navigateTo('dashboard')}
+          <div
+            onClick={() => navigateTo('hero')}
             className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-tr from-brand-600 to-brand-500 text-white shadow-xl shadow-brand-500/20 mb-3 ring-4 ring-slate-100 cursor-pointer group"
           >
             <BrainCircuit className="w-8 h-8 group-hover:scale-105 transition-transform" />
@@ -248,8 +225,8 @@ export const SignupPage = () => {
 
         {/* Card Form */}
         <div className="bg-white border border-slate-200 rounded-3xl p-6 sm:p-10 shadow-xl shadow-slate-200/50 relative">
-          
-          <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-6">
+
+          <div className="border-b border-slate-100 pb-4 mb-6">
             <div>
               <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
                 <User className="w-5 h-5 text-brand-600" />
@@ -257,22 +234,13 @@ export const SignupPage = () => {
               </h3>
               <p className="text-xs text-slate-500 mt-0.5">Please provide your details below to create your student account.</p>
             </div>
-            
-            <button
-              type="button"
-              onClick={handleAutoFill}
-              className="px-3 py-1.5 bg-brand-50 hover:bg-brand-100 border border-brand-200 text-brand-700 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-brand-600" />
-              <span>Auto-Fill Sample</span>
-            </button>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5" noValidate>
-            
+
             {/* Row 1: Full Name & Email */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              
+
               {/* 1. Full Name */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
@@ -285,9 +253,8 @@ export const SignupPage = () => {
                     name="name"
                     value={formData.name}
                     onChange={handleChange}
-                    className={`w-full pl-10 pr-4 py-2.5 bg-white border text-sm text-slate-900 placeholder-slate-400 rounded-xl outline-none transition-all ${
-                      errors.name ? 'border-rose-500 ring-2 ring-rose-500/20' : 'border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20'
-                    }`}
+                    className={`w-full pl-10 pr-4 py-2.5 bg-white border text-sm text-slate-900 placeholder-slate-400 rounded-xl outline-none transition-all ${errors.name ? 'border-rose-500 ring-2 ring-rose-500/20' : 'border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20'
+                      }`}
                   />
                 </div>
                 {errors.name && <p className="mt-1 text-xs text-rose-500 flex items-center gap-1"><AlertCircle className="w-3 h-3" />{errors.name}</p>}
@@ -305,9 +272,8 @@ export const SignupPage = () => {
                     name="email"
                     value={formData.email}
                     onChange={handleChange}
-                    className={`w-full pl-10 pr-9 py-2.5 bg-white border text-sm text-slate-900 placeholder-slate-400 rounded-xl outline-none transition-all ${
-                      errors.email ? 'border-rose-500 ring-2 ring-rose-500/20' : formData.email && EMAIL_REGEX.test(formData.email) ? 'border-emerald-500 ring-2 ring-emerald-500/20' : 'border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20'
-                    }`}
+                    className={`w-full pl-10 pr-9 py-2.5 bg-white border text-sm text-slate-900 placeholder-slate-400 rounded-xl outline-none transition-all ${errors.email ? 'border-rose-500 ring-2 ring-rose-500/20' : formData.email && EMAIL_REGEX.test(formData.email) ? 'border-emerald-500 ring-2 ring-emerald-500/20' : 'border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20'
+                      }`}
                   />
                   {formData.email && EMAIL_REGEX.test(formData.email) && (
                     <CheckCircle2 className="w-4 h-4 text-emerald-500 absolute right-3 top-1/2 -translate-y-1/2" />
@@ -324,7 +290,7 @@ export const SignupPage = () => {
 
             {/* Row 2: Phone No (Indian Validation) & College Name */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              
+
               {/* 3. Phone No (Indian Validation) */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
@@ -340,9 +306,8 @@ export const SignupPage = () => {
                     value={formData.phoneNo}
                     onChange={handleChange}
                     maxLength={13}
-                    className={`w-full pl-16 pr-9 py-2.5 bg-white border text-sm text-slate-900 placeholder-slate-400 rounded-xl outline-none transition-all ${
-                      errors.phoneNo ? 'border-rose-500 ring-2 ring-rose-500/20' : formData.phoneNo && INDIAN_MOBILE_REGEX.test(formData.phoneNo.replace(/[\s\-]/g, '')) ? 'border-emerald-500 ring-2 ring-emerald-500/20' : 'border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20'
-                    }`}
+                    className={`w-full pl-16 pr-9 py-2.5 bg-white border text-sm text-slate-900 placeholder-slate-400 rounded-xl outline-none transition-all ${errors.phoneNo ? 'border-rose-500 ring-2 ring-rose-500/20' : formData.phoneNo && INDIAN_MOBILE_REGEX.test(formData.phoneNo.replace(/[\s\-]/g, '')) ? 'border-emerald-500 ring-2 ring-emerald-500/20' : 'border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20'
+                      }`}
                   />
                   {formData.phoneNo && INDIAN_MOBILE_REGEX.test(formData.phoneNo.replace(/[\s\-]/g, '')) && (
                     <CheckCircle2 className="w-4 h-4 text-emerald-500 absolute right-3 top-1/2 -translate-y-1/2" />
@@ -367,9 +332,8 @@ export const SignupPage = () => {
                     name="collegeName"
                     value={formData.collegeName}
                     onChange={handleChange}
-                    className={`w-full pl-10 pr-4 py-2.5 bg-white border text-sm text-slate-900 placeholder-slate-400 rounded-xl outline-none transition-all ${
-                      errors.collegeName ? 'border-rose-500 ring-2 ring-rose-500/20' : 'border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20'
-                    }`}
+                    className={`w-full pl-10 pr-4 py-2.5 bg-white border text-sm text-slate-900 placeholder-slate-400 rounded-xl outline-none transition-all ${errors.collegeName ? 'border-rose-500 ring-2 ring-rose-500/20' : 'border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20'
+                      }`}
                   />
                 </div>
                 {errors.collegeName && <p className="mt-1 text-xs text-rose-500 flex items-center gap-1"><AlertCircle className="w-3 h-3" />{errors.collegeName}</p>}
@@ -379,7 +343,7 @@ export const SignupPage = () => {
 
             {/* Row 3: Branch & Specialization */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              
+
               {/* 5. Branch */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
@@ -426,7 +390,7 @@ export const SignupPage = () => {
 
             {/* Row 4: Country, State & City */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              
+
               {/* 7. Country */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
@@ -477,9 +441,8 @@ export const SignupPage = () => {
                     name="city"
                     value={formData.city}
                     onChange={handleChange}
-                    className={`w-full pl-10 pr-4 py-2.5 bg-white border text-sm text-slate-900 placeholder-slate-400 rounded-xl outline-none transition-all ${
-                      errors.city ? 'border-rose-500 ring-2 ring-rose-500/20' : 'border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20'
-                    }`}
+                    className={`w-full pl-10 pr-4 py-2.5 bg-white border text-sm text-slate-900 placeholder-slate-400 rounded-xl outline-none transition-all ${errors.city ? 'border-rose-500 ring-2 ring-rose-500/20' : 'border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20'
+                      }`}
                   />
                 </div>
                 {errors.city && <p className="mt-1 text-xs text-rose-500 flex items-center gap-1"><AlertCircle className="w-3 h-3" />{errors.city}</p>}
@@ -489,7 +452,7 @@ export const SignupPage = () => {
 
             {/* Row 5: Password & Confirm Password */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-slate-100 pt-4">
-              
+
               {/* Password */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
@@ -502,9 +465,8 @@ export const SignupPage = () => {
                     name="password"
                     value={formData.password}
                     onChange={handleChange}
-                    className={`w-full pl-10 pr-10 py-2.5 bg-white border text-sm text-slate-900 placeholder-slate-400 rounded-xl outline-none transition-all ${
-                      errors.password ? 'border-rose-500 ring-2 ring-rose-500/20' : 'border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20'
-                    }`}
+                    className={`w-full pl-10 pr-10 py-2.5 bg-white border text-sm text-slate-900 placeholder-slate-400 rounded-xl outline-none transition-all ${errors.password ? 'border-rose-500 ring-2 ring-rose-500/20' : 'border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20'
+                      }`}
                   />
                   <button
                     type="button"
@@ -542,9 +504,8 @@ export const SignupPage = () => {
                     name="confirmPassword"
                     value={formData.confirmPassword}
                     onChange={handleChange}
-                    className={`w-full pl-10 pr-10 py-2.5 bg-white border text-sm text-slate-900 placeholder-slate-400 rounded-xl outline-none transition-all ${
-                      errors.confirmPassword ? 'border-rose-500 ring-2 ring-rose-500/20' : 'border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20'
-                    }`}
+                    className={`w-full pl-10 pr-10 py-2.5 bg-white border text-sm text-slate-900 placeholder-slate-400 rounded-xl outline-none transition-all ${errors.confirmPassword ? 'border-rose-500 ring-2 ring-rose-500/20' : 'border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20'
+                      }`}
                   />
                   <button
                     type="button"
@@ -570,7 +531,7 @@ export const SignupPage = () => {
                 className="mt-0.5 w-4 h-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500 cursor-pointer"
               />
               <label htmlFor="agreeTerms" className="text-xs text-slate-600 leading-relaxed cursor-pointer">
-                I agree to the <span className="text-brand-600 hover:underline font-semibold">Terms of Service</span> and <span className="text-brand-600 hover:underline font-semibold">Privacy Policy</span>. My data will be stored securely in the PostgreSQL platform database.
+                I agree to the <span className="text-brand-600 hover:underline font-semibold">Terms of Service</span> and <span className="text-brand-600 hover:underline font-semibold">Privacy Policy</span>. My data will be stored securely.
               </label>
             </div>
             {errors.agreeTerms && <p className="text-xs text-rose-500 flex items-center gap-1"><AlertCircle className="w-3 h-3" />{errors.agreeTerms}</p>}
@@ -607,29 +568,9 @@ export const SignupPage = () => {
                 Sign In
               </button>
             </p>
-
-            <button
-              onClick={() => navigateTo('admin-login')}
-              className="text-slate-500 hover:text-slate-700 flex items-center gap-1 font-medium transition-colors"
-            >
-              <Lock className="w-3 h-3 text-slate-400" />
-              <span>Admin Portal Login</span>
-            </button>
           </div>
 
         </div>
-
-        {/* Security Seals Footer */}
-        <div className="mt-6 text-center text-xs text-slate-500 flex items-center justify-center gap-4">
-          <span className="flex items-center gap-1">
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" /> 256-Bit SSL Encrypted
-          </span>
-          <span>•</span>
-          <span className="flex items-center gap-1">
-            <Building2 className="w-3.5 h-3.5 text-brand-600" /> Railway PostgreSQL Backend
-          </span>
-        </div>
-
       </div>
 
     </div>

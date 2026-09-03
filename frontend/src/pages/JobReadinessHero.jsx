@@ -81,8 +81,8 @@ export const JobReadinessHero = () => {
   const { navigateTo } = useApp();
 
   const handleGetStarted = () => {
-    // Links directly to existing Sign In page
-    navigateTo('login');
+    // Links directly to Candidate Sign Up page
+    navigateTo('signup');
   };
 
   return (
@@ -158,15 +158,15 @@ export const JobReadinessHero = () => {
                 </Box>
               </Box>
 
-              {/* Far Right: 'Sign in' as Plain Text & 'Sign up' as Solid Indigo Rounded Button */}
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2.5 }}>
+              {/* Far Right: 'Sign in', 'Sign up', & 'Admin Portal' */}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                 <Button
                   onClick={() => navigateTo('login')}
                   sx={{
                     color: '#14161C',
                     fontWeight: 600,
                     fontSize: '0.875rem',
-                    p: 0,
+                    px: 1.5,
                     minWidth: 'auto',
                     '&:hover': {
                       bgcolor: 'transparent',
@@ -174,7 +174,7 @@ export const JobReadinessHero = () => {
                     },
                   }}
                 >
-                  Sign in
+                  Candidate Login
                 </Button>
 
                 <Button
@@ -194,6 +194,26 @@ export const JobReadinessHero = () => {
                   }}
                 >
                   Sign up
+                </Button>
+
+                <Button
+                  onClick={() => navigateTo('admin')}
+                  sx={{
+                    color: '#4B5563',
+                    border: '1px solid #D1D5DB',
+                    py: 0.8,
+                    px: 2,
+                    borderRadius: 2,
+                    fontWeight: 600,
+                    fontSize: '0.8125rem',
+                    '&:hover': {
+                      bgcolor: '#F3F4F6',
+                      color: '#111827',
+                      borderColor: '#9CA3AF',
+                    },
+                  }}
+                >
+                  Admin Portal
                 </Button>
               </Box>
 

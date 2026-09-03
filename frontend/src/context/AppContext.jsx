@@ -44,26 +44,48 @@ export const AppProvider = ({ children }) => {
     }
   });
 
-  // Persist & restore view state across page reloads based on authentication role
+  // Persist & restore view state across page reloads based on authentication role & URL paths (/login, /admin, /)
   const [currentView, setCurrentView] = useState(() => {
+    const path = typeof window !== 'undefined' ? window.location.pathname : '/';
+    if (path === '/' || path === '/hero' || path === '/landing') return 'hero';
+    if (path === '/login') return 'login';
+    if (path === '/admin' || path === '/admin-login') return 'admin';
+    if (path === '/signup') return 'signup';
+
     const savedView = localStorage.getItem('rsj_current_view');
     const user = localStorage.getItem('rsj_user');
     const admin = localStorage.getItem('rsj_admin_user');
     const activeRole = admin ? 'admin' : (user ? 'candidate' : 'guest');
 
-    if (savedView && savedView !== 'signup' && savedView !== 'login' && savedView !== 'admin-login') {
+    if (savedView && !['signup', 'login', 'admin', 'admin-login', 'hero'].includes(savedView)) {
       if (activeRole === 'admin' && (savedView.startsWith('admin-') || savedView === 'final-report')) {
         return savedView;
       }
-      if (activeRole === 'candidate' && ['assessments', 'take-assessment', 'final-report'].includes(savedView)) {
+      if (activeRole === 'candidate' && ['assessments', 'take-assessment', 'final-report', 'dashboard'].includes(savedView)) {
         return savedView;
       }
     }
 
     if (activeRole === 'admin') return 'admin-candidates';
     if (activeRole === 'candidate') return 'assessments';
-    return 'signup';
+    return 'hero';
   });
+
+  // Sync browser back/forward buttons with URL paths
+  useEffect(() => {
+    const handlePopState = () => {
+      const path = window.location.pathname;
+      if (path === '/' || path === '/hero' || path === '/landing') setCurrentView('hero');
+      else if (path === '/login') setCurrentView('login');
+      else if (path === '/admin' || path === '/admin-login') setCurrentView('admin');
+      else if (path === '/signup') setCurrentView('signup');
+      else if (path === '/dashboard') setCurrentView('dashboard');
+      else if (path === '/assessments') setCurrentView('assessments');
+      else if (path.startsWith('/admin-')) setCurrentView(path.substring(1));
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   // State entities - Purge legacy mock assessment IDs from cached localStorage
   const DUMMY_ASM_IDS = ['asm-tech-1', 'asm-apt-1', 'asm-res-1', 'asm-full-1', 'asm-001', 'asm-002', 'asm-003', 'asm-004'];
@@ -256,37 +278,57 @@ export const AppProvider = ({ children }) => {
     'dashboard',
     'assessments',
     'take-assessment',
-
     'final-report'
   ];
 
-  const PUBLIC_VIEWS = ['signup', 'login', 'admin-login'];
+  const PUBLIC_VIEWS = ['hero', 'landing', 'signup', 'login', 'admin', 'admin-login', '/', '/hero', '/signup', '/login', '/admin', '/admin-login'];
 
   // Guarded Navigation Helper
   const navigateTo = (view, payload = null) => {
+    let normalizedView = view;
+    if (view === '/' || view === 'hero' || view === 'landing' || view === '/hero') normalizedView = 'hero';
+    if (view === '/login') normalizedView = 'login';
+    if (view === '/admin' || view === 'admin-login' || view === '/admin-login') normalizedView = 'admin';
+    if (view === '/signup') normalizedView = 'signup';
+
     // 1. Guard Admin-Only Views
-    if (ADMIN_ONLY_VIEWS.includes(view)) {
+    if (ADMIN_ONLY_VIEWS.includes(normalizedView)) {
       if (role !== 'admin') {
         addToast('Access Denied: Admin privileges required to access this portal.', 'error');
-        setCurrentView(role === 'candidate' ? 'dashboard' : 'admin-login');
+        setCurrentView(role === 'candidate' ? 'dashboard' : 'admin');
+        try { window.history.pushState(null, '', role === 'candidate' ? '/dashboard' : '/admin'); } catch (e) {}
         return;
       }
     }
 
     // 2. Guard Candidate-Protected Views
-    if (CANDIDATE_PROTECTED_VIEWS.includes(view)) {
+    if (CANDIDATE_PROTECTED_VIEWS.includes(normalizedView)) {
       if (role !== 'candidate' && role !== 'admin') {
         addToast('Please login or register to access student assessments.', 'info');
         setCurrentView('signup');
+        try { window.history.pushState(null, '', '/signup'); } catch (e) {}
         return;
       }
     }
 
+    // Push URL state for clean browser URLs (/, /login, /admin, /signup)
+    let path = `/${normalizedView}`;
+    if (normalizedView === 'hero') path = '/';
+    else if (normalizedView === 'login') path = '/login';
+    else if (normalizedView === 'admin') path = '/admin';
+    else if (normalizedView === 'signup') path = '/signup';
+
+    try {
+      if (typeof window !== 'undefined' && window.location.pathname !== path) {
+        window.history.pushState(null, '', path);
+      }
+    } catch (e) {}
+
     // 3. Handle Assessment Launch
-    if (view === 'take-assessment' && payload) {
+    if (normalizedView === 'take-assessment' && payload) {
       startAssessment(payload);
     } else {
-      setCurrentView(view);
+      setCurrentView(normalizedView);
     }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -362,7 +404,7 @@ export const AppProvider = ({ children }) => {
     setCurrentUser(null);
     setRole('guest');
     localStorage.removeItem('rsj_current_view');
-    setCurrentView('login');
+    navigateTo('login');
     addToast('Signed out of Student Portal', 'info');
   };
 
@@ -379,7 +421,7 @@ export const AppProvider = ({ children }) => {
     setAdminUser(null);
     setRole('guest');
     localStorage.removeItem('rsj_current_view');
-    setCurrentView('admin-login');
+    navigateTo('admin');
     addToast('Signed out of Admin Portal', 'info');
   };
 
@@ -506,6 +548,7 @@ export const AppProvider = ({ children }) => {
     const calculatedScore = Math.min(100, Math.round((correct / totalQuestions) * 100));
     const accuracy = Math.round((correct / Math.max(1, Object.keys(answers).length)) * 100) || 0;
     const incorrect = Math.max(0, Object.keys(answers).length - correct);
+    const unanswered = Math.max(0, totalQuestions - Object.keys(answers).length);
 
     const result = {
       score: calculatedScore,
@@ -513,7 +556,7 @@ export const AppProvider = ({ children }) => {
       accuracy: accuracy,
       correctCount: correct,
       incorrectCount: incorrect,
-      unansweredCount: Math.max(0, totalQuestions - Object.keys(answers).length),
+      unansweredCount: unanswered,
       timeTaken: `${timeSpentMin} min`,
       completedAt: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
       assessmentName: activeAssessment?.title || 'Technical Assessment',
@@ -536,14 +579,82 @@ export const AppProvider = ({ children }) => {
 
     setLatestResult(result);
 
-    // Update candidate score (safely check if candidate is logged in)
+    // 1. Asynchronously send submission data to backend API -> stored in assessment_submissions PostgreSQL table!
+    api.submissions.submit({
+      assessmentId: activeAssessment?.id || 'asm-1',
+      assessmentTitle: activeAssessment?.title || 'Technical Assessment',
+      candidateId: currentUser?.id || 'cand-user',
+      candidateName: currentUser?.name || currentUser?.fullName || 'Test Candidate',
+      candidateEmail: currentUser?.email || 'student@university.edu',
+      score: calculatedScore,
+      accuracy: accuracy,
+      correctCount: correct,
+      incorrectCount: incorrect,
+      unansweredCount: unanswered,
+      timeTaken: `${timeSpentMin} min`,
+      categoryScores: result.categoryScores,
+      topicBreakdown: result.topicBreakdown,
+      answers: answers
+    });
+
+    // 2. Update candidate score in currentUser state
     setCurrentUser(prev => {
       if (!prev) return null;
       return {
         ...prev,
-        jobReadinessScore: Math.round(((prev.jobReadinessScore || 78) + calculatedScore) / 2),
+        overallScore: calculatedScore,
+        jobReadinessScore: calculatedScore,
+        assessmentStatus: 'Completed',
         assessmentsCompleted: (prev.assessmentsCompleted || 0) + 1
       };
+    });
+
+    // 3. Update candidate entry in candidatesList so candidate score is immediately shown on Candidate Roster page!
+    setCandidatesList(prev => {
+      const activeEmail = currentUser?.email?.toLowerCase();
+      const activeId = currentUser?.id;
+
+      let found = false;
+      const updatedList = prev.map(c => {
+        if ((activeId && c.id === activeId) || (activeEmail && c.email?.toLowerCase() === activeEmail)) {
+          found = true;
+          return {
+            ...c,
+            overallScore: calculatedScore,
+            jobReadinessScore: calculatedScore,
+            assessmentStatus: 'Completed',
+            status: 'Completed',
+            assessmentsCompleted: (c.assessmentsCompleted || 0) + 1
+          };
+        }
+        return c;
+      });
+
+      if (!found && currentUser) {
+        const newCand = {
+          id: currentUser.id || `cand-${Date.now()}`,
+          name: currentUser.name || currentUser.fullName || 'Candidate Student',
+          email: currentUser.email || 'student@university.edu',
+          mobile: currentUser.mobile || currentUser.phoneNo || currentUser.phone || '+91 9876543210',
+          college: currentUser.college || currentUser.collegeName || 'BITS Pilani',
+          branch: currentUser.branch || 'CSE',
+          specialization: currentUser.specialization || 'Full-Stack Development',
+          country: currentUser.country || 'India',
+          state: currentUser.state || 'Telangana',
+          city: currentUser.city || 'Hyderabad',
+          graduationYear: currentUser.graduationYear || 2026,
+          experienceLevel: currentUser.experienceLevel || 'Fresher',
+          overallScore: calculatedScore,
+          jobReadinessScore: calculatedScore,
+          assessmentStatus: 'Completed',
+          status: 'Active',
+          assessmentsCompleted: 1
+        };
+        updatedList.unshift(newCand);
+      }
+
+      localStorage.setItem('rsj_candidates_list', JSON.stringify(updatedList));
+      return updatedList;
     });
 
     // Mark assessment completed
@@ -568,7 +679,7 @@ export const AppProvider = ({ children }) => {
     }
 
     stopMediaStream();
-    addToast('Assessment submitted successfully!', 'success');
+    addToast('Assessment submitted & candidate score recorded!', 'success');
     setCurrentView('final-report');
   };
 
@@ -801,6 +912,29 @@ export const AppProvider = ({ children }) => {
     addToast(`Assessment "${newAsm.title}" published & saved to database!`, 'success');
   };
 
+  const updateAssessment = (updatedAsm) => {
+    setAssessments(prev => {
+      const updated = prev.map(a => a.id === updatedAsm.id ? { ...a, ...updatedAsm } : a);
+      localStorage.setItem('rsj_assessments', JSON.stringify(updated));
+      return updated;
+    });
+
+    // Update in PostgreSQL database via API
+    api.assessments.update(updatedAsm.id, {
+      title: updatedAsm.title,
+      category: updatedAsm.category,
+      description: updatedAsm.description,
+      difficulty: updatedAsm.difficulty,
+      durationMinutes: updatedAsm.durationMinutes,
+      totalQuestions: updatedAsm.totalQuestions,
+      passingScore: updatedAsm.passingScore,
+      status: updatedAsm.status || 'Available',
+      selectedQuestionIds: updatedAsm.selectedQuestionIds || []
+    });
+
+    addToast(`Assessment "${updatedAsm.title}" updated successfully!`, 'success');
+  };
+
   const deleteAssessment = (id) => {
     setAssessments(prev => {
       const updated = prev.filter(a => a.id !== id);
@@ -871,6 +1005,7 @@ export const AppProvider = ({ children }) => {
         updateQuestion,
         deleteQuestion,
         addAssessment,
+        updateAssessment,
         deleteAssessment,
         addCandidate,
         deleteCandidate,

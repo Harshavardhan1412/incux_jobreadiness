@@ -25,11 +25,12 @@ import {
 } from 'lucide-react';
 
 export const AdminAssessmentsPage = () => {
-  const { assessments, addAssessment, deleteAssessment, questionBank, addQuestion, addQuestionsBatch, addToast, startAssessment } = useApp();
+  const { assessments, addAssessment, updateAssessment, deleteAssessment, questionBank, addQuestion, addQuestionsBatch, addToast, startAssessment } = useApp();
 
   const [isWizardOpen, setIsWizardOpen] = useState(false);
   const [wizardStep, setWizardStep] = useState(1);
   const [previewAsm, setPreviewAsm] = useState(null);
+  const [editingAsmId, setEditingAsmId] = useState(null);
 
   // Wizard state
   const [newAssessment, setNewAssessment] = useState({
@@ -179,6 +180,23 @@ export const AdminAssessmentsPage = () => {
     }
   };
 
+  const handleEditAssessment = (asm) => {
+    setEditingAsmId(asm.id);
+    setNewAssessment({
+      title: asm.title || '',
+      category: asm.category || 'Technical',
+      description: asm.description || '',
+      difficulty: asm.difficulty || 'Medium',
+      durationMinutes: Number(asm.durationMinutes) || 30,
+      passingScore: Number(asm.passingScore) || 65,
+      selectedQuestionIds: asm.selectedQuestionIds || [],
+      totalQuestions: Number(asm.totalQuestions) || 20,
+      tags: asm.tags || ['DSA', 'Algorithms']
+    });
+    setWizardStep(1);
+    setIsWizardOpen(true);
+  };
+
   const handleFinishPublish = () => {
     if (!newAssessment.title.trim()) {
       addToast('Please enter an assessment title', 'error');
@@ -186,13 +204,23 @@ export const AdminAssessmentsPage = () => {
       return;
     }
 
-    addAssessment({
-      ...newAssessment,
-      totalQuestions: Math.max(newAssessment.selectedQuestionIds.length, 15),
-      estimatedTimeMin: newAssessment.durationMinutes
-    });
+    if (editingAsmId) {
+      updateAssessment({
+        ...newAssessment,
+        id: editingAsmId,
+        totalQuestions: Math.max(newAssessment.selectedQuestionIds.length, 10),
+        estimatedTimeMin: newAssessment.durationMinutes
+      });
+    } else {
+      addAssessment({
+        ...newAssessment,
+        totalQuestions: Math.max(newAssessment.selectedQuestionIds.length, 15),
+        estimatedTimeMin: newAssessment.durationMinutes
+      });
+    }
 
     setIsWizardOpen(false);
+    setEditingAsmId(null);
     setWizardStep(1);
     setNewAssessment({
       title: '',
@@ -217,12 +245,24 @@ export const AdminAssessmentsPage = () => {
             Assessments Management
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 mt-1">
-            Design, schedule, and publish standardized assessments with multi-step authoring.
+            Design, schedule, edit, and publish standardized assessments with multi-step authoring.
           </p>
         </div>
 
         <button
           onClick={() => {
+            setEditingAsmId(null);
+            setNewAssessment({
+              title: '',
+              category: 'Technical',
+              description: '',
+              difficulty: 'Medium',
+              durationMinutes: 30,
+              passingScore: 65,
+              selectedQuestionIds: ['q-101', 'q-102'],
+              totalQuestions: 20,
+              tags: ['DSA', 'Algorithms']
+            });
             setWizardStep(1);
             setIsWizardOpen(true);
           }}
@@ -281,6 +321,13 @@ export const AdminAssessmentsPage = () => {
                   <Eye className="w-4 h-4" />
                 </button>
                 <button
+                  onClick={() => handleEditAssessment(asm)}
+                  className="p-2 rounded-lg bg-slate-100 hover:bg-brand-50 hover:text-brand-600 text-slate-600 transition-colors"
+                  title="Edit assessment"
+                >
+                  <Edit2 className="w-4 h-4" />
+                </button>
+                <button
                   onClick={() => deleteAssessment(asm.id)}
                   className="p-2 rounded-lg bg-slate-100 hover:bg-rose-50 hover:text-rose-600 text-slate-600 transition-colors"
                   title="Delete assessment from database"
@@ -301,11 +348,14 @@ export const AdminAssessmentsPage = () => {
         ))}
       </div>
 
-      {/* 7-STEP CREATE ASSESSMENT WIZARD MODAL */}
+      {/* 7-STEP CREATE / EDIT ASSESSMENT WIZARD MODAL */}
       <Modal
         isOpen={isWizardOpen}
-        onClose={() => setIsWizardOpen(false)}
-        title="Assessment Authoring Wizard"
+        onClose={() => {
+          setIsWizardOpen(false);
+          setEditingAsmId(null);
+        }}
+        title={editingAsmId ? 'Edit Assessment Specification' : 'Assessment Authoring Wizard'}
         subtitle={`Step ${wizardStep} of 7: ${steps[wizardStep - 1].name}`}
         maxWidth="max-w-3xl"
       >
@@ -633,7 +683,7 @@ export const AdminAssessmentsPage = () => {
                 onClick={handleFinishPublish}
                 className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold shadow-md shadow-emerald-600/20"
               >
-                Publish Assessment
+                {editingAsmId ? 'Save Assessment Changes' : 'Publish Assessment'}
               </button>
             )}
           </div>

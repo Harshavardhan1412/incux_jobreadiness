@@ -288,6 +288,27 @@ const schemaSQL = `
       answers JSONB,
       created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );
+
+    -- 20. assessment_submissions: Stores submitted assessment attempts & candidate scores
+    CREATE TABLE IF NOT EXISTS assessment_submissions (
+      id VARCHAR(64) PRIMARY KEY,
+      candidate_id VARCHAR(64),
+      candidate_name VARCHAR(255),
+      candidate_email VARCHAR(255),
+      assessment_id VARCHAR(64),
+      assessment_title VARCHAR(255),
+      score INT NOT NULL,
+      accuracy INT NOT NULL,
+      correct_count INT NOT NULL DEFAULT 0,
+      incorrect_count INT NOT NULL DEFAULT 0,
+      unanswered_count INT NOT NULL DEFAULT 0,
+      time_taken VARCHAR(64),
+      category_scores JSONB,
+      topic_breakdown JSONB,
+      answers JSONB,
+      status VARCHAR(32) DEFAULT 'Completed',
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    );
   `;
 
 export const initSchema = async () => {

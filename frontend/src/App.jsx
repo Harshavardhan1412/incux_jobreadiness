@@ -42,7 +42,7 @@ function AccessDenied({ message = "You do not have permission to view this porta
         </button>
         {requiredRole === 'admin' && (
           <button
-            onClick={() => navigateTo('admin-login')}
+            onClick={() => navigateTo('admin')}
             className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm"
           >
             <Lock className="w-3.5 h-3.5" />
@@ -62,14 +62,17 @@ function AppContent() {
 
   const safeView = (currentView && typeof currentView === 'string')
     ? currentView
-    : (role === 'admin' ? 'admin-candidates' : (role === 'candidate' ? 'dashboard' : 'signup'));
+    : 'hero';
 
-  // 1. PUBLIC AUTH VIEWS (Only for guests/unauthenticated users)
-  if (role !== 'candidate' && role !== 'admin') {
-    if (safeView === 'login') return <><LoginPage /><ToastContainer /></>;
-    if (safeView === 'admin-login') return <><AdminLoginPage /><ToastContainer /></>;
-    return <><SignupPage /><ToastContainer /></>;
+  // 1. LANDING PAGE (Hero Page - Accessible on / or hero)
+  if (safeView === 'hero' || safeView === '/' || safeView === 'landing') {
+    return <><JobReadinessHero /><ToastContainer /></>;
   }
+
+  // 2. PUBLIC AUTH VIEWS
+  if (safeView === 'login' || safeView === '/login') return <><LoginPage /><ToastContainer /></>;
+  if (safeView === 'admin' || safeView === '/admin' || safeView === 'admin-login' || safeView === '/admin-login') return <><AdminLoginPage /><ToastContainer /></>;
+  if (safeView === 'signup' || safeView === '/signup') return <><SignupPage /><ToastContainer /></>;
 
   // 2. DISTRACTION-FREE ASSESSMENT RUNNER (Guarded)
   if (safeView === 'take-assessment') {
