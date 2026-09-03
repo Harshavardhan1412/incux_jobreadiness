@@ -60,11 +60,11 @@ export const SignupPage = () => {
     email: '',
     phoneNo: '',
     collegeName: '',
-    branch: 'Computer Science & Engineering (CSE)',
-    specialization: 'Full-Stack Web Development',
-    country: 'India',
-    state: 'Telangana',
-    city: 'Hyderabad',
+    branch: '',
+    specialization: '',
+    country: '',
+    state: '',
+    city: '',
     password: '',
     confirmPassword: '',
     agreeTerms: true
@@ -135,7 +135,7 @@ export const SignupPage = () => {
     }
     const cleanMobile = formData.phoneNo.replace(/[\s\-]/g, '');
     if (!formData.phoneNo.trim() || !INDIAN_MOBILE_REGEX.test(cleanMobile)) {
-      newErrors.phoneNo = 'Valid 10-digit Indian mobile number required';
+      newErrors.phoneNo = 'Valid 10-digit  Mobile number required';
     }
     if (!formData.collegeName.trim()) newErrors.collegeName = 'College name is required';
     if (!formData.branch.trim()) newErrors.branch = 'Branch is required';
@@ -253,6 +253,7 @@ export const SignupPage = () => {
                     name="name"
                     value={formData.name}
                     onChange={handleChange}
+                    placeholder="Enter Full Name"
                     className={`w-full pl-10 pr-4 py-2.5 bg-white border text-sm text-slate-900 placeholder-slate-400 rounded-xl outline-none transition-all ${errors.name ? 'border-rose-500 ring-2 ring-rose-500/20' : 'border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20'
                       }`}
                   />
@@ -272,6 +273,7 @@ export const SignupPage = () => {
                     name="email"
                     value={formData.email}
                     onChange={handleChange}
+                    placeholder="Enter Email Address"
                     className={`w-full pl-10 pr-9 py-2.5 bg-white border text-sm text-slate-900 placeholder-slate-400 rounded-xl outline-none transition-all ${errors.email ? 'border-rose-500 ring-2 ring-rose-500/20' : formData.email && EMAIL_REGEX.test(formData.email) ? 'border-emerald-500 ring-2 ring-emerald-500/20' : 'border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20'
                       }`}
                   />
@@ -294,7 +296,7 @@ export const SignupPage = () => {
               {/* 3. Phone No (Indian Validation) */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                  3. Indian Phone No <span className="text-rose-500">*</span>
+                  3. Phone No <span className="text-rose-500">*</span>
                 </label>
                 <div className="relative flex items-center">
                   <span className="absolute left-3.5 text-xs font-bold text-slate-500 select-none flex items-center gap-1">
@@ -306,6 +308,7 @@ export const SignupPage = () => {
                     value={formData.phoneNo}
                     onChange={handleChange}
                     maxLength={13}
+                    placeholder="9876543210"
                     className={`w-full pl-16 pr-9 py-2.5 bg-white border text-sm text-slate-900 placeholder-slate-400 rounded-xl outline-none transition-all ${errors.phoneNo ? 'border-rose-500 ring-2 ring-rose-500/20' : formData.phoneNo && INDIAN_MOBILE_REGEX.test(formData.phoneNo.replace(/[\s\-]/g, '')) ? 'border-emerald-500 ring-2 ring-emerald-500/20' : 'border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20'
                       }`}
                   />
@@ -332,6 +335,7 @@ export const SignupPage = () => {
                     name="collegeName"
                     value={formData.collegeName}
                     onChange={handleChange}
+                    placeholder="Enter College Name"
                     className={`w-full pl-10 pr-4 py-2.5 bg-white border text-sm text-slate-900 placeholder-slate-400 rounded-xl outline-none transition-all ${errors.collegeName ? 'border-rose-500 ring-2 ring-rose-500/20' : 'border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20'
                       }`}
                   />
@@ -357,6 +361,7 @@ export const SignupPage = () => {
                     onChange={handleChange}
                     className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-300 text-sm text-slate-900 rounded-xl outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20 transition-all appearance-none cursor-pointer"
                   >
+                    <option value="">Select Branch / Stream</option>
                     {POPULAR_BRANCHES.map(b => (
                       <option key={b} value={b}>{b}</option>
                     ))}
@@ -378,6 +383,7 @@ export const SignupPage = () => {
                     onChange={handleChange}
                     className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-300 text-sm text-slate-900 rounded-xl outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20 transition-all appearance-none cursor-pointer"
                   >
+                    <option value="">Select Specialization</option>
                     {SPECIALIZATIONS.map(s => (
                       <option key={s} value={s}>{s}</option>
                     ))}
@@ -403,6 +409,7 @@ export const SignupPage = () => {
                     name="country"
                     value={formData.country}
                     onChange={handleChange}
+                    placeholder="Enter Country"
                     className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-300 text-sm text-slate-900 rounded-xl outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20 transition-all"
                   />
                 </div>
@@ -421,6 +428,7 @@ export const SignupPage = () => {
                     onChange={handleChange}
                     className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-300 text-sm text-slate-900 rounded-xl outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20 transition-all appearance-none cursor-pointer"
                   >
+                    <option value="">Select State</option>
                     {INDIAN_STATES.map(st => (
                       <option key={st} value={st}>{st}</option>
                     ))}
@@ -441,6 +449,7 @@ export const SignupPage = () => {
                     name="city"
                     value={formData.city}
                     onChange={handleChange}
+                    placeholder="Enter City"
                     className={`w-full pl-10 pr-4 py-2.5 bg-white border text-sm text-slate-900 placeholder-slate-400 rounded-xl outline-none transition-all ${errors.city ? 'border-rose-500 ring-2 ring-rose-500/20' : 'border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20'
                       }`}
                   />
