@@ -1,7 +1,11 @@
+process.env.UV_THREADPOOL_SIZE = process.env.UV_THREADPOOL_SIZE || '128';
+
 import { pool } from '../db/pool.js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
+
+const BCRYPT_SALT_ROUNDS = parseInt(process.env.BCRYPT_SALT_ROUNDS || '10', 10);
 
 const signToken = (payload) =>
   jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '7d' });
@@ -43,64 +47,62 @@ export const register = async (req, res) => {
 
   // 1. Mandatory Field Validations
   if (!candidateName) {
-    return res.status(400).json({ error: 'Full name is required.' });
+    return res.status(400).json({ success: false, error: 'Full name is required.' });
   }
 
   if (!candidateEmail || !EMAIL_REGEX.test(candidateEmail)) {
-    return res.status(400).json({ error: 'Please enter a valid email address (e.g., student@university.edu).' });
+    return res.status(400).json({ success: false, error: 'Please enter a valid email address (e.g., student@university.edu).' });
   }
 
   const cleanMobile = rawMobile.replace(/[\s\-]/g, '');
   if (!rawMobile || !INDIAN_MOBILE_REGEX.test(cleanMobile)) {
-    return res.status(400).json({ error: 'Please enter a valid 10-digit Indian mobile number starting with 6, 7, 8, or 9.' });
+    return res.status(400).json({ success: false, error: 'Please enter a valid 10-digit Indian mobile number starting with 6, 7, 8, or 9.' });
   }
 
   if (!candidateCollege) {
-    return res.status(400).json({ error: 'College name is required.' });
+    return res.status(400).json({ success: false, error: 'College name is required.' });
   }
 
   if (!candidateBranch) {
-    return res.status(400).json({ error: 'Branch is required.' });
+    return res.status(400).json({ success: false, error: 'Branch is required.' });
   }
 
   if (!candidateSpecialization) {
-    return res.status(400).json({ error: 'Specialization is required.' });
+    return res.status(400).json({ success: false, error: 'Specialization is required.' });
   }
 
   if (!candidateState) {
-    return res.status(400).json({ error: 'State is required.' });
+    return res.status(400).json({ success: false, error: 'State is required.' });
   }
 
   if (!candidateCity) {
-    return res.status(400).json({ error: 'City is required.' });
+    return res.status(400).json({ success: false, error: 'City is required.' });
   }
 
   if (!password || password.length < 6) {
-    return res.status(400).json({ error: 'Password must be at least 6 characters long.' });
+    return res.status(400).json({ success: false, error: 'Password must be at least 6 characters long.' });
   }
 
+  const client = await pool.connect();
   try {
-    // 2. Check for duplicate email across users & candidates
-    const exists = await pool.query('SELECT id FROM users WHERE email = $1', [candidateEmail]);
-    if (exists.rows.length > 0) {
-      return res.status(409).json({ error: 'An account with this email address already exists. Please login instead.' });
-    }
+    await client.query('BEGIN');
 
     const id = `cand-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
-    const hash = await bcrypt.hash(password, 6);
+    const hash = await bcrypt.hash(password, BCRYPT_SALT_ROUNDS);
 
-    // 3. Insert into users authentication table
-    await pool.query(
+    // 2. Insert into users authentication table
+    await client.query(
       `INSERT INTO users (id, name, email, password_hash, role, status) VALUES ($1, $2, $3, $4, 'candidate', 'active')`,
       [id, candidateName, candidateEmail, hash]
     );
 
-    // 4. Insert into candidate_profiles table
-    await pool.query(
+    // 3. Insert into candidate_profiles table
+    await client.query(
       `INSERT INTO candidate_profiles (
         id, user_id, name, email, mobile, college, degree, branch,
         specialization, country, state, city, graduation_year, experience_level
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+      ON CONFLICT (id) DO NOTHING`,
       [
         id, id, candidateName, candidateEmail, cleanMobile, candidateCollege,
         degree || 'B.Tech', candidateBranch, candidateSpecialization,
@@ -109,8 +111,8 @@ export const register = async (req, res) => {
       ]
     );
 
-    // 5. Insert into candidates table (platform unified query support)
-    const result = await pool.query(
+    // 4. Insert into candidates table (platform unified query support)
+    const result = await client.query(
       `INSERT INTO candidates (
         id, name, email, mobile, college, degree, branch,
         specialization, country, state, city, graduation_year, experience_level
@@ -123,14 +125,22 @@ export const register = async (req, res) => {
       ]
     );
 
+    await client.query('COMMIT');
+
     const candidate = result.rows[0];
     const token = signToken({ id: candidate.id, email: candidate.email, role: 'candidate' });
 
     console.log(`✅ Candidate created and saved to DB: ${candidate.name} (${candidate.email})`);
-    res.status(201).json({ success: true, token, candidate });
+    return res.status(201).json({ success: true, token, candidate });
   } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    if (err.code === '23505') {
+      return res.status(409).json({ success: false, error: 'An account with this email address already exists. Please login instead.' });
+    }
     console.error('Register database error:', err.message);
-    res.status(500).json({ error: 'Failed to create candidate profile. Please try again.' });
+    return res.status(500).json({ success: false, error: 'Failed to create candidate profile. Please try again.' });
+  } finally {
+    client.release();
   }
 };
 
@@ -138,25 +148,55 @@ export const register = async (req, res) => {
 export const loginCandidate = async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) {
-    return res.status(400).json({ error: 'Email and password are required.' });
+    return res.status(400).json({ success: false, error: 'Email and password are required.' });
   }
   try {
-    const userRes = await pool.query('SELECT * FROM users WHERE email=$1 AND role=$2', [email, 'candidate']);
+    const userRes = await pool.query(
+      `SELECT u.id, u.email, u.password_hash, u.name, u.role,
+              c.college, c.degree, c.branch, c.specialization, c.graduation_year,
+              c.experience_level, c.job_readiness_score, c.readiness_level, c.readiness_status,
+              c.aptitude_score, c.reasoning_score, c.technical_score, c.assessments_completed
+       FROM users u
+       LEFT JOIN candidates c ON u.id = c.id
+       WHERE LOWER(u.email) = LOWER($1) AND u.role = 'candidate'
+       LIMIT 1`,
+      [email.trim()]
+    );
+
     if (userRes.rows.length === 0) {
-      return res.status(404).json({ error: 'Candidate account not found.' });
+      return res.status(401).json({ success: false, error: 'Invalid email or password.' });
     }
+
     const user = userRes.rows[0];
     const valid = await bcrypt.compare(password, user.password_hash);
     if (!valid) {
-      return res.status(401).json({ error: 'Incorrect password.' });
+      return res.status(401).json({ success: false, error: 'Invalid email or password.' });
     }
-    const candRes = await pool.query('SELECT * FROM candidates WHERE id=$1', [user.id]);
-    const candidate = candRes.rows[0];
+
+    const candidate = {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      college: user.college,
+      degree: user.degree,
+      branch: user.branch,
+      specialization: user.specialization,
+      graduationYear: user.graduation_year,
+      experienceLevel: user.experience_level,
+      jobReadinessScore: user.job_readiness_score || 0,
+      readinessLevel: user.readiness_level || 'In Progress',
+      readinessStatus: user.readiness_status || 'In Progress',
+      aptitudeScore: user.aptitude_score || 0,
+      reasoningScore: user.reasoning_score || 0,
+      technicalScore: user.technical_score || 0,
+      assessmentsCompleted: user.assessments_completed || 0,
+    };
+
     const token = signToken({ id: user.id, email: user.email, role: 'candidate' });
     res.json({ success: true, token, candidate });
   } catch (err) {
     console.error('Login error:', err.message);
-    res.status(500).json({ error: 'Login failed. Please try again.' });
+    res.status(500).json({ success: false, error: 'Login failed. Please try again.' });
   }
 };
 
@@ -164,23 +204,23 @@ export const loginCandidate = async (req, res) => {
 export const loginAdmin = async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) {
-    return res.status(400).json({ error: 'Email and password are required.' });
+    return res.status(400).json({ success: false, error: 'Email and password are required.' });
   }
   try {
-    const userRes = await pool.query('SELECT * FROM users WHERE email=$1 AND role=$2', [email, 'admin']);
+    const userRes = await pool.query('SELECT * FROM users WHERE LOWER(email)=LOWER($1) AND role=$2', [email.trim(), 'admin']);
     if (userRes.rows.length === 0) {
-      return res.status(404).json({ error: 'Admin account not found.' });
+      return res.status(401).json({ success: false, error: 'Invalid email or password.' });
     }
     const user = userRes.rows[0];
     const valid = await bcrypt.compare(password, user.password_hash);
     if (!valid) {
-      return res.status(401).json({ error: 'Incorrect admin password.' });
+      return res.status(401).json({ success: false, error: 'Invalid email or password.' });
     }
     const token = signToken({ id: user.id, name: user.name, email: user.email, role: 'admin' });
     res.json({ success: true, token, admin: { id: user.id, name: user.name, email: user.email, role: 'admin' } });
   } catch (err) {
     console.error('Admin login error:', err.message);
-    res.status(500).json({ error: 'Admin login failed.' });
+    res.status(500).json({ success: false, error: 'Admin login failed.' });
   }
 };
 

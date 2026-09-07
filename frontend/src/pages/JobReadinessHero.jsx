@@ -111,7 +111,7 @@ export const JobReadinessHero = () => {
         >
           <Container maxWidth="xl">
             <Toolbar disableGutters sx={{ height: 72, justifyContent: 'space-between', px: { xs: 2, sm: 4 } }}>
-              
+
               {/* Left Side: IncuxAI Brand Logo Photo & Wordmark */}
               <Box
                 onClick={() => navigateTo('hero')}
@@ -156,65 +156,6 @@ export const JobReadinessHero = () => {
                     Job Readiness Platform
                   </Typography>
                 </Box>
-              </Box>
-
-              {/* Far Right: 'Sign in', 'Sign up', & 'Admin Portal' */}
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                <Button
-                  onClick={() => navigateTo('login')}
-                  sx={{
-                    color: '#14161C',
-                    fontWeight: 600,
-                    fontSize: '0.875rem',
-                    px: 1.5,
-                    minWidth: 'auto',
-                    '&:hover': {
-                      bgcolor: 'transparent',
-                      color: '#2F3B8C',
-                    },
-                  }}
-                >
-                  Candidate Login
-                </Button>
-
-                <Button
-                  variant="contained"
-                  onClick={() => navigateTo('signup')}
-                  sx={{
-                    bgcolor: '#2F3B8C',
-                    color: '#ffffff',
-                    py: 1,
-                    px: 2.5,
-                    borderRadius: 2,
-                    fontWeight: 700,
-                    fontSize: '0.875rem',
-                    '&:hover': {
-                      bgcolor: '#242e70',
-                    },
-                  }}
-                >
-                  Sign up
-                </Button>
-
-                <Button
-                  onClick={() => navigateTo('admin')}
-                  sx={{
-                    color: '#4B5563',
-                    border: '1px solid #D1D5DB',
-                    py: 0.8,
-                    px: 2,
-                    borderRadius: 2,
-                    fontWeight: 600,
-                    fontSize: '0.8125rem',
-                    '&:hover': {
-                      bgcolor: '#F3F4F6',
-                      color: '#111827',
-                      borderColor: '#9CA3AF',
-                    },
-                  }}
-                >
-                  Admin Portal
-                </Button>
               </Box>
 
             </Toolbar>
@@ -331,23 +272,6 @@ export const JobReadinessHero = () => {
               Get started
             </Button>
 
-            {/* Plain Text 'See how it works' Link */}
-            <Button
-              onClick={handleGetStarted}
-              sx={{
-                color: '#14161C',
-                fontWeight: 700,
-                fontSize: '0.9375rem',
-                p: 1,
-                '&:hover': {
-                  bgcolor: 'transparent',
-                  color: '#2F3B8C',
-                  textDecoration: 'underline',
-                },
-              }}
-            >
-              See how it works
-            </Button>
           </Stack>
 
           {/* Three Short Trust Lines in a Horizontal Row */}

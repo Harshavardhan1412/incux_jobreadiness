@@ -41,6 +41,7 @@ export const AssessmentPage = () => {
   const [showFullscreenWarning, setShowFullscreenWarning] = useState(false);
   const [showEnterFullscreenModal, setShowEnterFullscreenModal] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const fullscreenExitCountRef = useRef(0);
   const isSubmittedRef = useRef(false);
@@ -75,9 +76,10 @@ export const AssessmentPage = () => {
     stopMediaStream();
   };
 
-  const handleAutoSubmit = (reason) => {
-    if (isSubmittedRef.current) return;
+  const handleAutoSubmit = async (reason) => {
+    if (isSubmittedRef.current || isSubmitting) return;
     isSubmittedRef.current = true;
+    setIsSubmitting(true);
 
     if (timerRef.current) {
       clearInterval(timerRef.current);
@@ -85,29 +87,56 @@ export const AssessmentPage = () => {
 
     exitExamFullscreenAndStopMedia();
 
-    submitAssessment(
-      assessmentAnswers,
-      Math.max(1, Math.round(((activeAssessment?.durationMinutes * 60 || 1800) - timeRemainingSeconds) / 60))
-    );
-    navigateTo('assessments');
+    try {
+      const durationSec = (activeAssessment?.durationMinutes * 60 || 1800) - timeRemainingSeconds;
+      const timeSpentMin = Math.max(1, Math.round(durationSec / 60));
+      const res = await submitAssessment(assessmentAnswers, timeSpentMin);
+      if (res && !res.ok) {
+        if (res.status === 409) {
+          addToast?.('This assessment has already been submitted.', 'info');
+        } else if (res.status === 429) {
+          addToast?.('Submission rate limit reached. Please wait a moment.', 'warning');
+        }
+      }
+    } catch (err) {
+      console.warn('Auto-submit error:', err);
+    } finally {
+      setIsSubmitting(false);
+      navigateTo('candidate-analytics');
+    }
   };
 
-  const handleSubmit = () => {
-    if (isSubmittedRef.current) return;
-    isSubmittedRef.current = true;
-    setShowSubmitModal(false);
+  const handleSubmit = async () => {
+    if (isSubmittedRef.current || isSubmitting) return;
+    setIsSubmitting(true);
 
     if (timerRef.current) {
       clearInterval(timerRef.current);
     }
 
-    exitExamFullscreenAndStopMedia();
+    try {
+      const durationSec = (activeAssessment?.durationMinutes * 60 || 1800) - timeRemainingSeconds;
+      const timeSpentMin = Math.max(1, Math.round(durationSec / 60));
+      const res = await submitAssessment(assessmentAnswers, timeSpentMin);
 
-    submitAssessment(
-      assessmentAnswers,
-      Math.max(1, Math.round(((activeAssessment?.durationMinutes * 60 || 1800) - timeRemainingSeconds) / 60))
-    );
-    navigateTo('assessments');
+      if (res && !res.ok) {
+        if (res.status === 409) {
+          addToast?.('This assessment has already been submitted and recorded.', 'info');
+        } else if (res.status === 429) {
+          addToast?.('Too many requests. Please wait a moment before submitting.', 'warning');
+        } else {
+          addToast?.(res.error || 'Submission encountered an error.', 'error');
+        }
+      }
+
+      isSubmittedRef.current = true;
+      setShowSubmitModal(false);
+      exitExamFullscreenAndStopMedia();
+      navigateTo('candidate-analytics');
+    } catch (err) {
+      addToast?.('Failed to submit assessment. Please try again.', 'error');
+      setIsSubmitting(false);
+    }
   };
 
   // Fullscreen, Keydown & Tab Switch Violation Listeners
@@ -512,10 +541,20 @@ export const AssessmentPage = () => {
               {/* Submit CTA */}
               <button
                 onClick={() => setShowSubmitModal(true)}
-                className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-600/20 transition-all flex items-center justify-center gap-2"
+                disabled={isSubmitting}
+                className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-600/20 transition-all flex items-center justify-center gap-2"
               >
-                <CheckCircle2 className="w-4 h-4" />
-                <span>Submit & View AI Analysis</span>
+                {isSubmitting ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>Submitting Assessment...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Submit & View AI Analysis</span>
+                  </>
+                )}
               </button>
 
             </div>
@@ -527,7 +566,7 @@ export const AssessmentPage = () => {
       {/* SUBMISSION CONFIRMATION MODAL */}
       <Modal
         isOpen={showSubmitModal}
-        onClose={() => setShowSubmitModal(false)}
+        onClose={() => !isSubmitting && setShowSubmitModal(false)}
         title="Confirm Assessment Submission"
         subtitle="Review your responses before finalizing AI evaluation"
       >
@@ -562,18 +601,29 @@ export const AssessmentPage = () => {
           <div className="flex items-center justify-end gap-3 pt-2">
             <button
               type="button"
+              disabled={isSubmitting}
               onClick={() => setShowSubmitModal(false)}
-              className="px-4 py-2 rounded-xl text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors"
+              className="px-4 py-2 rounded-xl text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 transition-colors"
             >
               Resume Assessment
             </button>
             <button
               type="button"
+              disabled={isSubmitting}
               onClick={handleSubmit}
-              className="px-5 py-2 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-md shadow-emerald-600/20 transition-all flex items-center gap-1.5"
+              className="px-5 py-2 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-emerald-600/20 transition-all flex items-center gap-1.5"
             >
-              <CheckCircle2 className="w-4 h-4" />
-              <span>Confirm & Submit</span>
+              {isSubmitting ? (
+                <>
+                  <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <span>Processing...</span>
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Confirm & Submit</span>
+                </>
+              )}
             </button>
           </div>
         </div>

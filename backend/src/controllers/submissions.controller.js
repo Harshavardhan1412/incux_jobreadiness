@@ -1,5 +1,6 @@
 import { pool } from '../db/pool.js';
 import crypto from 'crypto';
+import { evaluateSubmission } from '../services/evaluationService.js';
 
 // POST /api/submissions
 export const submitAssessment = async (req, res) => {
@@ -9,14 +10,16 @@ export const submitAssessment = async (req, res) => {
     candidateId: bodyCandId,
     candidateName,
     candidateEmail,
-    score,
-    accuracy,
-    correctCount,
-    incorrectCount,
-    unansweredCount,
+    score: clientScore,
+    accuracy: clientAccuracy,
+    correctCount: clientCorrectCount,
+    incorrectCount: clientIncorrectCount,
+    unansweredCount: clientUnansweredCount,
+    totalQuestions: clientTotalQuestions,
     timeTaken,
-    categoryScores,
-    topicBreakdown,
+    categoryScores: clientCategoryScores,
+    topicBreakdown: clientTopicBreakdown,
+    questionIds,
     answers
   } = req.body;
 
@@ -24,10 +27,92 @@ export const submitAssessment = async (req, res) => {
   const candidateId = req.user?.id || bodyCandId || 'cand-user';
   const email = req.user?.email || candidateEmail || null;
   const name = req.user?.name || candidateName || 'Candidate Student';
+  const asmId = assessmentId || 'asm-1';
+
+  const client = await pool.connect();
 
   try {
-    // 1. Insert into assessment_submissions table
-    const result = await pool.query(
+    await client.query('BEGIN');
+
+    // 1. Authoritative Backend Scoring
+    // Calculate deterministic scores using stored answer keys in PostgreSQL
+    const evaluation = await evaluateSubmission({
+      assessmentId: asmId,
+      answers: answers || {},
+      questionIds: questionIds || [],
+      totalQuestions: clientTotalQuestions,
+      dbClient: client,
+    });
+
+    const finalScore = evaluation.score;
+    const finalAccuracy = evaluation.accuracy;
+    const finalCorrectCount = evaluation.correctCount;
+    const finalIncorrectCount = evaluation.incorrectCount;
+    const finalUnansweredCount = evaluation.unansweredCount;
+    const finalCategoryScores = clientCategoryScores || evaluation.categoryScores;
+    const finalTopicBreakdown = (clientTopicBreakdown && clientTopicBreakdown.length > 0)
+      ? clientTopicBreakdown
+      : evaluation.topicBreakdown;
+
+    // 2. Check for existing submission by candidate for this assessment
+    const existingSubmission = await client.query(
+      `SELECT id, score, accuracy, created_at FROM assessment_submissions 
+       WHERE candidate_id = $1 AND assessment_id = $2 
+       ORDER BY created_at DESC LIMIT 1`,
+      [candidateId, asmId]
+    );
+
+    if (existingSubmission.rows.length > 0) {
+      const timeDiff = Date.now() - new Date(existingSubmission.rows[0].created_at).getTime();
+      // If submitted within 2 seconds, treat as idempotent duplicate submission
+      if (timeDiff < 2000) {
+        await client.query('COMMIT');
+        return res.status(200).json({
+          success: true,
+          message: 'Idempotent submission received.',
+          data: existingSubmission.rows[0],
+        });
+      }
+
+      // Candidate is retaking - update with new score
+      const updateResult = await client.query(
+        `UPDATE assessment_submissions SET
+           score = $1, accuracy = $2, correct_count = $3, incorrect_count = $4,
+           unanswered_count = $5, time_taken = $6, category_scores = $7,
+           topic_breakdown = $8, answers = $9, created_at = CURRENT_TIMESTAMP
+         WHERE id = $10
+         RETURNING *`,
+        [
+          finalScore,
+          finalAccuracy,
+          finalCorrectCount,
+          finalIncorrectCount,
+          finalUnansweredCount,
+          timeTaken || '28 min',
+          JSON.stringify(finalCategoryScores),
+          JSON.stringify(finalTopicBreakdown),
+          JSON.stringify(answers || {}),
+          existingSubmission.rows[0].id
+        ]
+      );
+
+      const readinessStatus = finalScore >= 65 ? 'Job Ready' : 'In Progress';
+      await client.query(
+        `UPDATE candidates SET
+           job_readiness_score = $1,
+           readiness_level = $2,
+           readiness_status = 'Completed',
+           assessments_completed = COALESCE(assessments_completed, 0) + 1
+         WHERE id = $3 OR LOWER(email) = LOWER($4)`,
+        [finalScore, readinessStatus, candidateId, email || '']
+      );
+
+      await client.query('COMMIT');
+      return res.status(200).json({ success: true, data: updateResult.rows[0] });
+    }
+
+    // 3. Insert into assessment_submissions table
+    const result = await client.query(
       `INSERT INTO assessment_submissions 
        (id, candidate_id, candidate_name, candidate_email, assessment_id, assessment_title, score, accuracy, correct_count, incorrect_count, unanswered_count, time_taken, category_scores, topic_breakdown, answers)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
@@ -37,50 +122,62 @@ export const submitAssessment = async (req, res) => {
         candidateId,
         name,
         email,
-        assessmentId || 'asm-1',
+        asmId,
         assessmentTitle || 'Technical Assessment',
-        Number(score) || 0,
-        Number(accuracy) || 0,
-        Number(correctCount) || 0,
-        Number(incorrectCount) || 0,
-        Number(unansweredCount) || 0,
+        finalScore,
+        finalAccuracy,
+        finalCorrectCount,
+        finalIncorrectCount,
+        finalUnansweredCount,
         timeTaken || '28 min',
-        JSON.stringify(categoryScores || {}),
-        JSON.stringify(topicBreakdown || []),
+        JSON.stringify(finalCategoryScores),
+        JSON.stringify(finalTopicBreakdown),
         JSON.stringify(answers || {})
       ]
     );
 
-    // Also insert into legacy submissions table for backwards compatibility
-    await pool.query(
+    // 4. Also insert into legacy submissions table for backwards compatibility
+    await client.query(
       `INSERT INTO submissions (id, candidate_id, assessment_id, score, accuracy, correct_count, incorrect_count, unanswered_count, time_taken, category_scores, topic_breakdown, answers)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
        ON CONFLICT (id) DO NOTHING`,
       [
-        id, candidateId, assessmentId || 'asm-1', Number(score) || 0, Number(accuracy) || 0,
-        Number(correctCount) || 0, Number(incorrectCount) || 0, Number(unansweredCount) || 0,
-        timeTaken || '28 min', JSON.stringify(categoryScores || {}), JSON.stringify(topicBreakdown || []),
+        id, candidateId, asmId, finalScore, finalAccuracy,
+        finalCorrectCount, finalIncorrectCount, finalUnansweredCount,
+        timeTaken || '28 min', JSON.stringify(finalCategoryScores), JSON.stringify(finalTopicBreakdown),
         JSON.stringify(answers || {})
       ]
     );
 
-    // 2. Update candidate overall score and status in candidates table
-    const readinessStatus = Number(score) >= 65 ? 'Job Ready' : 'In Progress';
+    // 5. Update candidate overall score and status in candidates table
+    const readinessStatus = finalScore >= 65 ? 'Job Ready' : 'In Progress';
 
-    await pool.query(
+    await client.query(
       `UPDATE candidates SET
          job_readiness_score = $1,
          readiness_level = $2,
          readiness_status = 'Completed',
          assessments_completed = COALESCE(assessments_completed, 0) + 1
        WHERE id = $3 OR LOWER(email) = LOWER($4)`,
-      [Number(score) || 0, readinessStatus, candidateId, email || '']
+      [finalScore, readinessStatus, candidateId, email || '']
     );
+
+    await client.query('COMMIT');
 
     res.status(201).json({ success: true, data: result.rows[0] });
   } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    if (err.code === '23505') {
+      return res.status(409).json({
+        success: false,
+        error: 'Assessment has already been submitted by this candidate.',
+        message: 'Assessment has already been submitted by this candidate.',
+      });
+    }
     console.error('Submission controller error:', err.message);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ success: false, error: err.message });
+  } finally {
+    client.release();
   }
 };
 

@@ -5,11 +5,17 @@ import { requireRole } from '../middleware/rbac.js';
 
 const router = Router();
 
-// Admin can see all candidates from PostgreSQL database
-router.get('/', getAllCandidates);
+// All candidate routes require authentication
+router.use(authenticateToken);
+
+// Admin-only roster & deletion
+router.get('/', requireRole('admin'), getAllCandidates);
+router.delete('/:id', requireRole('admin'), deleteCandidate);
+
+// Candidate details (accessible by profile owner or admin)
 router.get('/:id', getCandidateById);
 router.put('/:id', updateCandidate);
-router.delete('/:id', deleteCandidate);
 router.get('/:id/submissions', getCandidateSubmissions);
 
 export default router;
+

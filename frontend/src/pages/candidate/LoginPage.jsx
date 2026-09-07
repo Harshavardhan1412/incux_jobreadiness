@@ -19,17 +19,19 @@ export const LoginPage = () => {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!email) {
-      setError('Please enter your email address');
+    if (!email || !password) {
+      setError('Please enter both email address and password');
       return;
     }
+    setError('');
     setIsLoading(true);
-    setTimeout(() => {
-      setIsLoading(false);
-      loginCandidate(email);
-    }, 600);
+    const res = await loginCandidate(email, password);
+    setIsLoading(false);
+    if (!res.success) {
+      setError(res.error || 'Authentication failed. Please check your credentials.');
+    }
   };
 
   const handleQuickLogin = (sampleEmail) => {

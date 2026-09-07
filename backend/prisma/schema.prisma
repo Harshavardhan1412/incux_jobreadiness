@@ -129,19 +129,28 @@ model AssessmentSection {
   @@map("assessment_sections")
 }
 
-// 5. topics — Stores question topics
-model Topic {
-  id          String     @id @db.VarChar(64)
-  name        String     @unique @db.VarChar(128)
-  category    String     @db.VarChar(64)
-  description String?    @db.Text
-  status      String?    @default("active") @db.VarChar(32)
-  createdAt   DateTime?  @default(now()) @map("created_at") @db.Timestamptz
+// 5. assessment_questions — Links assessments and questions with question metadata and marks
+model AssessmentQuestion {
+  id             String             @id @db.VarChar(64)
+  assessmentId   String             @map("assessment_id") @db.VarChar(64)
+  questionId     String             @map("question_id") @db.VarChar(64)
+  sectionId      String?            @map("section_id") @db.VarChar(64)
+  category       String?            @db.VarChar(64)
+  topic          String?            @db.VarChar(255)
+  question       String?            @db.Text
+  difficulty     String?            @db.VarChar(32)
+  options        Json?              @db.JsonB
+  correctAnswer  String?            @map("correct_answer") @db.VarChar(16)
+  marks          Int?               @default(1)
+  createdAt      DateTime?          @default(now()) @map("created_at") @db.Timestamptz
 
   // Relations
-  questions   Question[]
+  assessment     Assessment         @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  questionRef    Question           @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  section        AssessmentSection? @relation(fields: [sectionId], references: [id], onDelete: SetNull)
 
-  @@map("topics")
+  @@unique([assessmentId, questionId])
+  @@map("assessment_questions")
 }
 
 // 6. skills — Stores skills evaluated by the platform
@@ -222,24 +231,6 @@ model QuestionSkill {
 
   @@unique([questionId, skillId])
   @@map("question_skills")
-}
-
-// 10. assessment_questions — Connects assessments with questions
-model AssessmentQuestion {
-  id            String             @id @db.VarChar(64)
-  assessmentId  String             @map("assessment_id") @db.VarChar(64)
-  sectionId     String?            @map("section_id") @db.VarChar(64)
-  questionId    String             @map("question_id") @db.VarChar(64)
-  questionOrder Int                @map("question_order")
-  marks         Int
-
-  // Relations
-  assessment    Assessment         @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
-  section       AssessmentSection? @relation(fields: [sectionId], references: [id], onDelete: SetNull)
-  question      Question           @relation(fields: [questionId], references: [id], onDelete: Cascade)
-
-  @@unique([assessmentId, questionId])
-  @@map("assessment_questions")
 }
 
 // 11. test_attempts — Stores every candidate's attempt

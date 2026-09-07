@@ -3,6 +3,7 @@ export const COLORS = {
   reasoning: '#10B981',
   technical: '#F59E0B',
   english: '#8B5CF6',
+  verbal: '#8B5CF6',
 };
 
 export const COLORS_LIGHT = {
@@ -10,6 +11,7 @@ export const COLORS_LIGHT = {
   reasoning: '#6EE7B7',
   technical: '#FCD34D',
   english: '#C4B5FD',
+  verbal: '#C4B5FD',
 };
 
 export const mockStudent = {
@@ -274,7 +276,7 @@ export const mockPeerComparison = [
   { category: 'Aptitude', studentScore: 84, classAverage: 62, topperScore: 96, classMedian: 60 },
   { category: 'Reasoning', studentScore: 72, classAverage: 58, topperScore: 92, classMedian: 56 },
   { category: 'Technical', studentScore: 84, classAverage: 55, topperScore: 96, classMedian: 52 },
-  { category: 'English', studentScore: 72, classAverage: 60, topperScore: 88, classMedian: 58 },
+  { category: 'Verbal', studentScore: 72, classAverage: 60, topperScore: 88, classMedian: 58 },
 ];
 
 export function computeEligibility(student, companies) {
@@ -287,8 +289,9 @@ export function computeEligibility(student, companies) {
     const gaps = [];
 
     categoryKeys.forEach((key) => {
-      const cat = latestAttempt.categories[key];
-      const percent = Math.round((cat.score / cat.maxScore) * 100);
+      const cat = latestAttempt.categories?.[key] || (key === 'english' ? latestAttempt.categories?.verbal : null);
+      const maxScore = Number(cat?.maxScore) > 0 ? Number(cat.maxScore) : 1;
+      const percent = cat ? Math.round((Number(cat.score || 0) / maxScore) * 100) : 0;
       categoryPercents[key] = percent;
 
       const required = company.categories[key];
@@ -327,12 +330,14 @@ export function computeImprovements(student) {
   if (!latestAttempt) return [];
 
   const areas = [];
-  const categoryKeys = ['aptitude', 'reasoning', 'technical', 'english'];
+  const categoryKeys = ['aptitude', 'reasoning', 'technical', 'verbal', 'english'];
 
   categoryKeys.forEach((key) => {
-    const cat = latestAttempt.categories[key];
+    const cat = latestAttempt.categories?.[key];
+    if (!cat || !Array.isArray(cat.topics)) return;
     cat.topics.forEach((topic) => {
-      const percent = (topic.score / topic.maxScore) * 100;
+      const maxScore = Number(topic.maxScore) > 0 ? Number(topic.maxScore) : 1;
+      const percent = (Number(topic.score || 0) / maxScore) * 100;
       let priority = 'low';
       let estimatedHours = 2;
 
@@ -363,12 +368,16 @@ export function computeImprovements(student) {
 
 export function getCategoryPercents(attempt) {
   if (!attempt || !attempt.categories) {
-    return { aptitude: 84, reasoning: 72, technical: 84, english: 72 };
+    return { aptitude: 84, reasoning: 72, technical: 84, english: 72, verbal: 72 };
   }
+  const engCat = attempt.categories.verbal || attempt.categories.english || { score: 0, maxScore: 25 };
+  const engPct = engCat.maxScore > 0 ? Math.round((engCat.score / engCat.maxScore) * 100) : 0;
+
   return {
-    aptitude: Math.round((attempt.categories.aptitude.score / attempt.categories.aptitude.maxScore) * 100),
-    reasoning: Math.round((attempt.categories.reasoning.score / attempt.categories.reasoning.maxScore) * 100),
-    technical: Math.round((attempt.categories.technical.score / attempt.categories.technical.maxScore) * 100),
-    english: Math.round((attempt.categories.english.score / attempt.categories.english.maxScore) * 100),
+    aptitude: attempt.categories.aptitude?.maxScore > 0 ? Math.round((attempt.categories.aptitude.score / attempt.categories.aptitude.maxScore) * 100) : 0,
+    reasoning: attempt.categories.reasoning?.maxScore > 0 ? Math.round((attempt.categories.reasoning.score / attempt.categories.reasoning.maxScore) * 100) : 0,
+    technical: attempt.categories.technical?.maxScore > 0 ? Math.round((attempt.categories.technical.score / attempt.categories.technical.maxScore) * 100) : 0,
+    english: engPct,
+    verbal: engPct,
   };
 }

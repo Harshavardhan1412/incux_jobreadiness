@@ -17,12 +17,17 @@ async function request(method, path, body) {
       headers: authHeaders(),
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-    return { ok: true, data };
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const err = new Error(data.error || data.message || `HTTP ${res.status}`);
+      err.status = res.status;
+      err.data = data;
+      throw err;
+    }
+    return { ok: true, data, status: res.status };
   } catch (err) {
     console.warn(`[API] ${method} ${path} failed:`, err.message);
-    return { ok: false, error: err.message };
+    return { ok: false, error: err.message, status: err.status || 500, data: err.data };
   }
 }
 
@@ -51,6 +56,9 @@ export const api = {
     create: (body) => request('POST', '/assessments', body),
     update: (id, body) => request('PUT', `/assessments/${id}`, body),
     delete: (id) => request('DELETE', `/assessments/${id}`),
+    getQuestions: (id) => request('GET', `/assessments/${id}/questions`),
+    addQuestions: (id, body) => request('POST', `/assessments/${id}/questions`, body),
+    removeQuestion: (id, questionId) => request('DELETE', `/assessments/${id}/questions/${questionId}`),
   },
 
   questions: {

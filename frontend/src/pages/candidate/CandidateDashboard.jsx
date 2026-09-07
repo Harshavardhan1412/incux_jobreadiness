@@ -16,7 +16,8 @@ import {
   ChevronRight,
   BrainCircuit,
   Target,
-  FileText
+  FileText,
+  ClipboardCheck
 } from 'lucide-react';
 import {
   Chart as ChartJS,

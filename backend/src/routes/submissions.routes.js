@@ -1,11 +1,19 @@
 import { Router } from 'express';
 import { submitAssessment, getAllSubmissions, getMySubmissions } from '../controllers/submissions.controller.js';
-import { optionalAuthToken } from '../middleware/auth.js';
+import { authenticateToken } from '../middleware/auth.js';
+import { requireRole } from '../middleware/rbac.js';
 
 const router = Router();
 
-router.post('/', optionalAuthToken, submitAssessment);
-router.get('/', optionalAuthToken, getAllSubmissions);
-router.get('/my', optionalAuthToken, getMySubmissions);
+// All submission endpoints require authentication
+router.use(authenticateToken);
+
+// Candidate / Admin test attempt submission
+router.post('/', submitAssessment);
+router.get('/my', getMySubmissions);
+
+// Admin-only view all submissions
+router.get('/', requireRole('admin'), getAllSubmissions);
 
 export default router;
+

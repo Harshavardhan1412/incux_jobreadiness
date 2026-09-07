@@ -34,7 +34,7 @@ export const getAllCandidates = async (req, res) => {
     const responsePayload = { success: true, data: result.rows, total: result.rowCount };
 
     candidatesCache = responsePayload;
-    lastCandidatesFetch = now;
+    lastCandidatesFetch = Date.now();
 
     res.json(responsePayload);
   } catch (err) {

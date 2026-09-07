@@ -1,4 +1,5 @@
 import { pool } from './pool.js';
+import bcrypt from 'bcryptjs';
 
 const schemaSQL = `
     -- 1. users: Stores authentication and user roles
@@ -13,13 +14,13 @@ const schemaSQL = `
       updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );
 
-    -- 2. candidate_profiles: Stores candidate information
+    -- 2. candidate_profiles: Stores candidate profile information
     CREATE TABLE IF NOT EXISTS candidate_profiles (
       id VARCHAR(64) PRIMARY KEY,
       user_id VARCHAR(64) REFERENCES users(id) ON DELETE CASCADE,
       name VARCHAR(255) NOT NULL,
       email VARCHAR(255) UNIQUE,
-      mobile VARCHAR(20),
+      mobile VARCHAR(32),
       college VARCHAR(255),
       degree VARCHAR(128),
       branch VARCHAR(128),
@@ -34,7 +35,7 @@ const schemaSQL = `
       updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );
 
-    -- Legacy candidates alias view or compatibility table if needed
+    -- 3. candidates: Candidate profile, readiness metrics & assessment performance
     CREATE TABLE IF NOT EXISTS candidates (
       id VARCHAR(64) PRIMARY KEY,
       name VARCHAR(255) NOT NULL,
@@ -59,7 +60,7 @@ const schemaSQL = `
       created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );
 
-    -- 3. assessments: Stores assessments created by admin
+    -- 4. assessments: Assessment definitions created by administrators
     CREATE TABLE IF NOT EXISTS assessments (
       id VARCHAR(64) PRIMARY KEY,
       title VARCHAR(255) NOT NULL,
@@ -76,42 +77,10 @@ const schemaSQL = `
       updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );
 
-    -- 4. assessment_sections: Stores sections inside an assessment
-    CREATE TABLE IF NOT EXISTS assessment_sections (
-      id VARCHAR(64) PRIMARY KEY,
-      assessment_id VARCHAR(64) REFERENCES assessments(id) ON DELETE CASCADE,
-      name VARCHAR(128) NOT NULL,
-      description TEXT,
-      question_count INT NOT NULL,
-      marks_per_question INT DEFAULT 1,
-      display_order INT NOT NULL,
-      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-    );
-
-    -- 5. topics: Stores question topics
-    CREATE TABLE IF NOT EXISTS topics (
-      id VARCHAR(64) PRIMARY KEY,
-      name VARCHAR(128) UNIQUE NOT NULL,
-      category VARCHAR(64) NOT NULL,
-      description TEXT,
-      status VARCHAR(32) DEFAULT 'active',
-      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-    );
-
-    -- 6. skills: Stores skills evaluated by the platform
-    CREATE TABLE IF NOT EXISTS skills (
-      id VARCHAR(64) PRIMARY KEY,
-      name VARCHAR(128) UNIQUE NOT NULL,
-      category VARCHAR(64) NOT NULL,
-      description TEXT,
-      status VARCHAR(32) DEFAULT 'active',
-      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-    );
-
-    -- 7. questions: Main Question Bank
+    -- 5. questions: Main Question Bank with JSONB options & answer keys
     CREATE TABLE IF NOT EXISTS questions (
       id VARCHAR(64) PRIMARY KEY,
-      topic_id VARCHAR(64) REFERENCES topics(id) ON DELETE SET NULL,
+      topic_id VARCHAR(64),
       topic VARCHAR(255) DEFAULT 'General',
       category VARCHAR(64) NOT NULL,
       difficulty VARCHAR(32) NOT NULL,
@@ -132,147 +101,7 @@ const schemaSQL = `
       updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );
 
-    -- 8. questions table handles options via JSONB array (question_options removed to avoid redundancy)
-
-    -- 9. question_skills: Maps questions to skills
-    CREATE TABLE IF NOT EXISTS question_skills (
-      id VARCHAR(64) PRIMARY KEY,
-      question_id VARCHAR(64) REFERENCES questions(id) ON DELETE CASCADE,
-      skill_id VARCHAR(64) REFERENCES skills(id) ON DELETE CASCADE,
-      weight DECIMAL DEFAULT 1.0,
-      UNIQUE(question_id, skill_id)
-    );
-
-    -- 10. assessment_questions: Connects assessments with questions
-    CREATE TABLE IF NOT EXISTS assessment_questions (
-      id VARCHAR(64) PRIMARY KEY,
-      assessment_id VARCHAR(64) REFERENCES assessments(id) ON DELETE CASCADE,
-      section_id VARCHAR(64) REFERENCES assessment_sections(id) ON DELETE SET NULL,
-      question_id VARCHAR(64) REFERENCES questions(id) ON DELETE CASCADE,
-      question_order INT NOT NULL,
-      marks INT NOT NULL,
-      UNIQUE(assessment_id, question_id)
-    );
-
-    -- 11. test_attempts: Stores every candidate's attempt
-    CREATE TABLE IF NOT EXISTS test_attempts (
-      id VARCHAR(64) PRIMARY KEY,
-      candidate_id VARCHAR(64) REFERENCES candidate_profiles(id) ON DELETE CASCADE,
-      assessment_id VARCHAR(64) REFERENCES assessments(id) ON DELETE CASCADE,
-      attempt_number INT NOT NULL,
-      status VARCHAR(32) DEFAULT 'InProgress',
-      started_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      submitted_at TIMESTAMPTZ,
-      time_taken_seconds INT,
-      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-    );
-
-    -- 12. candidate_answers: Stores individual answers
-    CREATE TABLE IF NOT EXISTS candidate_answers (
-      id VARCHAR(64) PRIMARY KEY,
-      attempt_id VARCHAR(64) REFERENCES test_attempts(id) ON DELETE CASCADE,
-      question_id VARCHAR(64) REFERENCES questions(id) ON DELETE CASCADE,
-      selected_option VARCHAR(8),
-      is_correct BOOLEAN,
-      marks_obtained DECIMAL DEFAULT 0,
-      time_taken_seconds INT,
-      answered_at TIMESTAMPTZ
-    );
-
-    -- 13. performance_analysis: Stores overall test analysis
-    CREATE TABLE IF NOT EXISTS performance_analysis (
-      id VARCHAR(64) PRIMARY KEY,
-      attempt_id VARCHAR(64) REFERENCES test_attempts(id) ON DELETE CASCADE UNIQUE,
-      overall_score DECIMAL NOT NULL,
-      accuracy DECIMAL NOT NULL,
-      speed_score DECIMAL NOT NULL,
-      aptitude_score DECIMAL,
-      reasoning_score DECIMAL,
-      technical_score DECIMAL,
-      strengths JSONB,
-      weaknesses JSONB,
-      ai_summary TEXT,
-      recommendations JSONB,
-      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-    );
-
-    -- 14. skill_performance: Stores detailed skill-level performance
-    CREATE TABLE IF NOT EXISTS skill_performance (
-      id VARCHAR(64) PRIMARY KEY,
-      attempt_id VARCHAR(64) REFERENCES test_attempts(id) ON DELETE CASCADE,
-      candidate_id VARCHAR(64) REFERENCES candidate_profiles(id) ON DELETE CASCADE,
-      skill_id VARCHAR(64) REFERENCES skills(id) ON DELETE CASCADE,
-      score DECIMAL NOT NULL,
-      proficiency VARCHAR(32),
-      questions_attempted INT DEFAULT 0,
-      correct_answers INT DEFAULT 0,
-      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-    );
-
-    -- 15. companies: Stores companies used for readiness analysis
-    CREATE TABLE IF NOT EXISTS companies (
-      id VARCHAR(64) PRIMARY KEY,
-      name VARCHAR(128) UNIQUE NOT NULL,
-      industry VARCHAR(128),
-      description TEXT,
-      website TEXT,
-      status VARCHAR(32) DEFAULT 'Active',
-      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-    );
-
-    -- 16. company_roles: Stores roles offered/targeted for each company
-    CREATE TABLE IF NOT EXISTS company_roles (
-      id VARCHAR(64) PRIMARY KEY,
-      company_id VARCHAR(64) REFERENCES companies(id) ON DELETE CASCADE,
-      role_name VARCHAR(128) NOT NULL,
-      description TEXT,
-      experience_level VARCHAR(64),
-      status VARCHAR(32) DEFAULT 'Active',
-      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-    );
-
-    -- 17. role_skill_requirements: Defines what skills are required for each company role
-    CREATE TABLE IF NOT EXISTS role_skill_requirements (
-      id VARCHAR(64) PRIMARY KEY,
-      role_id VARCHAR(64) REFERENCES company_roles(id) ON DELETE CASCADE,
-      skill_id VARCHAR(64) REFERENCES skills(id) ON DELETE CASCADE,
-      required_score DECIMAL,
-      weight DECIMAL DEFAULT 1.0,
-      importance VARCHAR(32) DEFAULT 'Required',
-      UNIQUE(role_id, skill_id)
-    );
-
-    -- 18. company_readiness: Stores candidate's company/role suitability result
-    CREATE TABLE IF NOT EXISTS company_readiness (
-      id VARCHAR(64) PRIMARY KEY,
-      candidate_id VARCHAR(64) REFERENCES candidate_profiles(id) ON DELETE CASCADE,
-      attempt_id VARCHAR(64) REFERENCES test_attempts(id) ON DELETE SET NULL,
-      company_id VARCHAR(64) REFERENCES companies(id) ON DELETE CASCADE,
-      role_id VARCHAR(64) REFERENCES company_roles(id) ON DELETE CASCADE,
-      readiness_score DECIMAL NOT NULL,
-      readiness_level VARCHAR(32),
-      matched_skills JSONB,
-      skill_gaps JSONB,
-      ai_analysis TEXT,
-      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-    );
-
-    -- 19. reports: Stores the final generated candidate report
-    CREATE TABLE IF NOT EXISTS reports (
-      id VARCHAR(64) PRIMARY KEY,
-      candidate_id VARCHAR(64) REFERENCES candidate_profiles(id) ON DELETE CASCADE,
-      attempt_id VARCHAR(64) REFERENCES test_attempts(id) ON DELETE SET NULL,
-      report_type VARCHAR(64),
-      overall_score DECIMAL,
-      summary TEXT,
-      strengths JSONB,
-      weaknesses JSONB,
-      recommendations JSONB,
-      report_url TEXT,
-      generated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-    );
-
-    -- Legacy submissions table
+    -- 6. submissions: Legacy submissions compatibility table
     CREATE TABLE IF NOT EXISTS submissions (
       id VARCHAR(64) PRIMARY KEY,
       candidate_id VARCHAR(64),
@@ -289,7 +118,7 @@ const schemaSQL = `
       created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );
 
-    -- 20. assessment_submissions: Stores submitted assessment attempts & candidate scores
+    -- 7. assessment_submissions: Official submitted assessment attempts & candidate scores
     CREATE TABLE IF NOT EXISTS assessment_submissions (
       id VARCHAR(64) PRIMARY KEY,
       candidate_id VARCHAR(64),
@@ -309,7 +138,23 @@ const schemaSQL = `
       status VARCHAR(32) DEFAULT 'Completed',
       created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );
-  `;
+
+    -- 8. assessment_questions: Questions associated with an assessment with full question details
+    CREATE TABLE IF NOT EXISTS assessment_questions (
+      id VARCHAR(64) PRIMARY KEY,
+      assessment_id VARCHAR(64) NOT NULL REFERENCES assessments(id) ON DELETE CASCADE,
+      question_id VARCHAR(64) NOT NULL REFERENCES questions(id) ON DELETE CASCADE,
+      category VARCHAR(64),
+      topic VARCHAR(255),
+      question TEXT,
+      difficulty VARCHAR(32),
+      options JSONB,
+      correct_answer VARCHAR(16),
+      marks INT DEFAULT 1,
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT uq_assessment_question UNIQUE (assessment_id, question_id)
+    );
+`;
 
 export const initSchema = async () => {
   const LOCK_KEY = 74639201;
@@ -320,10 +165,59 @@ export const initSchema = async () => {
     // Acquire session-level advisory lock so only 1 replica runs migrations at a time
     await client.query('SELECT pg_advisory_lock($1)', [LOCK_KEY]);
 
-    await client.query(schemaSQL);
-    console.log('✅ All 19 Database Tables synchronized successfully.');
+    // 1. Permanently Drop Unused / Deprecated Tables
+    await client.query(`
+      DROP TABLE IF EXISTS admin_sessions CASCADE;
+      DROP TABLE IF EXISTS assessment_sections CASCADE;
+      DROP TABLE IF EXISTS comapanies CASCADE;
+      DROP TABLE IF EXISTS companies CASCADE;
+      DROP TABLE IF EXISTS company_readiness CASCADE;
+      DROP TABLE IF EXISTS company_roles CASCADE;
+      DROP TABLE IF EXISTS question_skills CASCADE;
+      DROP TABLE IF EXISTS role_skill_requirements CASCADE;
+      DROP TABLE IF EXISTS topics CASCADE;
+      DROP TABLE IF EXISTS test_attempts CASCADE;
+      DROP TABLE IF EXISTS skills CASCADE;
+      DROP TABLE IF EXISTS skill_performance CASCADE;
+      DROP TABLE IF EXISTS candidate_answers CASCADE;
+      DROP TABLE IF EXISTS performance_analysis CASCADE;
+      DROP TABLE IF EXISTS reports CASCADE;
+      DROP TABLE IF EXISTS question_options CASCADE;
+    `);
 
-    // Safe column migrations for existing tables
+    // 2. Synchronize Production Core Schema (including candidate_profiles)
+    await client.query(schemaSQL);
+    console.log('✅ Production Database Tables synchronized successfully.');
+
+    // 3. Backfill candidate_profiles from candidates & users table
+    await client.query(`
+      INSERT INTO candidate_profiles (
+        id, user_id, name, email, mobile, college, degree, branch,
+        specialization, country, state, city, graduation_year, experience_level, created_at
+      )
+      SELECT 
+        c.id,
+        COALESCE(u.id, c.id),
+        c.name,
+        c.email,
+        c.mobile,
+        c.college,
+        c.degree,
+        c.branch,
+        c.specialization,
+        COALESCE(c.country, 'India'),
+        c.state,
+        c.city,
+        NULLIF(regexp_replace(c.graduation_year::text, '\\D', '', 'g'), '')::INT,
+        c.experience_level,
+        c.created_at
+      FROM candidates c
+      LEFT JOIN users u ON LOWER(c.email) = LOWER(u.email)
+      ON CONFLICT (id) DO NOTHING;
+    `);
+    console.log('✅ candidate_profiles table retrieved, verified, and backfilled.');
+
+    // 4. Safe column migrations for active tables
     await client.query(`
       ALTER TABLE users ADD COLUMN IF NOT EXISTS status VARCHAR(32) DEFAULT 'active';
       ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP;
@@ -364,10 +258,50 @@ export const initSchema = async () => {
       ALTER TABLE questions ADD COLUMN IF NOT EXISTS created_by VARCHAR(64);
       ALTER TABLE questions ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP;
 
-      -- Drop redundant options table if it exists (options are stored directly in questions.options JSONB)
-      DROP TABLE IF EXISTS question_options CASCADE;
+      ALTER TABLE assessment_questions ADD COLUMN IF NOT EXISTS category VARCHAR(64);
+      ALTER TABLE assessment_questions ADD COLUMN IF NOT EXISTS topic VARCHAR(255);
+      ALTER TABLE assessment_questions ADD COLUMN IF NOT EXISTS question TEXT;
+      ALTER TABLE assessment_questions ADD COLUMN IF NOT EXISTS difficulty VARCHAR(32);
+      ALTER TABLE assessment_questions ADD COLUMN IF NOT EXISTS options JSONB;
+      ALTER TABLE assessment_questions ADD COLUMN IF NOT EXISTS correct_answer VARCHAR(16);
+      ALTER TABLE assessment_questions ADD COLUMN IF NOT EXISTS marks INT DEFAULT 1;
     `);
     console.log('✅ Safe column alterations applied.');
+
+    // 5. Performance Indexes for Scalability & High-Concurrency Load
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+      CREATE INDEX IF NOT EXISTS idx_candidate_profiles_user_id ON candidate_profiles(user_id);
+      CREATE INDEX IF NOT EXISTS idx_candidate_profiles_email ON candidate_profiles(email);
+      CREATE INDEX IF NOT EXISTS idx_candidates_email ON candidates(email);
+      CREATE INDEX IF NOT EXISTS idx_questions_category_diff ON questions(category, difficulty);
+      CREATE INDEX IF NOT EXISTS idx_submissions_candidate_id ON assessment_submissions(candidate_id);
+      CREATE INDEX IF NOT EXISTS idx_submissions_cand_asm ON assessment_submissions(candidate_id, assessment_id);
+      CREATE INDEX IF NOT EXISTS idx_assessment_questions_assessment_id ON assessment_questions(assessment_id);
+      CREATE INDEX IF NOT EXISTS idx_assessment_questions_question_id ON assessment_questions(question_id);
+
+      -- Deduplicate legacy rows in assessment_submissions if present before applying unique index
+      DELETE FROM assessment_submissions a
+      USING assessment_submissions b
+      WHERE a.ctid < b.ctid
+        AND a.candidate_id IS NOT NULL
+        AND a.assessment_id IS NOT NULL
+        AND a.candidate_id = b.candidate_id
+        AND a.assessment_id = b.assessment_id;
+
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_submissions_cand_asm_unique 
+      ON assessment_submissions(candidate_id, assessment_id);
+    `);
+    console.log('✅ Performance indexes and duplicate submission prevention constraint applied.');
+
+    // 6. Ensure permanent single admin account exists
+    const adminHash = await bcrypt.hash('Admin@2026', 10);
+    await client.query(`
+      INSERT INTO users (id, email, password_hash, role, name, status)
+      VALUES ('admin-1', 'admin@readysetjob.com', $1, 'admin', 'HR Administrator', 'active')
+      ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash, role = 'admin', status = 'active';
+    `, [adminHash]);
+    console.log('✅ Permanent single admin credential verified (admin@readysetjob.com).');
   } catch (err) {
     console.error('❌ Schema initialization error:', err.message);
     throw err;

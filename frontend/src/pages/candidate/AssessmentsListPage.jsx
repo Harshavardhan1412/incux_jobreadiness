@@ -150,10 +150,16 @@ export const AssessmentsListPage = () => {
               <div>
                 {isCompleted ? (
                   <div className="flex gap-2">
-
+                    <button
+                      onClick={() => navigateTo('candidate-analytics')}
+                      className="flex-1 py-2.5 px-3 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-xs"
+                    >
+                      <BarChart2 className="w-3.5 h-3.5" />
+                      <span>View Analysis</span>
+                    </button>
                     <button
                       onClick={() => handleOpenDeviceCheck(asm)}
-                      className="py-2.5 px-3 bg-brand-50 hover:bg-brand-100 text-brand-700 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1"
+                      className="py-2.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1"
                       title="Retake test"
                     >
                       <RotateCcw className="w-3.5 h-3.5" />

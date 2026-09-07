@@ -109,8 +109,8 @@ export const Header = ({ onToggleSidebar }) => {
       if (q.includes('test') || q.includes('tech') || q.includes('apt') || q.includes('reason')) {
         navigateTo('assessments');
 
-      } else if (q.includes('report') || q.includes('cert')) {
-        navigateTo('final-report');
+      } else if (q.includes('report') || q.includes('score') || q.includes('result') || q.includes('analytics')) {
+        navigateTo('candidate-analytics');
       } else {
         navigateTo('dashboard');
       }

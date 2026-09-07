@@ -298,11 +298,11 @@ export const AdminCandidatesPage = () => {
                 type="button"
                 onClick={() => {
                   setViewCandidate(null);
-                  navigateTo('final-report');
+                  navigateTo('candidate-analytics');
                 }}
                 className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl font-bold"
               >
-                View Full Score Card Report
+                View Candidate Analytics
               </button>
             </div>
           </div>
