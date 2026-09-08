@@ -45,9 +45,12 @@ model CandidateProfile {
   city            String?           @db.VarChar(128)
   graduationYear  Int?              @map("graduation_year")
   experienceLevel String?           @map("experience_level") @db.VarChar(64)
-  resumeUrl       String?           @map("resume_url") @db.Text
-  createdAt       DateTime?         @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt       DateTime?         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  tenthMarks          Decimal?          @map("tenth_marks") @db.Decimal(5, 2)
+  twelfthDiplomaMarks Decimal?          @map("twelfth_diploma_marks") @db.Decimal(5, 2)
+  graduationPercentage Decimal?         @map("graduation_percentage") @db.Decimal(5, 2)
+  backlogs            Int?              @default(0) @map("backlogs")
+  createdAt           DateTime?         @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt           DateTime?         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
   // Relations
   user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -62,25 +65,18 @@ model CandidateProfile {
 // Legacy Candidates Table (Compatibility)
 model Candidate {
   id                   String    @id @db.VarChar(64)
-  name                 String    @db.VarChar(255)
-  email                String    @unique @db.VarChar(255)
-  mobile               String?   @db.VarChar(32)
-  college              String?   @db.VarChar(255)
-  degree               String?   @db.VarChar(128)
-  branch               String?   @db.VarChar(128)
-  specialization       String?   @db.VarChar(128)
-  country              String?   @default("India") @db.VarChar(128)
-  state                String?   @db.VarChar(128)
-  city                 String?   @db.VarChar(128)
-  graduationYear       String?   @map("graduation_year") @db.VarChar(16)
   experienceLevel      String?   @default("Fresher") @map("experience_level") @db.VarChar(64)
   jobReadinessScore    Int?      @default(0) @map("job_readiness_score")
-  readinessLevel       String?   @default("In Progress") @map("readiness_level") @db.VarChar(128)
   readinessStatus      String?   @default("In Progress") @map("readiness_status") @db.VarChar(64)
   aptitudeScore        Int?      @default(0) @map("aptitude_score")
   reasoningScore       Int?      @default(0) @map("reasoning_score")
   technicalScore       Int?      @default(0) @map("technical_score")
+  verbalScore          Int?      @default(0) @map("verbal_score")
   assessmentsCompleted Int?      @default(0) @map("assessments_completed")
+  tenthMarks           Decimal?  @map("tenth_marks") @db.Decimal(5, 2)
+  twelfthDiplomaMarks  Decimal?  @map("twelfth_diploma_marks") @db.Decimal(5, 2)
+  graduationPercentage Decimal?  @map("graduation_percentage") @db.Decimal(5, 2)
+  backlogs             Int?      @default(0) @map("backlogs")
   createdAt            DateTime? @default(now()) @map("created_at") @db.Timestamptz
 
   @@map("candidates")
@@ -430,4 +426,26 @@ model Submission {
   createdAt       DateTime? @default(now()) @map("created_at") @db.Timestamptz
 
   @@map("submissions")
+}
+
+// 21. company_eligibility_criteria — Criteria and cutoffs for company job roles
+model CompanyEligibilityCriteria {
+  id                        String    @id @db.VarChar(64)
+  company                   String    @db.VarChar(128)
+  role                      String    @db.VarChar(128)
+  tenthPercentage           Decimal?  @default(60.00) @map("tenth_percentage") @db.Decimal(5, 2)
+  twelfthDiplomaPercentage  Decimal?  @default(60.00) @map("twelfth_diploma_percentage") @db.Decimal(5, 2)
+  graduationPercentage      Decimal?  @default(60.00) @map("graduation_percentage") @db.Decimal(5, 2)
+  maxBacklogs               Int?      @default(0) @map("max_backlogs")
+  aptitudeCutoff            Int?      @default(60) @map("aptitude_cutoff")
+  reasoningCutoff           Int?      @default(60) @map("reasoning_cutoff")
+  verbalCutoff              Int?      @default(60) @map("verbal_cutoff")
+  technicalCutoff           Int?      @default(60) @map("technical_cutoff")
+  codingCutoff              Int?      @default(50) @map("coding_cutoff")
+  overallReadinessCutoff    Int?      @default(60) @map("overall_readiness_cutoff")
+  createdAt                 DateTime? @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt                 DateTime? @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@unique([company, role], map: "uq_company_role")
+  @@map("company_eligibility_criteria")
 }

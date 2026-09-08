@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { ScoreRing } from '../../components/common/ScoreRing';
+import { AcademicMarksModal } from '../../components/candidate/AcademicMarksModal';
 import {
   Sparkles,
   ArrowRight,
@@ -51,6 +52,21 @@ export const CandidateDashboard = () => {
     navigateTo,
     recommendations
   } = useApp();
+
+  const [targetAsm, setTargetAsm] = useState(null);
+  const [isAcademicModalOpen, setIsAcademicModalOpen] = useState(false);
+
+  const handleStartAttempt = (asm) => {
+    setTargetAsm(asm);
+    setIsAcademicModalOpen(true);
+  };
+
+  const handleProceedAssessment = () => {
+    setIsAcademicModalOpen(false);
+    if (targetAsm) {
+      startAssessment(targetAsm.id);
+    }
+  };
 
   // Performance Trend Line Chart Data
   const trendData = {
@@ -164,28 +180,36 @@ export const CandidateDashboard = () => {
           </div>
 
           {/* Subscore Breakdown */}
-          <div className="grid grid-cols-3 gap-3 pt-4 border-t border-slate-100 text-center">
-            <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-100">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-4 border-t border-slate-100 text-center">
+            <div className="p-2 bg-slate-50 rounded-xl border border-slate-100">
               <span className="text-[10px] font-semibold text-slate-600 block uppercase">Aptitude</span>
-              <span className="text-lg font-extrabold text-slate-900">{currentUser?.aptitudeScore || 82}%</span>
+              <span className="text-base font-extrabold text-slate-900">{currentUser?.aptitudeScore ?? 0}%</span>
               <div className="w-full bg-slate-200 h-1 rounded-full mt-1.5 overflow-hidden">
-                <div className="bg-brand-500 h-full rounded-full" style={{ width: `${currentUser?.aptitudeScore || 82}%` }} />
+                <div className="bg-brand-500 h-full rounded-full" style={{ width: `${currentUser?.aptitudeScore ?? 0}%` }} />
               </div>
             </div>
 
-            <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-100">
+            <div className="p-2 bg-slate-50 rounded-xl border border-slate-100">
               <span className="text-[10px] font-semibold text-slate-600 block uppercase">Reasoning</span>
-              <span className="text-lg font-extrabold text-slate-900">{currentUser?.reasoningScore || 74}%</span>
+              <span className="text-base font-extrabold text-slate-900">{currentUser?.reasoningScore ?? 0}%</span>
               <div className="w-full bg-slate-200 h-1 rounded-full mt-1.5 overflow-hidden">
-                <div className="bg-purple-500 h-full rounded-full" style={{ width: `${currentUser?.reasoningScore || 74}%` }} />
+                <div className="bg-purple-500 h-full rounded-full" style={{ width: `${currentUser?.reasoningScore ?? 0}%` }} />
               </div>
             </div>
 
-            <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-100">
+            <div className="p-2 bg-slate-50 rounded-xl border border-slate-100">
               <span className="text-[10px] font-semibold text-slate-600 block uppercase">Technical</span>
-              <span className="text-lg font-extrabold text-slate-900">{currentUser?.technicalScore || 78}%</span>
+              <span className="text-base font-extrabold text-slate-900">{currentUser?.technicalScore ?? 0}%</span>
               <div className="w-full bg-slate-200 h-1 rounded-full mt-1.5 overflow-hidden">
-                <div className="bg-emerald-500 h-full rounded-full" style={{ width: `${currentUser?.technicalScore || 78}%` }} />
+                <div className="bg-emerald-500 h-full rounded-full" style={{ width: `${currentUser?.technicalScore ?? 0}%` }} />
+              </div>
+            </div>
+
+            <div className="p-2 bg-slate-50 rounded-xl border border-slate-100">
+              <span className="text-[10px] font-semibold text-slate-600 block uppercase">Verbal</span>
+              <span className="text-base font-extrabold text-slate-900">{currentUser?.verbalScore ?? 0}%</span>
+              <div className="w-full bg-slate-200 h-1 rounded-full mt-1.5 overflow-hidden">
+                <div className="bg-amber-500 h-full rounded-full" style={{ width: `${currentUser?.verbalScore ?? 0}%` }} />
               </div>
             </div>
           </div>
@@ -216,7 +240,7 @@ export const CandidateDashboard = () => {
                 </div>
 
                 <button
-                  onClick={() => startAssessment(inProgressAssessment.id)}
+                  onClick={() => handleStartAttempt(inProgressAssessment)}
                   className="self-start sm:self-center px-5 py-2.5 bg-white text-brand-700 hover:bg-brand-50 rounded-xl text-xs font-extrabold shadow-sm transition-all flex items-center gap-2 group flex-shrink-0"
                 >
                   <span>Continue Assessment</span>
@@ -333,7 +357,7 @@ export const CandidateDashboard = () => {
                     {isCompleted ? (
                       <div className="flex gap-2">
                         <button
-                          onClick={() => startAssessment(asm.id)}
+                          onClick={() => handleStartAttempt(asm)}
                           className="py-2 px-3 bg-brand-50 hover:bg-brand-100 text-brand-700 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1"
                           title="Retake test"
                         >
@@ -342,7 +366,7 @@ export const CandidateDashboard = () => {
                       </div>
                     ) : isInProgress ? (
                       <button
-                        onClick={() => startAssessment(asm.id)}
+                        onClick={() => handleStartAttempt(asm)}
                         className="w-full py-2 px-3 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-xs"
                       >
                         <Play className="w-3.5 h-3.5 fill-white" />
@@ -350,7 +374,7 @@ export const CandidateDashboard = () => {
                       </button>
                     ) : (
                       <button
-                        onClick={() => startAssessment(asm.id)}
+                        onClick={() => handleStartAttempt(asm)}
                         className="w-full py-2 px-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5"
                       >
                         <Play className="w-3.5 h-3.5 fill-white" />
@@ -365,7 +389,13 @@ export const CandidateDashboard = () => {
         )}
       </div>
 
-
+      {/* Academic Marks Modal */}
+      <AcademicMarksModal
+        isOpen={isAcademicModalOpen}
+        onClose={() => setIsAcademicModalOpen(false)}
+        onProceed={handleProceedAssessment}
+        assessmentTitle={targetAsm?.title}
+      />
 
     </div>
   );

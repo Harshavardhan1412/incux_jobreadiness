@@ -30,33 +30,29 @@ const schemaSQL = `
       city VARCHAR(128),
       graduation_year INT,
       experience_level VARCHAR(64),
-      resume_url TEXT,
+      tenth_marks NUMERIC(5,2),
+      twelfth_diploma_marks NUMERIC(5,2),
+      graduation_percentage NUMERIC(5,2),
+      backlogs INT DEFAULT 0,
       created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );
 
-    -- 3. candidates: Candidate profile, readiness metrics & assessment performance
+    -- 3. candidates: Candidate readiness metrics & assessment performance
     CREATE TABLE IF NOT EXISTS candidates (
       id VARCHAR(64) PRIMARY KEY,
-      name VARCHAR(255) NOT NULL,
-      email VARCHAR(255) UNIQUE NOT NULL,
-      mobile VARCHAR(32),
-      college VARCHAR(255),
-      degree VARCHAR(128),
-      branch VARCHAR(128),
-      specialization VARCHAR(128),
-      country VARCHAR(128) DEFAULT 'India',
-      state VARCHAR(128),
-      city VARCHAR(128),
-      graduation_year VARCHAR(16),
       experience_level VARCHAR(64) DEFAULT 'Fresher',
-      job_readiness_score INT DEFAULT 0,
-      readiness_level VARCHAR(128) DEFAULT 'In Progress',
       readiness_status VARCHAR(64) DEFAULT 'In Progress',
+      job_readiness_score INT DEFAULT 0,
       aptitude_score INT DEFAULT 0,
       reasoning_score INT DEFAULT 0,
       technical_score INT DEFAULT 0,
+      verbal_score INT DEFAULT 0,
       assessments_completed INT DEFAULT 0,
+      tenth_marks NUMERIC(5,2),
+      twelfth_diploma_marks NUMERIC(5,2),
+      graduation_percentage NUMERIC(5,2),
+      backlogs INT DEFAULT 0,
       created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -154,6 +150,26 @@ const schemaSQL = `
       created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
       CONSTRAINT uq_assessment_question UNIQUE (assessment_id, question_id)
     );
+
+    -- 9. company_eligibility_criteria: Standardized company eligibility criteria and cutoffs
+    CREATE TABLE IF NOT EXISTS company_eligibility_criteria (
+      id VARCHAR(64) PRIMARY KEY,
+      company VARCHAR(128) NOT NULL,
+      role VARCHAR(128) NOT NULL,
+      tenth_percentage NUMERIC(5,2) DEFAULT 60.00,
+      twelfth_diploma_percentage NUMERIC(5,2) DEFAULT 60.00,
+      graduation_percentage NUMERIC(5,2) DEFAULT 60.00,
+      max_backlogs INT DEFAULT 0,
+      aptitude_cutoff INT DEFAULT 60,
+      reasoning_cutoff INT DEFAULT 60,
+      verbal_cutoff INT DEFAULT 60,
+      technical_cutoff INT DEFAULT 60,
+      coding_cutoff INT DEFAULT 50,
+      overall_readiness_cutoff INT DEFAULT 60,
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT uq_company_role UNIQUE (company, role)
+    );
 `;
 
 export const initSchema = async () => {
@@ -189,33 +205,22 @@ export const initSchema = async () => {
     await client.query(schemaSQL);
     console.log('✅ Production Database Tables synchronized successfully.');
 
-    // 3. Backfill candidate_profiles from candidates & users table
+    // 3. Backfill candidate_profiles from users table if missing
     await client.query(`
       INSERT INTO candidate_profiles (
-        id, user_id, name, email, mobile, college, degree, branch,
-        specialization, country, state, city, graduation_year, experience_level, created_at
+        id, user_id, name, email, created_at
       )
       SELECT 
-        c.id,
-        COALESCE(u.id, c.id),
-        c.name,
-        c.email,
-        c.mobile,
-        c.college,
-        c.degree,
-        c.branch,
-        c.specialization,
-        COALESCE(c.country, 'India'),
-        c.state,
-        c.city,
-        NULLIF(regexp_replace(c.graduation_year::text, '\\D', '', 'g'), '')::INT,
-        c.experience_level,
-        c.created_at
-      FROM candidates c
-      LEFT JOIN users u ON LOWER(c.email) = LOWER(u.email)
+        u.id,
+        u.id,
+        u.name,
+        u.email,
+        u.created_at
+      FROM users u
+      WHERE u.role = 'candidate'
       ON CONFLICT (id) DO NOTHING;
     `);
-    console.log('✅ candidate_profiles table retrieved, verified, and backfilled.');
+    console.log('✅ candidate_profiles table verified.');
 
     // 4. Safe column migrations for active tables
     await client.query(`
@@ -227,12 +232,37 @@ export const initSchema = async () => {
       ALTER TABLE candidate_profiles ADD COLUMN IF NOT EXISTS state VARCHAR(128);
       ALTER TABLE candidate_profiles ADD COLUMN IF NOT EXISTS city VARCHAR(128);
       ALTER TABLE candidate_profiles ADD COLUMN IF NOT EXISTS resume_url TEXT;
+      ALTER TABLE candidate_profiles ADD COLUMN IF NOT EXISTS tenth_marks NUMERIC(5,2);
+      ALTER TABLE candidate_profiles ADD COLUMN IF NOT EXISTS twelfth_diploma_marks NUMERIC(5,2);
+      ALTER TABLE candidate_profiles ADD COLUMN IF NOT EXISTS graduation_percentage NUMERIC(5,2);
+      ALTER TABLE candidate_profiles ADD COLUMN IF NOT EXISTS backlogs INT DEFAULT 0;
       ALTER TABLE candidate_profiles ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP;
 
-      ALTER TABLE candidates ADD COLUMN IF NOT EXISTS specialization VARCHAR(128);
-      ALTER TABLE candidates ADD COLUMN IF NOT EXISTS country VARCHAR(128) DEFAULT 'India';
-      ALTER TABLE candidates ADD COLUMN IF NOT EXISTS state VARCHAR(128);
-      ALTER TABLE candidates ADD COLUMN IF NOT EXISTS city VARCHAR(128);
+      ALTER TABLE candidates ADD COLUMN IF NOT EXISTS job_readiness_score INT DEFAULT 0;
+      ALTER TABLE candidates ADD COLUMN IF NOT EXISTS aptitude_score INT DEFAULT 0;
+      ALTER TABLE candidates ADD COLUMN IF NOT EXISTS reasoning_score INT DEFAULT 0;
+      ALTER TABLE candidates ADD COLUMN IF NOT EXISTS technical_score INT DEFAULT 0;
+      ALTER TABLE candidates ADD COLUMN IF NOT EXISTS verbal_score INT DEFAULT 0;
+      ALTER TABLE candidates ADD COLUMN IF NOT EXISTS tenth_marks NUMERIC(5,2);
+      ALTER TABLE candidates ADD COLUMN IF NOT EXISTS twelfth_diploma_marks NUMERIC(5,2);
+      ALTER TABLE candidates ADD COLUMN IF NOT EXISTS graduation_percentage NUMERIC(5,2);
+      ALTER TABLE candidates ADD COLUMN IF NOT EXISTS backlogs INT DEFAULT 0;
+      ALTER TABLE candidates DROP COLUMN IF EXISTS readiness_level;
+      ALTER TABLE candidates DROP COLUMN IF EXISTS country;
+      ALTER TABLE candidates DROP COLUMN IF EXISTS state;
+      ALTER TABLE candidates DROP COLUMN IF EXISTS city;
+      ALTER TABLE candidates DROP COLUMN IF EXISTS primary_skill;
+      ALTER TABLE candidates DROP COLUMN IF EXISTS name;
+      ALTER TABLE candidates DROP COLUMN IF EXISTS email;
+      ALTER TABLE candidates DROP COLUMN IF EXISTS mobile;
+      ALTER TABLE candidates DROP COLUMN IF EXISTS college;
+      ALTER TABLE candidates DROP COLUMN IF EXISTS degree;
+      ALTER TABLE candidates DROP COLUMN IF EXISTS branch;
+      ALTER TABLE candidates DROP COLUMN IF EXISTS graduation_year;
+      ALTER TABLE candidates DROP COLUMN IF EXISTS specialization;
+      ALTER TABLE candidates DROP COLUMN IF EXISTS tenth_certificate;
+      ALTER TABLE candidates DROP COLUMN IF EXISTS twelfth_certificate;
+      ALTER TABLE candidates DROP COLUMN IF EXISTS resume_file;
 
       ALTER TABLE assessments ADD COLUMN IF NOT EXISTS total_marks INT DEFAULT 100;
       ALTER TABLE assessments ADD COLUMN IF NOT EXISTS passing_score INT DEFAULT 65;
@@ -268,12 +298,50 @@ export const initSchema = async () => {
     `);
     console.log('✅ Safe column alterations applied.');
 
+    // 4b. Sync latest assessment scores to candidates table (job readiness, aptitude, reasoning, technical, verbal)
+    await client.query(`
+      UPDATE candidates c
+      SET 
+        job_readiness_score = COALESCE(sub.latest_score, c.job_readiness_score, 0),
+        aptitude_score = COALESCE(
+          NULLIF((sub.category_scores->>'aptitude'), '')::int,
+          NULLIF((sub.category_scores->>'Aptitude'), '')::int,
+          c.aptitude_score,
+          0
+        ),
+        reasoning_score = COALESCE(
+          NULLIF((sub.category_scores->>'reasoning'), '')::int,
+          NULLIF((sub.category_scores->>'Reasoning'), '')::int,
+          c.reasoning_score,
+          0
+        ),
+        technical_score = COALESCE(
+          NULLIF((sub.category_scores->>'technical'), '')::int,
+          NULLIF((sub.category_scores->>'Technical'), '')::int,
+          c.technical_score,
+          0
+        ),
+        verbal_score = COALESCE(
+          NULLIF((sub.category_scores->>'verbal'), '')::int,
+          NULLIF((sub.category_scores->>'Verbal'), '')::int,
+          NULLIF((sub.category_scores->>'english'), '')::int,
+          0
+        )
+      FROM (
+        SELECT DISTINCT ON (candidate_id) candidate_id, score AS latest_score, category_scores
+        FROM assessment_submissions
+        WHERE candidate_id IS NOT NULL AND category_scores IS NOT NULL AND category_scores::text != '{}'
+        ORDER BY candidate_id, created_at DESC
+      ) sub
+      WHERE c.id = sub.candidate_id;
+    `);
+
     // 5. Performance Indexes for Scalability & High-Concurrency Load
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
       CREATE INDEX IF NOT EXISTS idx_candidate_profiles_user_id ON candidate_profiles(user_id);
       CREATE INDEX IF NOT EXISTS idx_candidate_profiles_email ON candidate_profiles(email);
-      CREATE INDEX IF NOT EXISTS idx_candidates_email ON candidates(email);
+      DROP INDEX IF EXISTS idx_candidates_email;
       CREATE INDEX IF NOT EXISTS idx_questions_category_diff ON questions(category, difficulty);
       CREATE INDEX IF NOT EXISTS idx_submissions_candidate_id ON assessment_submissions(candidate_id);
       CREATE INDEX IF NOT EXISTS idx_submissions_cand_asm ON assessment_submissions(candidate_id, assessment_id);
@@ -302,6 +370,53 @@ export const initSchema = async () => {
       ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash, role = 'admin', status = 'active';
     `, [adminHash]);
     console.log('✅ Permanent single admin credential verified (admin@readysetjob.com).');
+
+    // 7. Seed standard company eligibility criteria
+    const criteria = [
+      ['cec_1', 'TCS', 'Ninja', 60, 60, 60, 0, 60, 60, 60, 55, 50, 60],
+      ['cec_2', 'TCS', 'Digital', 60, 60, 60, 0, 70, 70, 65, 70, 70, 70],
+      ['cec_3', 'TCS', 'Prime', 60, 60, 60, 0, 75, 75, 70, 80, 80, 75],
+      ['cec_4', 'Infosys', 'SE', 60, 60, 60, 0, 60, 60, 60, 60, 60, 60],
+      ['cec_5', 'Infosys', 'DSE', 60, 60, 60, 0, 65, 65, 60, 70, 70, 68],
+      ['cec_6', 'Infosys', 'Specialist Programmer', 60, 60, 60, 0, 70, 70, 60, 75, 80, 75],
+      ['cec_7', 'Capgemini', 'Analyst', 60, 60, 60, 0, 60, 60, 60, 60, 55, 60],
+      ['cec_8', 'Capgemini', 'Software Engineer', 60, 60, 60, 0, 65, 65, 60, 65, 65, 65],
+      ['cec_9', 'Accenture', 'ASE', 60, 60, 60, 0, 60, 60, 60, 65, 60, 65],
+      ['cec_10', 'Accenture', 'Advanced ASE', 60, 60, 60, 0, 65, 65, 60, 70, 70, 68],
+      ['cec_11', 'Wipro', 'Project Engineer', 60, 60, 60, 0, 60, 60, 60, 60, 55, 60],
+      ['cec_12', 'Wipro', 'Turbo', 60, 60, 60, 0, 65, 65, 60, 70, 70, 68],
+      ['cec_13', 'Cognizant', 'GenC', 60, 60, 60, 0, 60, 60, 60, 60, 60, 60],
+      ['cec_14', 'Cognizant', 'GenC Pro', 60, 60, 60, 0, 65, 65, 60, 70, 70, 68],
+      ['cec_15', 'Cognizant', 'GenC Next', 60, 60, 60, 0, 70, 70, 65, 75, 75, 72],
+      ['cec_16', 'HCLTech', 'Graduate Engineer', 60, 60, 60, 0, 60, 60, 60, 65, 60, 62],
+      ['cec_17', 'Tech Mahindra', 'Entry Level', 60, 60, 60, 0, 60, 60, 60, 60, 55, 60],
+      ['cec_18', 'LTIMindtree', 'Entry Level', 60, 60, 60, 0, 60, 60, 60, 65, 60, 62],
+      ['cec_19', 'IBM', 'Associate Developer', 65, 65, 65, 0, 65, 65, 65, 70, 65, 68],
+      ['cec_20', 'Deloitte', 'Analyst', 60, 60, 60, 0, 65, 65, 65, 65, 60, 65]
+    ];
+
+    for (const c of criteria) {
+      await client.query(`
+        INSERT INTO company_eligibility_criteria (
+          id, company, role, tenth_percentage, twelfth_diploma_percentage, graduation_percentage,
+          max_backlogs, aptitude_cutoff, reasoning_cutoff, verbal_cutoff, technical_cutoff,
+          coding_cutoff, overall_readiness_cutoff
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        ON CONFLICT (company, role) DO UPDATE SET
+          tenth_percentage = EXCLUDED.tenth_percentage,
+          twelfth_diploma_percentage = EXCLUDED.twelfth_diploma_percentage,
+          graduation_percentage = EXCLUDED.graduation_percentage,
+          max_backlogs = EXCLUDED.max_backlogs,
+          aptitude_cutoff = EXCLUDED.aptitude_cutoff,
+          reasoning_cutoff = EXCLUDED.reasoning_cutoff,
+          verbal_cutoff = EXCLUDED.verbal_cutoff,
+          technical_cutoff = EXCLUDED.technical_cutoff,
+          coding_cutoff = EXCLUDED.coding_cutoff,
+          overall_readiness_cutoff = EXCLUDED.overall_readiness_cutoff,
+          updated_at = CURRENT_TIMESTAMP;
+      `, c);
+    }
+    console.log('✅ Company eligibility criteria synchronized successfully.');
   } catch (err) {
     console.error('❌ Schema initialization error:', err.message);
     throw err;

@@ -4,7 +4,6 @@ import ScoreOverview from '../../components/analytics/ScoreOverview';
 import ConceptAnalysis from '../../components/analytics/ConceptAnalysis';
 import CompanyEligibility from '../../components/analytics/CompanyEligibility';
 import ImprovementRoadmap from '../../components/analytics/ImprovementRoadmap';
-import PeerComparison from '../../components/analytics/PeerComparison';
 import { ScoreRing } from '../../components/common/ScoreRing';
 import confetti from 'canvas-confetti';
 import { mockStudent } from '../../data/analyticsData';
@@ -46,11 +45,29 @@ export default function CandidateAnalyticsPage() {
     const name = currentUser?.name || mockStudent.name;
     const email = currentUser?.email || mockStudent.email;
 
+    // Academic marks from candidate profile
+    const tenthMarks = currentUser?.tenthMarks ?? currentUser?.tenth_marks ?? 0;
+    const twelfthDiplomaMarks = currentUser?.twelfthDiplomaMarks ?? currentUser?.twelfth_diploma_marks ?? 0;
+    const graduationPercentage = currentUser?.graduationPercentage ?? currentUser?.graduation_percentage ?? 0;
+    const backlogs = currentUser?.backlogs ?? 0;
+
     if (!latestResult) {
       return {
         ...defaultData,
         name,
         email,
+        tenthMarks,
+        twelfthDiplomaMarks,
+        graduationPercentage,
+        backlogs,
+        overallScore: Number(currentUser?.jobReadinessScore ?? defaultData.overallScore),
+        jobReadinessScore: Number(currentUser?.jobReadinessScore ?? defaultData.overallScore),
+        categoryScores: {
+          aptitude: Number(currentUser?.aptitudeScore ?? 0),
+          reasoning: Number(currentUser?.reasoningScore ?? 0),
+          technical: Number(currentUser?.technicalScore ?? 0),
+          verbal: Number(currentUser?.verbalScore ?? 0),
+        },
       };
     }
 
@@ -154,7 +171,18 @@ export default function CandidateAnalyticsPage() {
       ...defaultData,
       name,
       email,
+      tenthMarks,
+      twelfthDiplomaMarks,
+      graduationPercentage,
+      backlogs,
       overallScore: score,
+      jobReadinessScore: score,
+      categoryScores: {
+        aptitude: Number(catScores.aptitude ?? currentUser?.aptitudeScore ?? 0),
+        reasoning: Number(catScores.reasoning ?? currentUser?.reasoningScore ?? 0),
+        technical: Number(catScores.technical ?? currentUser?.technicalScore ?? 0),
+        verbal: Number(catScores.verbal ?? catScores.english ?? currentUser?.verbalScore ?? 0),
+      },
       percentile,
       rank,
       examAttempts: [...prevAttempts, currentAttempt],
@@ -167,7 +195,6 @@ export default function CandidateAnalyticsPage() {
     concepts: useRef(null),
     companies: useRef(null),
     roadmap: useRef(null),
-    peers: useRef(null),
   };
 
   const handleNavigate = (section) => {
@@ -181,7 +208,6 @@ export default function CandidateAnalyticsPage() {
     { id: 'concepts', label: 'Concept Analysis' },
     { id: 'companies', label: 'Company Eligibility' },
     { id: 'roadmap', label: 'Improvement Roadmap' },
-    { id: 'peers', label: 'Peer Comparison' },
   ];
 
   const getStatusBadge = (s) => {
@@ -475,12 +501,6 @@ export default function CandidateAnalyticsPage() {
 
         <section ref={sectionRefs.roadmap}>
           <ImprovementRoadmap student={studentData} />
-        </section>
-
-        <hr className="border-slate-200/80" />
-
-        <section ref={sectionRefs.peers}>
-          <PeerComparison student={studentData} />
         </section>
       </div>
 

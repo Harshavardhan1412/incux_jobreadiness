@@ -54,6 +54,12 @@ export const submitAssessment = async (req, res) => {
       ? clientTopicBreakdown
       : evaluation.topicBreakdown;
 
+    const catScores = finalCategoryScores || {};
+    const finalAptitudeScore = Number(catScores.aptitude ?? catScores.Aptitude ?? 0);
+    const finalReasoningScore = Number(catScores.reasoning ?? catScores.Reasoning ?? 0);
+    const finalTechnicalScore = Number(catScores.technical ?? catScores.Technical ?? 0);
+    const finalVerbalScore = Number(catScores.verbal ?? catScores.Verbal ?? catScores.english ?? 0);
+
     // 2. Check for existing submission by candidate for this assessment
     const existingSubmission = await client.query(
       `SELECT id, score, accuracy, created_at FROM assessment_submissions 
@@ -100,11 +106,14 @@ export const submitAssessment = async (req, res) => {
       await client.query(
         `UPDATE candidates SET
            job_readiness_score = $1,
-           readiness_level = $2,
+           aptitude_score = $2,
+           reasoning_score = $3,
+           technical_score = $4,
+           verbal_score = $5,
            readiness_status = 'Completed',
            assessments_completed = COALESCE(assessments_completed, 0) + 1
-         WHERE id = $3 OR LOWER(email) = LOWER($4)`,
-        [finalScore, readinessStatus, candidateId, email || '']
+         WHERE id = $6`,
+        [finalScore, finalAptitudeScore, finalReasoningScore, finalTechnicalScore, finalVerbalScore, candidateId]
       );
 
       await client.query('COMMIT');
@@ -149,17 +158,18 @@ export const submitAssessment = async (req, res) => {
       ]
     );
 
-    // 5. Update candidate overall score and status in candidates table
-    const readinessStatus = finalScore >= 65 ? 'Job Ready' : 'In Progress';
-
+    // 5. Update candidate status and actual category scores in candidates table
     await client.query(
       `UPDATE candidates SET
          job_readiness_score = $1,
-         readiness_level = $2,
+         aptitude_score = $2,
+         reasoning_score = $3,
+         technical_score = $4,
+         verbal_score = $5,
          readiness_status = 'Completed',
          assessments_completed = COALESCE(assessments_completed, 0) + 1
-       WHERE id = $3 OR LOWER(email) = LOWER($4)`,
-      [finalScore, readinessStatus, candidateId, email || '']
+       WHERE id = $6`,
+      [finalScore, finalAptitudeScore, finalReasoningScore, finalTechnicalScore, finalVerbalScore, candidateId]
     );
 
     await client.query('COMMIT');

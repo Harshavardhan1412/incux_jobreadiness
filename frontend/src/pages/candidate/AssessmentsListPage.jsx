@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { DeviceCheckModal } from '../../components/candidate/DeviceCheckModal';
+import { AcademicMarksModal } from '../../components/candidate/AcademicMarksModal';
 import {
   ClipboardCheck,
   Clock,
@@ -18,10 +19,16 @@ export const AssessmentsListPage = () => {
   const { assessments, startAssessment, setMediaStream, navigateTo } = useApp();
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [targetAsm, setTargetAsm] = useState(null);
+  const [isAcademicModalOpen, setIsAcademicModalOpen] = useState(false);
   const [isDeviceModalOpen, setIsDeviceModalOpen] = useState(false);
 
-  const handleOpenDeviceCheck = (asm) => {
+  const handleStartAttempt = (asm) => {
     setTargetAsm(asm);
+    setIsAcademicModalOpen(true);
+  };
+
+  const handleAcademicMarksVerified = () => {
+    setIsAcademicModalOpen(false);
     setIsDeviceModalOpen(true);
   };
 
@@ -158,7 +165,7 @@ export const AssessmentsListPage = () => {
                       <span>View Analysis</span>
                     </button>
                     <button
-                      onClick={() => handleOpenDeviceCheck(asm)}
+                      onClick={() => handleStartAttempt(asm)}
                       className="py-2.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1"
                       title="Retake test"
                     >
@@ -167,7 +174,7 @@ export const AssessmentsListPage = () => {
                   </div>
                 ) : isInProgress ? (
                   <button
-                    onClick={() => handleOpenDeviceCheck(asm)}
+                    onClick={() => handleStartAttempt(asm)}
                     className="w-full py-2.5 px-3 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-md shadow-brand-600/20"
                   >
                     <Play className="w-3.5 h-3.5 fill-white" />
@@ -175,7 +182,7 @@ export const AssessmentsListPage = () => {
                   </button>
                 ) : (
                   <button
-                    onClick={() => handleOpenDeviceCheck(asm)}
+                    onClick={() => handleStartAttempt(asm)}
                     className="w-full py-2.5 px-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-xs"
                   >
                     <Play className="w-3.5 h-3.5 fill-white" />
@@ -188,6 +195,14 @@ export const AssessmentsListPage = () => {
         })}
         </div>
       )}
+
+      {/* Academic Marks Verification Modal */}
+      <AcademicMarksModal
+        isOpen={isAcademicModalOpen}
+        onClose={() => setIsAcademicModalOpen(false)}
+        onProceed={handleAcademicMarksVerified}
+        assessmentTitle={targetAsm?.title}
+      />
 
       {/* Hardware Device Check Modal */}
       <DeviceCheckModal

@@ -46,6 +46,8 @@ export const api = {
     getAll: () => request('GET', '/candidates'),
     getById: (id) => request('GET', `/candidates/${id}`),
     update: (id, body) => request('PUT', `/candidates/${id}`, body),
+    updateAcademicMarks: (id, body) => request('PUT', `/candidates/${id}/academic-marks`, body),
+    getCompanyEligibilityCriteria: () => request('GET', '/candidates/company-eligibility/criteria'),
     delete: (id) => request('DELETE', `/candidates/${id}`),
     submissions: (id) => request('GET', `/candidates/${id}/submissions`),
   },
@@ -86,3 +88,5 @@ export const api = {
   saveToken: (token) => localStorage.setItem('rsj_token', token),
   clearToken: () => localStorage.removeItem('rsj_token'),
 };
+
+export default api;

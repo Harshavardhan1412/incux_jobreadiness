@@ -1176,6 +1176,10 @@ export const AppProvider = ({ children }) => {
           registeredAt: c.created_at ? new Date(c.created_at).toISOString().split('T')[0] : '2026-08-28',
           overallScore: Number(c.overall_score ?? c.job_readiness_score ?? 0),
           jobReadinessScore: Number(c.overall_score ?? c.job_readiness_score ?? 0),
+          aptitudeScore: Number(c.aptitude_score ?? 0),
+          reasoningScore: Number(c.reasoning_score ?? 0),
+          technicalScore: Number(c.technical_score ?? 0),
+          verbalScore: Number(c.verbal_score ?? 0),
           assessmentsCompleted: Number(c.assessments_completed ?? 0)
         }));
 

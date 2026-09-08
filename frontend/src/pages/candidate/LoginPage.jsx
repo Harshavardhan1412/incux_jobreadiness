@@ -37,7 +37,7 @@ export const LoginPage = () => {
   const handleQuickLogin = (sampleEmail) => {
     setEmail(sampleEmail);
     setPassword('Password@123');
-    loginCandidate(sampleEmail);
+    loginCandidate(sampleEmail, 'Password@123');
   };
 
   return (
