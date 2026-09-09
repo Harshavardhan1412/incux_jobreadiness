@@ -1,13 +1,17 @@
 import { pool } from '../db/pool.js';
 import crypto from 'crypto';
 
-let questionsCache = null;
-let lastQuestionsFetch = 0;
+let questionsCacheAdmin = null;
+let lastAdminFetch = 0;
+let questionsCacheCandidate = null;
+let lastCandidateFetch = 0;
 const CACHE_TTL_MS = 3000;
 
 export const clearQuestionsCache = () => {
-  questionsCache = null;
-  lastQuestionsFetch = 0;
+  questionsCacheAdmin = null;
+  lastAdminFetch = 0;
+  questionsCacheCandidate = null;
+  lastCandidateFetch = 0;
 };
 
 // GET /api/questions
@@ -15,16 +19,24 @@ export const getAllQuestions = async (req, res) => {
   try {
     const { category, difficulty, topic } = req.query;
     const isFiltered = category || difficulty || topic;
+    const isAdmin = req.user?.role === 'admin';
 
     const now = Date.now();
-    if (!isFiltered && questionsCache && (now - lastQuestionsFetch < CACHE_TTL_MS)) {
-      return res.json(questionsCache);
+    if (!isFiltered) {
+      if (isAdmin && questionsCacheAdmin && (now - lastAdminFetch < CACHE_TTL_MS)) {
+        return res.json(questionsCacheAdmin);
+      }
+      if (!isAdmin && questionsCacheCandidate && (now - lastCandidateFetch < CACHE_TTL_MS)) {
+        return res.json(questionsCacheCandidate);
+      }
     }
 
+    // Exam Integrity Protection: Omit answer key & explanation from candidate queries
     let sql = `
       SELECT id, category, topic, difficulty, type, question,
-             code_snippet, language, explanation, marks,
-             time_limit_sec, status, source, options, correct_answer,
+             code_snippet, language, marks, time_limit_sec,
+             status, source, options,
+             ${isAdmin ? 'correct_answer, explanation,' : ''}
              tags, created_at, updated_at
       FROM questions
       WHERE 1=1
@@ -39,8 +51,13 @@ export const getAllQuestions = async (req, res) => {
     const responsePayload = { success: true, data: result.rows, total: result.rowCount };
 
     if (!isFiltered) {
-      questionsCache = responsePayload;
-      lastQuestionsFetch = now;
+      if (isAdmin) {
+        questionsCacheAdmin = responsePayload;
+        lastAdminFetch = now;
+      } else {
+        questionsCacheCandidate = responsePayload;
+        lastCandidateFetch = now;
+      }
     }
 
     res.json(responsePayload);

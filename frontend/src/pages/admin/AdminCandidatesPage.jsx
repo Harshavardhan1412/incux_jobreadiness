@@ -219,8 +219,11 @@ export const AdminCandidatesPage = () => {
                         <Eye className="w-3.5 h-3.5" />
                       </button>
                       <button
-                        onClick={() => {
-                          deleteCandidate(cand.id);
+                        onClick={async () => {
+                          const candName = cand.name || cand.fullName || cand.email || 'this candidate';
+                          if (window.confirm(`Are you sure you want to permanently delete candidate "${candName}"? This will remove their profile and all assessment submissions from the database.`)) {
+                            await deleteCandidate(cand.id);
+                          }
                         }}
                         className="p-1.5 rounded-lg bg-slate-100 hover:bg-rose-50 hover:text-rose-600 text-slate-600 transition-colors"
                         title="Delete candidate"

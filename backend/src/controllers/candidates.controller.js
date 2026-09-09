@@ -146,14 +146,117 @@ export const updateCandidate = async (req, res) => {
 
 // DELETE /api/candidates/:id
 export const deleteCandidate = async (req, res) => {
+  const candidateId = req.params.id;
+  if (!candidateId) {
+    return res.status(400).json({ success: false, error: 'Candidate ID is required.' });
+  }
+
+  const client = await pool.connect();
   try {
+    await client.query('BEGIN');
+
+    // 1. Locate candidate identifiers across candidate_profiles, users, and candidates
+    const candLookup = await client.query(
+      `SELECT cp.id, cp.user_id, cp.email
+       FROM candidate_profiles cp
+       WHERE cp.id = $1 OR cp.user_id = $1
+       UNION
+       SELECT u.id, u.id as user_id, u.email
+       FROM users u
+       WHERE (u.id = $1 OR LOWER(u.email) = LOWER($1)) AND u.role = 'candidate'
+       UNION
+       SELECT c.id, c.id as user_id, NULL as email
+       FROM candidates c
+       WHERE c.id = $1`,
+      [candidateId]
+    );
+
+    const idsSet = new Set([candidateId]);
+    const emailsSet = new Set();
+
+    candLookup.rows.forEach(row => {
+      if (row.id) idsSet.add(row.id);
+      if (row.user_id) idsSet.add(row.user_id);
+      if (row.email) emailsSet.add(row.email.trim().toLowerCase());
+    });
+
+    const targetIds = Array.from(idsSet);
+    const targetEmails = Array.from(emailsSet);
+
+    // 2. Delete from assessment_submissions
+    let deletedSubmissionsCount = 0;
+    if (targetEmails.length > 0) {
+      const subDelRes = await client.query(
+        `DELETE FROM assessment_submissions 
+         WHERE candidate_id = ANY($1::varchar[]) OR LOWER(candidate_email) = ANY($2::varchar[])`,
+        [targetIds, targetEmails]
+      );
+      deletedSubmissionsCount += subDelRes.rowCount || 0;
+    } else {
+      const subDelRes = await client.query(
+        `DELETE FROM assessment_submissions WHERE candidate_id = ANY($1::varchar[])`,
+        [targetIds]
+      );
+      deletedSubmissionsCount += subDelRes.rowCount || 0;
+    }
+
+    // 3. Delete from legacy submissions
+    await client.query(
+      `DELETE FROM submissions WHERE candidate_id = ANY($1::varchar[])`,
+      [targetIds]
+    );
+
+    // 4. Delete from candidates table
+    await client.query(
+      `DELETE FROM candidates WHERE id = ANY($1::varchar[])`,
+      [targetIds]
+    );
+
+    // 5. Delete from candidate_profiles
+    if (targetEmails.length > 0) {
+      await client.query(
+        `DELETE FROM candidate_profiles 
+         WHERE id = ANY($1::varchar[]) OR user_id = ANY($1::varchar[]) OR LOWER(email) = ANY($2::varchar[])`,
+        [targetIds, targetEmails]
+      );
+    } else {
+      await client.query(
+        `DELETE FROM candidate_profiles 
+         WHERE id = ANY($1::varchar[]) OR user_id = ANY($1::varchar[])`,
+        [targetIds]
+      );
+    }
+
+    // 6. Delete from users table (safety check: ONLY where role = 'candidate', never admin!)
+    if (targetEmails.length > 0) {
+      await client.query(
+        `DELETE FROM users 
+         WHERE (id = ANY($1::varchar[]) OR LOWER(email) = ANY($2::varchar[])) AND role = 'candidate'`,
+        [targetIds, targetEmails]
+      );
+    } else {
+      await client.query(
+        `DELETE FROM users WHERE id = ANY($1::varchar[]) AND role = 'candidate'`,
+        [targetIds]
+      );
+    }
+
+    await client.query('COMMIT');
     clearCandidatesCache();
-    await pool.query('DELETE FROM candidate_profiles WHERE id=$1 OR user_id=$1', [req.params.id]);
-    await pool.query('DELETE FROM candidates WHERE id=$1', [req.params.id]);
-    await pool.query('DELETE FROM users WHERE id=$1', [req.params.id]);
-    res.json({ success: true, message: 'Candidate deleted.' });
+
+    console.log(`✅ Candidate ${candidateId} permanently deleted across candidate_profiles, candidates, users, and submissions.`);
+    return res.json({
+      success: true,
+      message: 'Candidate and all associated records deleted successfully from database.',
+      deletedCandidateId: candidateId,
+      deletedSubmissions: deletedSubmissionsCount
+    });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    await client.query('ROLLBACK').catch(() => {});
+    console.error(`❌ Error deleting candidate ${candidateId}:`, err.message);
+    return res.status(500).json({ success: false, error: err.message });
+  } finally {
+    client.release();
   }
 };
 

@@ -10,6 +10,7 @@ import {
 } from '../controllers/candidates.controller.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { requireRole } from '../middleware/rbac.js';
+import { requireSelfOrAdmin } from '../middleware/ownership.js';
 
 const router = Router();
 
@@ -23,11 +24,11 @@ router.use(authenticateToken);
 router.get('/', requireRole('admin'), getAllCandidates);
 router.delete('/:id', requireRole('admin'), deleteCandidate);
 
-// Candidate details (accessible by profile owner or admin)
-router.get('/:id', getCandidateById);
-router.put('/:id', updateCandidate);
-router.put('/:id/academic-marks', updateAcademicMarks);
-router.get('/:id/submissions', getCandidateSubmissions);
+// Candidate details (strictly accessible by profile owner or admin - IDOR guarded)
+router.get('/:id', requireSelfOrAdmin, getCandidateById);
+router.put('/:id', requireSelfOrAdmin, updateCandidate);
+router.put('/:id/academic-marks', requireSelfOrAdmin, updateAcademicMarks);
+router.get('/:id/submissions', requireSelfOrAdmin, getCandidateSubmissions);
 
 export default router;
 

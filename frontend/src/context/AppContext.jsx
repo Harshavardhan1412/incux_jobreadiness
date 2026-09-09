@@ -814,15 +814,6 @@ export const AppProvider = ({ children }) => {
       ];
     }
 
-    const strongTopics = topicBreakdown.filter(t => t.score >= 70).map(t => `${t.topic} (${t.score}% - ${t.obtainedMarks}/${t.totalMarks} marks)`);
-    const weakTopics = topicBreakdown.filter(t => t.score < 70).map(t => `${t.topic} (${t.score}% - ${t.obtainedMarks}/${t.totalMarks} marks)`);
-
-    const dynamicStrengths = strongTopics.length > 0 ? strongTopics : ['Question attempt consistency', 'Basic problem understanding'];
-    const dynamicWeaknesses = weakTopics.length > 0 ? weakTopics : ['Speed & time management under exam pressure'];
-    const dynamicRecommendations = weakTopics.length > 0
-      ? topicBreakdown.filter(t => t.score < 70).map(t => `Practice topic questions in ${t.topic} (currently scored ${t.obtainedMarks}/${t.totalMarks} marks)`)
-      : ['Continue practicing mock exams to maintain 100% mastery'];
-
     // 1. Send submission data to backend API -> calculated authoritatively on PostgreSQL backend!
     const submissionRes = await api.submissions.submit({
       assessmentId: activeAssessment?.id || 'asm-1',
@@ -853,6 +844,10 @@ export const AppProvider = ({ children }) => {
       if (typeof dbData.correct_count === 'number') correct = dbData.correct_count;
       if (typeof dbData.incorrect_count === 'number') incorrect = dbData.incorrect_count;
       if (typeof dbData.unanswered_count === 'number') unanswered = dbData.unanswered_count;
+      if (typeof dbData.obtained_marks === 'number') totalObtainedMarks = dbData.obtained_marks;
+      else if (typeof dbData.correct_count === 'number') totalObtainedMarks = dbData.correct_count;
+      if (typeof dbData.total_marks === 'number') totalPossibleMarks = dbData.total_marks;
+
       if (dbData.topic_breakdown) {
         try {
           topicBreakdown = typeof dbData.topic_breakdown === 'string'
@@ -869,6 +864,15 @@ export const AppProvider = ({ children }) => {
         } catch (e) {}
       }
     }
+
+    const strongTopics = (topicBreakdown || []).filter(t => (t.score ?? 0) >= 70).map(t => `${t.topic} (${t.score}% - ${t.obtainedMarks ?? t.correctCount ?? 0}/${t.totalMarks ?? t.totalQuestions ?? 0} marks)`);
+    const weakTopics = (topicBreakdown || []).filter(t => (t.score ?? 0) < 70).map(t => `${t.topic} (${t.score}% - ${t.obtainedMarks ?? t.correctCount ?? 0}/${t.totalMarks ?? t.totalQuestions ?? 0} marks)`);
+
+    const dynamicStrengths = strongTopics.length > 0 ? strongTopics : ['Question attempt consistency', 'Basic problem understanding'];
+    const dynamicWeaknesses = weakTopics.length > 0 ? weakTopics : ['Speed & time management under exam pressure'];
+    const dynamicRecommendations = weakTopics.length > 0
+      ? (topicBreakdown || []).filter(t => (t.score ?? 0) < 70).map(t => `Practice topic questions in ${t.topic} (currently scored ${t.obtainedMarks ?? t.correctCount ?? 0}/${t.totalMarks ?? t.totalQuestions ?? 0} marks)`)
+      : ['Continue practicing mock exams to maintain 100% mastery'];
 
     const result = {
       score: calculatedScore,
@@ -1272,9 +1276,25 @@ export const AppProvider = ({ children }) => {
     addToast(`Candidate ${candData.name} added successfully`, 'success');
   };
 
-  const deleteCandidate = (id) => {
-    setCandidatesList(prev => prev.filter(c => c.id !== id));
-    addToast('Candidate removed', 'info');
+  const deleteCandidate = async (id) => {
+    try {
+      const res = await api.candidates.delete(id);
+      if (res && res.ok) {
+        setCandidatesList(prev => {
+          const updated = prev.filter(c => c.id !== id);
+          try {
+            localStorage.setItem('rsj_candidates_list', JSON.stringify(updated));
+          } catch (e) {}
+          return updated;
+        });
+        addToast('Candidate deleted successfully from database', 'success');
+      } else {
+        addToast(res?.error || 'Failed to delete candidate from database', 'error');
+      }
+    } catch (err) {
+      console.error('Error deleting candidate:', err);
+      addToast('Failed to delete candidate from database', 'error');
+    }
   };
 
   return (

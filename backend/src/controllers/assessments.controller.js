@@ -258,9 +258,12 @@ export const deleteAssessment = async (req, res) => {
 // GET /api/assessments/:id/questions
 export const getAssessmentQuestions = async (req, res) => {
   try {
+    const isAdmin = req.user?.role === 'admin';
     const result = await pool.query(
       `SELECT aq.id, aq.assessment_id, aq.question_id, aq.category, aq.topic,
-              aq.question, aq.difficulty, aq.options, aq.correct_answer, aq.marks, aq.created_at
+              aq.question, aq.difficulty, aq.options,
+              ${isAdmin ? 'aq.correct_answer,' : ''}
+              aq.marks, aq.created_at
        FROM assessment_questions aq
        WHERE aq.assessment_id = $1
        ORDER BY aq.created_at ASC`,

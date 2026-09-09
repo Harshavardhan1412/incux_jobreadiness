@@ -23,10 +23,18 @@ export const submitAssessment = async (req, res) => {
     answers
   } = req.body;
 
+  // Prevent candidate identity spoofing (IDOR prevention)
+  if (req.user && req.user.role !== 'admin' && bodyCandId && String(bodyCandId) !== String(req.user.id)) {
+    return res.status(403).json({
+      success: false,
+      error: 'Access denied: You cannot submit an assessment on behalf of another candidate.'
+    });
+  }
+
   const id = `sub-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
-  const candidateId = req.user?.id || bodyCandId || 'cand-user';
-  const email = req.user?.email || candidateEmail || null;
-  const name = req.user?.name || candidateName || 'Candidate Student';
+  const candidateId = (req.user?.role !== 'admin' && req.user?.id) ? req.user.id : (bodyCandId || req.user?.id || 'cand-user');
+  const email = (req.user?.role !== 'admin' && req.user?.email) ? req.user.email : (candidateEmail || req.user?.email || null);
+  const name = (req.user?.role !== 'admin' && req.user?.name) ? req.user.name : (candidateName || req.user?.name || 'Candidate Student');
   const asmId = assessmentId || 'asm-1';
 
   const client = await pool.connect();
@@ -49,10 +57,12 @@ export const submitAssessment = async (req, res) => {
     const finalCorrectCount = evaluation.correctCount;
     const finalIncorrectCount = evaluation.incorrectCount;
     const finalUnansweredCount = evaluation.unansweredCount;
-    const finalCategoryScores = clientCategoryScores || evaluation.categoryScores;
-    const finalTopicBreakdown = (clientTopicBreakdown && clientTopicBreakdown.length > 0)
-      ? clientTopicBreakdown
-      : evaluation.topicBreakdown;
+    const finalCategoryScores = (evaluation.categoryScores && Object.keys(evaluation.categoryScores).length > 0)
+      ? evaluation.categoryScores
+      : (clientCategoryScores || {});
+    const finalTopicBreakdown = (evaluation.topicBreakdown && evaluation.topicBreakdown.length > 0)
+      ? evaluation.topicBreakdown
+      : (clientTopicBreakdown || []);
 
     const catScores = finalCategoryScores || {};
     const finalAptitudeScore = Number(catScores.aptitude ?? catScores.Aptitude ?? 0);
@@ -117,7 +127,14 @@ export const submitAssessment = async (req, res) => {
       );
 
       await client.query('COMMIT');
-      return res.status(200).json({ success: true, data: updateResult.rows[0] });
+      return res.status(200).json({
+        success: true,
+        data: {
+          ...updateResult.rows[0],
+          obtained_marks: evaluation.obtainedMarks,
+          total_marks: evaluation.totalMarks
+        }
+      });
     }
 
     // 3. Insert into assessment_submissions table
@@ -174,7 +191,14 @@ export const submitAssessment = async (req, res) => {
 
     await client.query('COMMIT');
 
-    res.status(201).json({ success: true, data: result.rows[0] });
+    res.status(201).json({
+      success: true,
+      data: {
+        ...result.rows[0],
+        obtained_marks: evaluation.obtainedMarks,
+        total_marks: evaluation.totalMarks
+      }
+    });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     if (err.code === '23505') {
