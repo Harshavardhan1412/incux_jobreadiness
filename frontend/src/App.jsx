@@ -65,7 +65,12 @@ function AppContent() {
     ? currentView
     : (role === 'admin' ? 'admin-candidates' : (role === 'candidate' ? 'dashboard' : 'hero'));
 
-  // 1. PUBLIC GUEST AUTH & LANDING VIEWS (Only when NOT logged in)
+  // 1. LANDING PAGE & HERO VIEW (Always renders JobReadinessHero on root/hero/landing)
+  if (safeView === 'hero' || safeView === 'landing' || safeView === '/') {
+    return <><JobReadinessHero /><ToastContainer /></>;
+  }
+
+  // 2. PUBLIC GUEST AUTH VIEWS (Only when NOT logged in)
   if (role !== 'candidate' && role !== 'admin') {
     if (safeView === 'how-it-works' || safeView === '/how-it-works') return <><HowItWorksPage /><ToastContainer /></>;
     if (safeView === 'login' || safeView === '/login') return <><LoginPage /><ToastContainer /></>;
@@ -81,8 +86,11 @@ function AppContent() {
 
   // 3. ROLE-BASED AUTHENTICATED PORTAL RENDERER
   const renderMainContent = () => {
-    // Admin Portal Module Routes
-    if (role === 'admin') {
+    // Admin View Guard
+    if (safeView.startsWith('admin-')) {
+      if (role !== 'admin') {
+        return <AccessDenied message="Administrator privileges required to access recruiter and admin controls." requiredRole="admin" />;
+      }
       switch (safeView) {
         case 'admin-questions':
           return <AdminQuestionBankPage />;
@@ -96,11 +104,16 @@ function AppContent() {
       }
     }
 
-    // Candidate / Student Portal Module Routes
+    // Candidate / Student Portal Views
+    if (role !== 'candidate' && role !== 'admin') {
+      return <AccessDenied message="Please sign in with a candidate account to access assessments and dashboard." requiredRole="candidate" />;
+    }
+
     switch (safeView) {
       case 'assessments':
         return <AssessmentsListPage />;
       case 'candidate-analytics':
+      case 'results':
         return <CandidateAnalyticsPage />;
       case 'dashboard':
       default:

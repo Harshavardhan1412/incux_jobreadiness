@@ -10,20 +10,23 @@ export default function ConceptAnalysis({ student }) {
     { key: 'aptitude', label: 'Aptitude', color: COLORS.aptitude },
     { key: 'reasoning', label: 'Reasoning', color: COLORS.reasoning },
     { key: 'technical', label: 'Technical', color: COLORS.technical },
-    { key: 'english', label: 'English', color: COLORS.english },
+    { key: 'verbal', fallbackKey: 'english', label: 'Verbal', color: COLORS.verbal || COLORS.english },
   ];
 
   const allTopics = [];
 
   categories.forEach((cat) => {
-    const catData = latestAttempt.categories[cat.key];
+    const catData = latestAttempt.categories[cat.key] || (cat.fallbackKey ? latestAttempt.categories[cat.fallbackKey] : null);
+    if (!catData || !Array.isArray(catData.topics)) return;
     catData.topics.forEach((topic) => {
-      const percent = Math.round((topic.score / topic.maxScore) * 100);
+      const maxScore = Number(topic.maxScore) > 0 ? Number(topic.maxScore) : 1;
+      const score = Number(topic.score || 0);
+      const percent = Math.min(100, Math.max(0, Math.round((score / maxScore) * 100)));
       allTopics.push({
         category: cat.label,
         topic: topic.name,
-        score: topic.score,
-        maxScore: topic.maxScore,
+        score,
+        maxScore,
         percent,
       });
     });
@@ -45,9 +48,11 @@ export default function ConceptAnalysis({ student }) {
           datasets={[
             {
               label: 'Your Score',
-              data: categories.map(
-                (c) => Math.round((latestAttempt.categories[c.key].score / latestAttempt.categories[c.key].maxScore) * 100)
-              ),
+              data: categories.map((c) => {
+                const catData = latestAttempt.categories[c.key] || (c.fallbackKey ? latestAttempt.categories[c.fallbackKey] : null);
+                const max = Number(catData?.maxScore) > 0 ? Number(catData.maxScore) : 1;
+                return Math.min(100, Math.max(0, Math.round((Number(catData?.score || 0) / max) * 100)));
+              }),
               color: '#3B82F6',
               filled: true,
             },
@@ -62,16 +67,18 @@ export default function ConceptAnalysis({ student }) {
 
         {/* Category Breakdown Cards */}
         <div className="space-y-3">
-          <h3 className="text-base font-bold text-slate-800">Category Breakdown</h3>
+          <h3 className="text-base font-bold text-slate-800">Section Performance</h3>
           {categories.map((cat) => {
-            const catData = latestAttempt.categories[cat.key];
-            const percent = Math.round((catData.score / catData.maxScore) * 100);
+            const catData = latestAttempt.categories[cat.key] || (cat.fallbackKey ? latestAttempt.categories[cat.fallbackKey] : null);
+            const score = Number(catData?.score || 0);
+            const maxScore = Number(catData?.maxScore) > 0 ? Number(catData.maxScore) : 25;
+            const percent = Math.min(100, Math.max(0, Math.round((score / maxScore) * 100)));
             return (
               <div key={cat.key} className="bg-white rounded-xl p-4 border border-slate-200/90 shadow-card">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs font-bold text-slate-700">{cat.label}</span>
                   <span className="text-xs font-extrabold" style={{ color: cat.color }}>
-                    {catData.score}/{catData.maxScore} ({percent}%)
+                    {score}/{maxScore} marks ({percent}%)
                   </span>
                 </div>
                 <div className="w-full bg-slate-100 rounded-full h-2.5">
@@ -92,7 +99,7 @@ export default function ConceptAnalysis({ student }) {
         <div className="bg-emerald-50/70 rounded-2xl p-5 border border-emerald-100">
           <h3 className="text-base font-bold text-emerald-900 mb-3 flex items-center gap-2">
             <span className="w-5 h-5 bg-emerald-500 rounded-full flex items-center justify-center text-white text-xs font-bold">✓</span>
-            Strengths
+            Strengths (≥ 80%)
           </h3>
           {strengths.length > 0 ? (
             <div className="space-y-2">
@@ -100,7 +107,7 @@ export default function ConceptAnalysis({ student }) {
                 <div key={i} className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border border-emerald-100 shadow-xs">
                   <div>
                     <p className="text-xs font-semibold text-slate-800">{t.topic}</p>
-                    <p className="text-[10px] text-slate-500">{t.category}</p>
+                    <p className="text-[10px] text-slate-500">{t.category} • {t.score}/{t.maxScore} marks</p>
                   </div>
                   <span className="text-xs font-bold text-emerald-600">{t.percent}%</span>
                 </div>
@@ -115,7 +122,7 @@ export default function ConceptAnalysis({ student }) {
         <div className="bg-amber-50/70 rounded-2xl p-5 border border-amber-100">
           <h3 className="text-base font-bold text-amber-900 mb-3 flex items-center gap-2">
             <span className="w-5 h-5 bg-amber-500 rounded-full flex items-center justify-center text-white text-xs font-bold">!</span>
-            Needs Work
+            Needs Work (60% - 79%)
           </h3>
           {needsWork.length > 0 ? (
             <div className="space-y-2">
@@ -123,7 +130,7 @@ export default function ConceptAnalysis({ student }) {
                 <div key={i} className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border border-amber-100 shadow-xs">
                   <div>
                     <p className="text-xs font-semibold text-slate-800">{t.topic}</p>
-                    <p className="text-[10px] text-slate-500">{t.category}</p>
+                    <p className="text-[10px] text-slate-500">{t.category} • {t.score}/{t.maxScore} marks</p>
                   </div>
                   <span className="text-xs font-bold text-amber-600">{t.percent}%</span>
                 </div>
@@ -138,7 +145,7 @@ export default function ConceptAnalysis({ student }) {
         <div className="bg-rose-50/70 rounded-2xl p-5 border border-rose-100">
           <h3 className="text-base font-bold text-rose-900 mb-3 flex items-center gap-2">
             <span className="w-5 h-5 bg-rose-500 rounded-full flex items-center justify-center text-white text-xs font-bold">✗</span>
-            Weak Areas
+            Weak Areas (&lt; 60%)
           </h3>
           {weaknesses.length > 0 ? (
             <div className="space-y-2">
@@ -146,7 +153,7 @@ export default function ConceptAnalysis({ student }) {
                 <div key={i} className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border border-rose-100 shadow-xs">
                   <div>
                     <p className="text-xs font-semibold text-slate-800">{t.topic}</p>
-                    <p className="text-[10px] text-slate-500">{t.category}</p>
+                    <p className="text-[10px] text-slate-500">{t.category} • {t.score}/{t.maxScore} marks</p>
                   </div>
                   <span className="text-xs font-bold text-rose-600">{t.percent}%</span>
                 </div>

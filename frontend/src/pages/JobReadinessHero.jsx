@@ -116,7 +116,6 @@ export const JobReadinessHero = () => {
         >
           <Container maxWidth="xl">
             <Toolbar disableGutters sx={{ height: 72, justifyContent: 'space-between', px: { xs: 2, sm: 4 } }}>
-              
               {/* Left Side: Product Name "JobRecipe" + "Job Readiness Platform" Subtitle */}
               <Box
                 onClick={() => navigateTo('hero')}
@@ -220,7 +219,6 @@ export const JobReadinessHero = () => {
                   Admin Portal
                 </Button>
               </Box>
-
             </Toolbar>
           </Container>
         </AppBar>

@@ -1,13 +1,17 @@
 import { pool } from '../db/pool.js';
 import crypto from 'crypto';
 
-let questionsCache = null;
-let lastQuestionsFetch = 0;
+let questionsCacheAdmin = null;
+let lastAdminFetch = 0;
+let questionsCacheCandidate = null;
+let lastCandidateFetch = 0;
 const CACHE_TTL_MS = 3000;
 
 export const clearQuestionsCache = () => {
-  questionsCache = null;
-  lastQuestionsFetch = 0;
+  questionsCacheAdmin = null;
+  lastAdminFetch = 0;
+  questionsCacheCandidate = null;
+  lastCandidateFetch = 0;
 };
 
 // GET /api/questions
@@ -15,13 +19,28 @@ export const getAllQuestions = async (req, res) => {
   try {
     const { category, difficulty, topic } = req.query;
     const isFiltered = category || difficulty || topic;
+    const isAdmin = req.user?.role === 'admin';
 
     const now = Date.now();
-    if (!isFiltered && questionsCache && (now - lastQuestionsFetch < CACHE_TTL_MS)) {
-      return res.json(questionsCache);
+    if (!isFiltered) {
+      if (isAdmin && questionsCacheAdmin && (now - lastAdminFetch < CACHE_TTL_MS)) {
+        return res.json(questionsCacheAdmin);
+      }
+      if (!isAdmin && questionsCacheCandidate && (now - lastCandidateFetch < CACHE_TTL_MS)) {
+        return res.json(questionsCacheCandidate);
+      }
     }
 
-    let sql = 'SELECT * FROM questions WHERE 1=1';
+    // Exam Integrity Protection: Omit answer key & explanation from candidate queries
+    let sql = `
+      SELECT id, category, topic, difficulty, type, question,
+             code_snippet, language, marks, time_limit_sec,
+             status, source, options,
+             ${isAdmin ? 'correct_answer, explanation,' : ''}
+             tags, created_at, updated_at
+      FROM questions
+      WHERE 1=1
+    `;
     const params = [];
     if (category) { params.push(category); sql += ` AND category=$${params.length}`; }
     if (difficulty) { params.push(difficulty); sql += ` AND difficulty=$${params.length}`; }
@@ -32,8 +51,13 @@ export const getAllQuestions = async (req, res) => {
     const responsePayload = { success: true, data: result.rows, total: result.rowCount };
 
     if (!isFiltered) {
-      questionsCache = responsePayload;
-      lastQuestionsFetch = now;
+      if (isAdmin) {
+        questionsCacheAdmin = responsePayload;
+        lastAdminFetch = now;
+      } else {
+        questionsCacheCandidate = responsePayload;
+        lastCandidateFetch = now;
+      }
     }
 
     res.json(responsePayload);
@@ -78,27 +102,76 @@ export const createQuestion = async (req, res) => {
 
 // PUT /api/questions/:id
 export const updateQuestion = async (req, res) => {
-  const { category, topic, difficulty, type, question, options, correctAnswer, explanation } = req.body;
+  const { category, topic, difficulty, type, question, options, correctAnswer, explanation, marks } = req.body;
+  const client = await pool.connect();
   try {
+    await client.query('BEGIN');
     clearQuestionsCache();
-    const result = await pool.query(
-      `UPDATE questions SET category=$1, topic=$2, difficulty=$3, type=$4, question=$5,
-       options=$6, correct_answer=$7, explanation=$8 WHERE id=$9 RETURNING *`,
-      [category, topic, difficulty, type, question, JSON.stringify(options), correctAnswer, explanation, req.params.id]
+
+    const result = await client.query(
+      `UPDATE questions SET 
+         category=COALESCE($1, category), 
+         topic=COALESCE($2, topic), 
+         difficulty=COALESCE($3, difficulty), 
+         type=COALESCE($4, type), 
+         question=COALESCE($5, question),
+         options=CASE WHEN $6::text IS NOT NULL THEN $6::jsonb ELSE options END, 
+         correct_answer=COALESCE($7, correct_answer), 
+         explanation=COALESCE($8, explanation),
+         marks=COALESCE($9, marks),
+         updated_at=CURRENT_TIMESTAMP 
+       WHERE id=$10 RETURNING *`,
+      [category, topic, difficulty, type, question, options ? JSON.stringify(options) : null, correctAnswer, explanation, marks, req.params.id]
     );
-    res.json({ success: true, data: result.rows[0] });
+
+    if (result.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Question not found.' });
+    }
+
+    const updatedQ = result.rows[0];
+
+    // Cascade update to assessment_questions table
+    await client.query(
+      `UPDATE assessment_questions SET
+         category = $1,
+         topic = $2,
+         difficulty = $3,
+         question = $4,
+         options = $5,
+         correct_answer = $6,
+         marks = $7
+       WHERE question_id = $8`,
+      [updatedQ.category, updatedQ.topic, updatedQ.difficulty, updatedQ.question, JSON.stringify(updatedQ.options), updatedQ.correct_answer, updatedQ.marks, req.params.id]
+    );
+
+    await client.query('COMMIT');
+    res.json({ success: true, data: updatedQ });
   } catch (err) {
+    await client.query('ROLLBACK');
     res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 };
 
 // DELETE /api/questions/:id
 export const deleteQuestion = async (req, res) => {
+  const client = await pool.connect();
   try {
+    await client.query('BEGIN');
     clearQuestionsCache();
-    await pool.query('DELETE FROM questions WHERE id=$1', [req.params.id]);
-    res.json({ success: true, message: 'Question deleted.' });
+
+    // Delete question from assessment_questions first (and foreign key CASCADE handles it too)
+    await client.query('DELETE FROM assessment_questions WHERE question_id=$1', [req.params.id]);
+    await client.query('DELETE FROM questions WHERE id=$1', [req.params.id]);
+
+    await client.query('COMMIT');
+    res.json({ success: true, message: 'Question and all assessment links deleted.' });
   } catch (err) {
+    await client.query('ROLLBACK');
     res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 };

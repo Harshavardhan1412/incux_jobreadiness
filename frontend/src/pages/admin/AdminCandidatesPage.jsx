@@ -219,8 +219,11 @@ export const AdminCandidatesPage = () => {
                         <Eye className="w-3.5 h-3.5" />
                       </button>
                       <button
-                        onClick={() => {
-                          deleteCandidate(cand.id);
+                        onClick={async () => {
+                          const candName = cand.name || cand.fullName || cand.email || 'this candidate';
+                          if (window.confirm(`Are you sure you want to permanently delete candidate "${candName}"? This will remove their profile and all assessment submissions from the database.`)) {
+                            await deleteCandidate(cand.id);
+                          }
                         }}
                         className="p-1.5 rounded-lg bg-slate-100 hover:bg-rose-50 hover:text-rose-600 text-slate-600 transition-colors"
                         title="Delete candidate"
@@ -298,11 +301,11 @@ export const AdminCandidatesPage = () => {
                 type="button"
                 onClick={() => {
                   setViewCandidate(null);
-                  navigateTo('final-report');
+                  navigateTo('candidate-analytics');
                 }}
                 className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl font-bold"
               >
-                View Full Score Card Report
+                View Candidate Analytics
               </button>
             </div>
           </div>

@@ -4,13 +4,13 @@ import { pool } from '../db/pool.js';
 export const getStats = async (req, res) => {
   try {
     const [candCount, subCount, avgScore, assessCount] = await Promise.all([
-      pool.query('SELECT COUNT(*) FROM candidates'),
+      pool.query('SELECT COUNT(*) FROM candidate_profiles'),
       pool.query('SELECT COUNT(*) FROM submissions'),
       pool.query('SELECT ROUND(AVG(score)) as avg FROM submissions'),
       pool.query('SELECT COUNT(*) FROM assessments'),
     ]);
     const jobReadyCount = await pool.query(
-      'SELECT COUNT(*) FROM candidates WHERE job_readiness_score >= 70'
+      'SELECT COUNT(DISTINCT candidate_id) FROM submissions WHERE score >= 70'
     );
     res.json({
       success: true,
@@ -51,9 +51,9 @@ export const getAnalytics = async (req, res) => {
     `);
 
     const recentSubmissions = await pool.query(`
-      SELECT s.id, c.name, c.college, a.title, a.category, s.score, s.accuracy, s.created_at
+      SELECT s.id, COALESCE(cp.name, 'Candidate') as name, cp.college, a.title, a.category, s.score, s.accuracy, s.created_at
       FROM submissions s
-      JOIN candidates c ON s.candidate_id = c.id
+      LEFT JOIN candidate_profiles cp ON s.candidate_id = cp.id OR s.candidate_id = cp.user_id
       JOIN assessments a ON s.assessment_id = a.id
       ORDER BY s.created_at DESC LIMIT 10
     `);
@@ -74,13 +74,16 @@ export const getPlacementReport = async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT
-        c.id, c.name, c.email, c.mobile, c.college, c.degree, c.branch,
-        c.graduation_year, c.experience_level,
-        c.job_readiness_score, c.readiness_level,
-        c.aptitude_score, c.reasoning_score, c.technical_score,
-        c.assessments_completed, c.created_at
-      FROM candidates c
-      ORDER BY c.job_readiness_score DESC
+        cp.id, cp.name, cp.email, cp.mobile, cp.college, cp.degree, cp.branch,
+        cp.graduation_year, cp.experience_level,
+        COALESCE(c.aptitude_score, 0) as aptitude_score,
+        COALESCE(c.reasoning_score, 0) as reasoning_score,
+        COALESCE(c.technical_score, 0) as technical_score,
+        COALESCE(c.assessments_completed, 0) as assessments_completed,
+        cp.created_at
+      FROM candidate_profiles cp
+      LEFT JOIN candidates c ON cp.id = c.id OR cp.user_id = c.id
+      ORDER BY cp.created_at DESC
     `);
     res.json({ success: true, data: result.rows, total: result.rowCount });
   } catch (err) {

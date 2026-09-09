@@ -109,8 +109,8 @@ export const Header = ({ onToggleSidebar }) => {
       if (q.includes('test') || q.includes('tech') || q.includes('apt') || q.includes('reason')) {
         navigateTo('assessments');
 
-      } else if (q.includes('report') || q.includes('cert')) {
-        navigateTo('final-report');
+      } else if (q.includes('report') || q.includes('score') || q.includes('result') || q.includes('analytics')) {
+        navigateTo('candidate-analytics');
       } else {
         navigateTo('dashboard');
       }
@@ -139,11 +139,7 @@ export const Header = ({ onToggleSidebar }) => {
             )}
 
             <div 
-              onClick={() => {
-                if (role === 'admin') navigateTo('admin-candidates');
-                else if (role === 'candidate') navigateTo('assessments');
-                else navigateTo('hero');
-              }}
+              onClick={() => navigateTo('hero')}
               className="flex items-center gap-2.5 cursor-pointer group select-none font-sans"
             >
               <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-white shadow-md transition-transform group-hover:scale-105 ${

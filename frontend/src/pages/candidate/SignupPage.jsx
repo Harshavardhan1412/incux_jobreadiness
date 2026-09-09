@@ -38,7 +38,8 @@ const POPULAR_BRANCHES = [
   'Mechanical Engineering (ME)',
   'Civil Engineering (CE)',
   'Artificial Intelligence & Data Science (AI & DS)',
-  'Computer Science & Business Systems (CSBS)'
+  'Computer Science & Business Systems (CSBS)',
+  'Others'
 ];
 
 const SPECIALIZATIONS = [
@@ -49,7 +50,8 @@ const SPECIALIZATIONS = [
   'Cloud Computing & DevOps',
   'Mobile App Development (Android/iOS)',
   'Internet of Things (IoT) & Embedded Systems',
-  'Core Computer Science & Algorithms'
+  'Core Computer Science & Algorithms',
+  'Others'
 ];
 
 export const SignupPage = () => {
@@ -308,7 +310,6 @@ export const SignupPage = () => {
                     value={formData.phoneNo}
                     onChange={handleChange}
                     maxLength={13}
-                    placeholder="9876543210"
                     className={`w-full pl-16 pr-9 py-2.5 bg-white border text-sm text-slate-900 placeholder-slate-400 rounded-xl outline-none transition-all ${errors.phoneNo ? 'border-rose-500 ring-2 ring-rose-500/20' : formData.phoneNo && INDIAN_MOBILE_REGEX.test(formData.phoneNo.replace(/[\s\-]/g, '')) ? 'border-emerald-500 ring-2 ring-emerald-500/20' : 'border-slate-300 focus:border-brand-600 focus:ring-2 focus:ring-brand-500/20'
                       }`}
                   />

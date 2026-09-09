@@ -19,18 +19,30 @@ export default function ScoreOverview({ student }) {
 
   const change = prevAttempt
     ? Math.round(
-        (Object.values(latestAttempt.categories).reduce((s, c) => s + (c.score / c.maxScore) * 100, 0) / 4) -
-        (Object.values(prevAttempt.categories).reduce((s, c) => s + (c.score / c.maxScore) * 100, 0) / 4)
-      )
+      (Object.values(latestAttempt.categories).reduce((s, c) => s + (c.score / c.maxScore) * 100, 0) / 4) -
+      (Object.values(prevAttempt.categories).reduce((s, c) => s + (c.score / c.maxScore) * 100, 0) / 4)
+    )
     : 0;
+
+  const categoryEntries = Object.entries(currentPercents);
+  const bestCategoryEntry = categoryEntries.length > 0 
+    ? [...categoryEntries].sort((a, b) => b[1] - a[1])[0] 
+    : ['Technical', 0];
+  const bestCategoryName = bestCategoryEntry[0].charAt(0).toUpperCase() + bestCategoryEntry[0].slice(1);
+  const bestCategoryScore = bestCategoryEntry[1];
+
+  const categoryLabels = ['Aptitude', 'Reasoning', 'Technical', 'Verbal'];
+  const categoryData = [
+    currentPercents.aptitude ?? 0,
+    currentPercents.reasoning ?? 0,
+    currentPercents.technical ?? 0,
+    currentPercents.verbal ?? currentPercents.english ?? 0,
+  ];
 
   return (
     <section id="overview" className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-bold text-slate-900">Score Overview</h2>
-        <span className="text-xs font-semibold px-3 py-1 bg-brand-50 text-brand-700 rounded-full border border-brand-100">
-          Attempt {student.examAttempts.length} of {student.examAttempts.length}
-        </span>
       </div>
 
       {/* Stat Cards */}
@@ -55,10 +67,10 @@ export default function ScoreOverview({ student }) {
         />
         <StatCard
           label="Best Category"
-          value={Object.entries(currentPercents).sort((a, b) => b[1] - a[1])[0][0].charAt(0).toUpperCase() + Object.entries(currentPercents).sort((a, b) => b[1] - a[1])[0][0].slice(1)}
+          value={bestCategoryName}
           change={null}
           color="amber"
-          subtitle={`${Math.max(...Object.values(currentPercents))}%`}
+          subtitle={`${bestCategoryScore}%`}
         />
       </div>
 
@@ -67,14 +79,9 @@ export default function ScoreOverview({ student }) {
         <div className="lg:col-span-1">
           <ScoreDoughnut
             title="Category Distribution"
-            labels={['Aptitude', 'Reasoning', 'Technical', 'English']}
-            data={[
-              currentPercents.aptitude,
-              currentPercents.reasoning,
-              currentPercents.technical,
-              currentPercents.english,
-            ]}
-            colors={[COLORS.aptitude, COLORS.reasoning, COLORS.technical, COLORS.english]}
+            labels={categoryLabels}
+            data={categoryData}
+            colors={[COLORS.aptitude, COLORS.reasoning, COLORS.technical, COLORS.verbal || COLORS.english]}
             centerValue={`${student.overallScore}%`}
             centerLabel="Overall"
           />
@@ -82,14 +89,9 @@ export default function ScoreOverview({ student }) {
         <div className="lg:col-span-2">
           <ScoreBarChart
             title="Category-wise Scores"
-            labels={['Aptitude', 'Reasoning', 'Technical', 'English']}
-            data={[
-              currentPercents.aptitude,
-              currentPercents.reasoning,
-              currentPercents.technical,
-              currentPercents.english,
-            ]}
-            colors={[COLORS.aptitude, COLORS.reasoning, COLORS.technical, COLORS.english]}
+            labels={categoryLabels}
+            data={categoryData}
+            colors={[COLORS.aptitude, COLORS.reasoning, COLORS.technical, COLORS.verbal || COLORS.english]}
           />
         </div>
       </div>

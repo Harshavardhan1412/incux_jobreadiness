@@ -204,17 +204,21 @@ export const AdminAssessmentsPage = () => {
       return;
     }
 
+    const actualTotalQuestions = (newAssessment.selectedQuestionIds && newAssessment.selectedQuestionIds.length > 0)
+      ? newAssessment.selectedQuestionIds.length
+      : (Number(newAssessment.totalQuestions) || 5);
+
     if (editingAsmId) {
       updateAssessment({
         ...newAssessment,
         id: editingAsmId,
-        totalQuestions: Math.max(newAssessment.selectedQuestionIds.length, 10),
+        totalQuestions: actualTotalQuestions,
         estimatedTimeMin: newAssessment.durationMinutes
       });
     } else {
       addAssessment({
         ...newAssessment,
-        totalQuestions: Math.max(newAssessment.selectedQuestionIds.length, 15),
+        totalQuestions: actualTotalQuestions,
         estimatedTimeMin: newAssessment.durationMinutes
       });
     }
