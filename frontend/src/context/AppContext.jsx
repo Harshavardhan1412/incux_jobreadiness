@@ -141,7 +141,8 @@ export const AppProvider = ({ children }) => {
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        const filtered = parsed.filter(c => !DUMMY_CAND_IDS.includes(c.id));
+        const list = Array.isArray(parsed) ? parsed : (Array.isArray(parsed?.data) ? parsed.data : []);
+        const filtered = list.filter(c => !DUMMY_CAND_IDS.includes(c?.id));
         localStorage.setItem('rsj_candidates_list', JSON.stringify(filtered));
         return filtered;
       } catch (e) {
@@ -215,7 +216,32 @@ export const AppProvider = ({ children }) => {
     setToasts(prev => prev.filter(t => t.id !== id));
   };
 
+  const [candidateSubmissions, setCandidateSubmissions] = useState(() => {
+    try {
+      const saved = localStorage.getItem('rsj_candidate_submissions');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return [];
+  });
+
+  const isAssessmentCompleted = (asmId) => {
+    if (!asmId) return false;
+    const targetId = String(asmId).trim().toLowerCase();
+    return (candidateSubmissions || []).some(
+      s => {
+        const subAsmId = String(s.assessment_id || s.assessmentId || '').trim().toLowerCase();
+        return subAsmId === targetId;
+      }
+    );
+  };
+
   // Sync to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('rsj_candidate_submissions', JSON.stringify(candidateSubmissions));
+    } catch (e) {}
+  }, [candidateSubmissions]);
+
   useEffect(() => {
     if (currentUser) {
       localStorage.setItem('rsj_user', JSON.stringify(currentUser));
@@ -253,27 +279,33 @@ export const AppProvider = ({ children }) => {
           if (res.data.role === 'candidate' && res.data.candidate) {
             setCurrentUser(res.data.candidate);
             setRole('candidate');
-            // Synchronize latest submission from DB
+            // Synchronize candidate submissions from DB
             try {
               const subRes = await api.submissions.my();
-              if (subRes.ok && Array.isArray(subRes.data) && subRes.data.length > 0) {
-                const latest = subRes.data[0];
-                const mappedResult = {
-                  score: Number(latest.score ?? 0),
-                  totalMarks: Number(latest.total_marks ?? 100),
-                  obtainedMarks: Number(latest.obtained_marks ?? latest.score ?? 0),
-                  accuracy: Number(latest.accuracy ?? latest.score ?? 0),
-                  correctCount: Number(latest.correct_count ?? 0),
-                  incorrectCount: Number(latest.incorrect_count ?? 0),
-                  unansweredCount: Number(latest.unanswered_count ?? 0),
-                  timeTaken: latest.time_taken || '28 min',
-                  completedAt: new Date(latest.created_at || Date.now()).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-                  assessmentName: latest.assessment_title || 'Technical Assessment',
-                  assessmentId: latest.assessment_id,
-                  categoryScores: typeof latest.category_scores === 'string' ? JSON.parse(latest.category_scores) : (latest.category_scores || {}),
-                  topicBreakdown: typeof latest.topic_breakdown === 'string' ? JSON.parse(latest.topic_breakdown) : (latest.topic_breakdown || []),
-                };
-                setLatestResult(mappedResult);
+              const subList = Array.isArray(subRes?.data?.data)
+                ? subRes.data.data
+                : (Array.isArray(subRes?.data) ? subRes.data : []);
+              if (subRes.ok && Array.isArray(subList)) {
+                setCandidateSubmissions(subList);
+                if (subList.length > 0) {
+                  const latest = subList[0];
+                  const mappedResult = {
+                    score: Number(latest.score ?? 0),
+                    totalMarks: Number(latest.total_marks ?? 100),
+                    obtainedMarks: Number(latest.obtained_marks ?? latest.score ?? 0),
+                    accuracy: Number(latest.accuracy ?? latest.score ?? 0),
+                    correctCount: Number(latest.correct_count ?? 0),
+                    incorrectCount: Number(latest.incorrect_count ?? 0),
+                    unansweredCount: Number(latest.unanswered_count ?? 0),
+                    timeTaken: latest.time_taken || '28 min',
+                    completedAt: new Date(latest.created_at || Date.now()).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+                    assessmentName: latest.assessment_title || 'Technical Assessment',
+                    assessmentId: latest.assessment_id,
+                    categoryScores: typeof latest.category_scores === 'string' ? JSON.parse(latest.category_scores) : (latest.category_scores || {}),
+                    topicBreakdown: typeof latest.topic_breakdown === 'string' ? JSON.parse(latest.topic_breakdown) : (latest.topic_breakdown || []),
+                  };
+                  setLatestResult(mappedResult);
+                }
               }
             } catch (subErr) {
               console.warn('Could not sync latest candidate submission:', subErr.message);
@@ -295,6 +327,27 @@ export const AppProvider = ({ children }) => {
     };
     validateSession();
   }, []);
+
+  // Continuously ensure candidate submissions are synced with PostgreSQL database
+  useEffect(() => {
+    let isMounted = true;
+    const syncSubmissions = async () => {
+      const token = localStorage.getItem('rsj_token');
+      if (token && currentUser && role === 'candidate') {
+        try {
+          const subRes = await api.submissions.my();
+          const subList = Array.isArray(subRes?.data?.data)
+            ? subRes.data.data
+            : (Array.isArray(subRes?.data) ? subRes.data : []);
+          if (isMounted && subRes.ok && Array.isArray(subList)) {
+            setCandidateSubmissions(subList);
+          }
+        } catch (e) {}
+      }
+    };
+    syncSubmissions();
+    return () => { isMounted = false; };
+  }, [currentUser?.id, currentUser?.email, role]);
 
   useEffect(() => {
     localStorage.setItem('rsj_assessments', JSON.stringify(assessments));
@@ -476,24 +529,30 @@ export const AppProvider = ({ children }) => {
       setRole('candidate');
       try {
         const subRes = await api.submissions.my();
-        if (subRes.ok && Array.isArray(subRes.data) && subRes.data.length > 0) {
-          const latest = subRes.data[0];
-          const mappedResult = {
-            score: Number(latest.score ?? 0),
-            totalMarks: Number(latest.total_marks ?? 100),
-            obtainedMarks: Number(latest.obtained_marks ?? latest.score ?? 0),
-            accuracy: Number(latest.accuracy ?? latest.score ?? 0),
-            correctCount: Number(latest.correct_count ?? 0),
-            incorrectCount: Number(latest.incorrect_count ?? 0),
-            unansweredCount: Number(latest.unanswered_count ?? 0),
-            timeTaken: latest.time_taken || '28 min',
-            completedAt: new Date(latest.created_at || Date.now()).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-            assessmentName: latest.assessment_title || 'Technical Assessment',
-            assessmentId: latest.assessment_id,
-            categoryScores: typeof latest.category_scores === 'string' ? JSON.parse(latest.category_scores) : (latest.category_scores || {}),
-            topicBreakdown: typeof latest.topic_breakdown === 'string' ? JSON.parse(latest.topic_breakdown) : (latest.topic_breakdown || []),
-          };
-          setLatestResult(mappedResult);
+        const subList = Array.isArray(subRes?.data?.data)
+          ? subRes.data.data
+          : (Array.isArray(subRes?.data) ? subRes.data : []);
+        if (subRes.ok && Array.isArray(subList)) {
+          setCandidateSubmissions(subList);
+          if (subList.length > 0) {
+            const latest = subList[0];
+            const mappedResult = {
+              score: Number(latest.score ?? 0),
+              totalMarks: Number(latest.total_marks ?? 100),
+              obtainedMarks: Number(latest.obtained_marks ?? latest.score ?? 0),
+              accuracy: Number(latest.accuracy ?? latest.score ?? 0),
+              correctCount: Number(latest.correct_count ?? 0),
+              incorrectCount: Number(latest.incorrect_count ?? 0),
+              unansweredCount: Number(latest.unanswered_count ?? 0),
+              timeTaken: latest.time_taken || '28 min',
+              completedAt: new Date(latest.created_at || Date.now()).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+              assessmentName: latest.assessment_title || 'Technical Assessment',
+              assessmentId: latest.assessment_id,
+              categoryScores: typeof latest.category_scores === 'string' ? JSON.parse(latest.category_scores) : (latest.category_scores || {}),
+              topicBreakdown: typeof latest.topic_breakdown === 'string' ? JSON.parse(latest.topic_breakdown) : (latest.topic_breakdown || []),
+            };
+            setLatestResult(mappedResult);
+          }
         }
       } catch (e) {}
       addToast(`Welcome back, ${cand.name || 'Candidate'}! Logged into Student Portal.`, 'success');
@@ -511,7 +570,11 @@ export const AppProvider = ({ children }) => {
     api.clearToken();
     setCurrentUser(null);
     setRole('guest');
-    localStorage.removeItem('rsj_current_view');
+    setCandidateSubmissions([]);
+    try {
+      localStorage.removeItem('rsj_candidate_submissions');
+      localStorage.removeItem('rsj_current_view');
+    } catch (e) {}
     navigateTo('login');
     addToast('Signed out of Student Portal', 'info');
   };
@@ -530,10 +593,10 @@ export const AppProvider = ({ children }) => {
         api.saveToken(res.data.token);
       }
 
-      const adminDetails = res.data?.admin || { name: 'Admin Administrator', email };
-      setAdminUser(adminDetails);
+      const admin = res.data?.admin || { email, role: 'admin' };
+      setAdminUser(admin);
       setRole('admin');
-      addToast('Admin authentication verified. Welcome to Admin Portal.', 'success');
+      addToast(`Welcome, Admin! Access granted to Recruiter Console.`, 'success');
       setCurrentView('admin-candidates');
       return { success: true };
     } catch (err) {
@@ -548,9 +611,11 @@ export const AppProvider = ({ children }) => {
     api.clearToken();
     setAdminUser(null);
     setRole('guest');
-    localStorage.removeItem('rsj_current_view');
+    try {
+      localStorage.removeItem('rsj_current_view');
+    } catch (e) {}
     navigateTo('admin');
-    addToast('Signed out of Admin Portal', 'info');
+    addToast('Signed out of Recruiter Console', 'info');
   };
 
   const logout = () => {
@@ -564,6 +629,14 @@ export const AppProvider = ({ children }) => {
   // Start / Submit Assessment
   const startAssessment = (assessmentId) => {
     const asm = assessments.find(a => a.id === assessmentId) || assessments[0];
+    const targetId = asm?.id || assessmentId;
+
+    // Single Attempt Enforcement: Candidates can write each exam only once!
+    if (isAssessmentCompleted(targetId)) {
+      addToast('You have already completed this assessment. Candidates are permitted to take each assessment only once.', 'warning');
+      navigateTo('candidate-analytics');
+      return;
+    }
     
     // Deduplicate question bank by ID and statement to guarantee ZERO repeating questions
     const uniquePoolMap = new Map();
@@ -836,9 +909,33 @@ export const AppProvider = ({ children }) => {
       answers: answers
     });
 
+    // Check if backend rejected because already submitted
+    if (!submissionRes.ok && (submissionRes.status === 403 || submissionRes.data?.alreadySubmitted)) {
+      const targetAsmId = activeAssessment?.id || 'asm-1';
+      const existingSub = {
+        assessment_id: targetAsmId,
+        assessmentId: targetAsmId,
+        status: 'Completed',
+        score: submissionRes.data?.submission?.score ?? 0,
+        created_at: new Date().toISOString()
+      };
+      setCandidateSubmissions(prev => [
+        existingSub,
+        ...prev.filter(s => String(s.assessment_id || s.assessmentId || '').trim().toLowerCase() !== String(targetAsmId).trim().toLowerCase())
+      ]);
+      addToast(submissionRes.error || 'You have already completed this assessment. Candidates can write each exam only once.', 'warning');
+      navigateTo('candidate-analytics');
+      return;
+    }
+
     // If backend returned authoritative evaluation, synchronize frontend state with DB
-    if (submissionRes?.ok && submissionRes?.data?.data) {
-      const dbData = submissionRes.data.data;
+    const dbData = submissionRes?.data?.data || submissionRes?.data;
+    if (submissionRes?.ok && dbData && typeof dbData === 'object') {
+      const dbAsmId = dbData.assessment_id || dbData.assessmentId || activeAssessment?.id || 'asm-1';
+      setCandidateSubmissions(prev => [
+        { ...dbData, assessment_id: dbAsmId, assessmentId: dbAsmId },
+        ...prev.filter(s => s.id !== dbData.id && String(s.assessment_id || s.assessmentId || '').trim().toLowerCase() !== String(dbAsmId).trim().toLowerCase())
+      ]);
       if (typeof dbData.score === 'number') calculatedScore = dbData.score;
       if (typeof dbData.accuracy === 'number') accuracy = dbData.accuracy;
       if (typeof dbData.correct_count === 'number') correct = dbData.correct_count;
@@ -1297,6 +1394,82 @@ export const AppProvider = ({ children }) => {
     }
   };
 
+  const resetCandidateAttempt = async (id, assessmentId = null) => {
+    try {
+      const res = await api.candidates.resetAttempt(id, assessmentId);
+      if (res && res.ok) {
+        // Refresh candidates list from DB if possible
+        try {
+          const candRes = await api.candidates.getAll();
+          const rawList = Array.isArray(candRes?.data?.data)
+            ? candRes.data.data
+            : (Array.isArray(candRes?.data) ? candRes.data : []);
+          if (candRes && candRes.ok && Array.isArray(rawList)) {
+            const dbCandidates = rawList.map(c => ({
+              id: c.id,
+              name: c.name,
+              email: c.email,
+              mobile: c.mobile || c.phone,
+              college: c.college,
+              degree: c.degree || 'B.Tech',
+              branch: c.branch,
+              specialization: c.specialization,
+              country: c.country || 'India',
+              state: c.state,
+              city: c.city,
+              graduationYear: c.graduation_year || 2026,
+              experienceLevel: c.experience_level || 'Fresher',
+              status: c.status || 'Active',
+              assessmentStatus: c.assessment_status || c.readiness_status || 'Active',
+              registeredAt: c.created_at ? new Date(c.created_at).toISOString().split('T')[0] : '2026-08-28',
+              overallScore: Number(c.overall_score ?? c.job_readiness_score ?? 0),
+              jobReadinessScore: Number(c.overall_score ?? c.job_readiness_score ?? 0),
+              aptitudeScore: Number(c.aptitude_score ?? 0),
+              reasoningScore: Number(c.reasoning_score ?? 0),
+              technicalScore: Number(c.technical_score ?? 0),
+              verbalScore: Number(c.verbal_score ?? 0),
+              assessmentsCompleted: Number(c.assessments_completed ?? 0)
+            }));
+            setCandidatesList(dbCandidates);
+            try {
+              localStorage.setItem('rsj_candidates_list', JSON.stringify(dbCandidates));
+            } catch (e) {}
+          }
+        } catch (e) {
+          console.warn('Failed to refresh candidate list after attempt reset:', e.message);
+        }
+
+        // If the reset candidate is the currently logged-in candidate, refresh their submissions and status
+        if (currentUser && (currentUser.id === id || currentUser.email === id)) {
+          try {
+            const subRes = await api.submissions.my();
+            const subList = Array.isArray(subRes?.data?.data)
+              ? subRes.data.data
+              : (Array.isArray(subRes?.data) ? subRes.data : []);
+            if (subRes && subRes.ok && Array.isArray(subList)) {
+              setCandidateSubmissions(subList);
+              if (subList.length === 0) {
+                setLatestResult(null);
+              }
+            }
+          } catch (e) {}
+        }
+
+        addToast(res.message || 'Assessment attempt reset successfully. The candidate can now retake the assessment.', 'success');
+        return { success: true, data: res };
+      } else {
+        const errorMsg = res?.error || 'Failed to reset assessment attempt';
+        addToast(errorMsg, 'error');
+        return { success: false, error: errorMsg };
+      }
+    } catch (err) {
+      console.error('Error resetting candidate attempt:', err);
+      const errorMsg = err.message || 'Failed to reset assessment attempt';
+      addToast(errorMsg, 'error');
+      return { success: false, error: errorMsg };
+    }
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -1342,6 +1515,10 @@ export const AppProvider = ({ children }) => {
         deleteAssessment,
         addCandidate,
         deleteCandidate,
+        resetCandidateAttempt,
+        candidateSubmissions,
+        setCandidateSubmissions,
+        isAssessmentCompleted,
         kpis: INITIAL_ADMIN_KPIS
       }}
     >

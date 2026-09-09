@@ -259,15 +259,10 @@ export default function CandidateAnalyticsPage() {
                 </p>
               </div>
 
-              {latestResult.assessmentId && (
-                <button
-                  onClick={() => startAssessment(latestResult.assessmentId)}
-                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-xs w-fit"
-                >
-                  <RotateCcw className="w-4 h-4" />
-                  <span>Retake Assessment</span>
-                </button>
-              )}
+              <div className="px-3.5 py-2 bg-slate-100 text-slate-600 rounded-xl text-xs font-semibold flex items-center gap-2 border border-slate-200 select-none shadow-2xs">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                <span>Attempt Complete (1 of 1 Attempt Used)</span>
+              </div>
             </div>
 
             {/* Quick Metrics (5 Cards) */}

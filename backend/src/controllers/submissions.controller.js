@@ -70,12 +70,12 @@ export const submitAssessment = async (req, res) => {
     const finalTechnicalScore = Number(catScores.technical ?? catScores.Technical ?? 0);
     const finalVerbalScore = Number(catScores.verbal ?? catScores.Verbal ?? catScores.english ?? 0);
 
-    // 2. Check for existing submission by candidate for this assessment
+    // 2. Check for existing submission by candidate for this assessment (Single Attempt Rule)
     const existingSubmission = await client.query(
       `SELECT id, score, accuracy, created_at FROM assessment_submissions 
-       WHERE candidate_id = $1 AND assessment_id = $2 
+       WHERE (candidate_id = $1 OR LOWER(candidate_email) = LOWER($2)) AND assessment_id = $3 
        ORDER BY created_at DESC LIMIT 1`,
-      [candidateId, asmId]
+      [candidateId, email || '', asmId]
     );
 
     if (existingSubmission.rows.length > 0) {
@@ -90,50 +90,32 @@ export const submitAssessment = async (req, res) => {
         });
       }
 
-      // Candidate is retaking - update with new score
-      const updateResult = await client.query(
-        `UPDATE assessment_submissions SET
-           score = $1, accuracy = $2, correct_count = $3, incorrect_count = $4,
-           unanswered_count = $5, time_taken = $6, category_scores = $7,
-           topic_breakdown = $8, answers = $9, created_at = CURRENT_TIMESTAMP
-         WHERE id = $10
-         RETURNING *`,
-        [
-          finalScore,
-          finalAccuracy,
-          finalCorrectCount,
-          finalIncorrectCount,
-          finalUnansweredCount,
-          timeTaken || '28 min',
-          JSON.stringify(finalCategoryScores),
-          JSON.stringify(finalTopicBreakdown),
-          JSON.stringify(answers || {}),
-          existingSubmission.rows[0].id
-        ]
-      );
+      // Single Attempt Enforcement: Candidates can write exam only once!
+      await client.query('ROLLBACK');
+      return res.status(403).json({
+        success: false,
+        error: 'You have already completed this assessment. Candidates are permitted to take each assessment only once.',
+        message: 'You have already completed this assessment. Candidates are permitted to take each assessment only once.',
+        alreadySubmitted: true,
+        submission: existingSubmission.rows[0]
+      });
+    }
 
-      const readinessStatus = finalScore >= 65 ? 'Job Ready' : 'In Progress';
-      await client.query(
-        `UPDATE candidates SET
-           job_readiness_score = $1,
-           aptitude_score = $2,
-           reasoning_score = $3,
-           technical_score = $4,
-           verbal_score = $5,
-           readiness_status = 'Completed',
-           assessments_completed = COALESCE(assessments_completed, 0) + 1
-         WHERE id = $6`,
-        [finalScore, finalAptitudeScore, finalReasoningScore, finalTechnicalScore, finalVerbalScore, candidateId]
-      );
-
-      await client.query('COMMIT');
-      return res.status(200).json({
-        success: true,
-        data: {
-          ...updateResult.rows[0],
-          obtained_marks: evaluation.obtainedMarks,
-          total_marks: evaluation.totalMarks
-        }
+    // Also check legacy submissions table
+    const existingLegacy = await client.query(
+      `SELECT id, score, accuracy, created_at FROM submissions 
+       WHERE candidate_id = $1 AND assessment_id = $2 
+       ORDER BY created_at DESC LIMIT 1`,
+      [candidateId, asmId]
+    );
+    if (existingLegacy.rows.length > 0) {
+      await client.query('ROLLBACK');
+      return res.status(403).json({
+        success: false,
+        error: 'You have already completed this assessment. Candidates are permitted to take each assessment only once.',
+        message: 'You have already completed this assessment. Candidates are permitted to take each assessment only once.',
+        alreadySubmitted: true,
+        submission: existingLegacy.rows[0]
       });
     }
 

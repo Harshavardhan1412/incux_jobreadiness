@@ -18,7 +18,8 @@ import {
   BrainCircuit,
   Target,
   FileText,
-  ClipboardCheck
+  ClipboardCheck,
+  BarChart2
 } from 'lucide-react';
 import {
   Chart as ChartJS,
@@ -50,13 +51,23 @@ export const CandidateDashboard = () => {
     assessments,
     startAssessment,
     navigateTo,
-    recommendations
+    addToast,
+    recommendations,
+    isAssessmentCompleted,
+    candidateSubmissions
   } = useApp();
 
   const [targetAsm, setTargetAsm] = useState(null);
   const [isAcademicModalOpen, setIsAcademicModalOpen] = useState(false);
 
   const handleStartAttempt = (asm) => {
+    const userSub = (candidateSubmissions || []).find(s => String(s.assessment_id || s.assessmentId || '').trim().toLowerCase() === String(asm.id).trim().toLowerCase());
+    const isCompleted = !!userSub || isAssessmentCompleted?.(asm.id) || asm.status === 'Completed';
+    if (isCompleted) {
+      addToast('You have already completed this assessment. Candidates are permitted to take each assessment only once.', 'warning');
+      navigateTo('candidate-analytics');
+      return;
+    }
     setTargetAsm(asm);
     setIsAcademicModalOpen(true);
   };
@@ -64,6 +75,13 @@ export const CandidateDashboard = () => {
   const handleProceedAssessment = () => {
     setIsAcademicModalOpen(false);
     if (targetAsm) {
+      const userSub = (candidateSubmissions || []).find(s => String(s.assessment_id || s.assessmentId || '').trim().toLowerCase() === String(targetAsm.id).trim().toLowerCase());
+      const isCompleted = !!userSub || isAssessmentCompleted?.(targetAsm.id) || targetAsm.status === 'Completed';
+      if (isCompleted) {
+        addToast('You have already completed this assessment. Candidates are permitted to take each assessment only once.', 'warning');
+        navigateTo('candidate-analytics');
+        return;
+      }
       startAssessment(targetAsm.id);
     }
   };
@@ -306,8 +324,10 @@ export const CandidateDashboard = () => {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
             {assessments.slice(0, 3).map((asm) => {
-              const isCompleted = asm.status === 'Completed';
-              const isInProgress = asm.status === 'In Progress';
+              const userSub = (candidateSubmissions || []).find(s => String(s.assessment_id || s.assessmentId || '').trim().toLowerCase() === String(asm.id).trim().toLowerCase());
+              const isCompleted = !!userSub || isAssessmentCompleted?.(asm.id) || asm.status === 'Completed';
+              const isInProgress = !isCompleted && asm.status === 'In Progress';
+              const displayScore = userSub?.score ?? asm.lastScore ?? asm.score ?? 0;
 
               return (
                 <div
@@ -326,7 +346,7 @@ export const CandidateDashboard = () => {
                           ? 'bg-amber-50 text-amber-700 border border-amber-200'
                           : 'bg-brand-50 text-brand-700 border border-brand-200'
                       }`}>
-                        {isCompleted ? `Score: ${asm.lastScore}%` : asm.status}
+                        {isCompleted ? `Completed • ${displayScore}%` : isInProgress ? 'In Progress' : 'Available'}
                       </span>
                     </div>
 
@@ -355,14 +375,20 @@ export const CandidateDashboard = () => {
 
                   <div>
                     {isCompleted ? (
-                      <div className="flex gap-2">
+                      <div className="flex items-center gap-2">
                         <button
-                          onClick={() => handleStartAttempt(asm)}
-                          className="py-2 px-3 bg-brand-50 hover:bg-brand-100 text-brand-700 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1"
-                          title="Retake test"
+                          onClick={() => navigateTo('candidate-analytics')}
+                          className="flex-1 py-2 px-3 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1 shadow-xs"
                         >
-                          <RotateCcw className="w-3.5 h-3.5" />
+                          <BarChart2 className="w-3.5 h-3.5" />
+                          <span>View Result</span>
                         </button>
+                        <div
+                          className="py-2 px-2.5 bg-slate-100 text-slate-500 rounded-xl text-xs font-semibold flex items-center gap-1 border border-slate-200 cursor-not-allowed select-none"
+                          title="Assessment completed (1 attempt limit)"
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                        </div>
                       </div>
                     ) : isInProgress ? (
                       <button

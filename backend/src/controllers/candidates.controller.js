@@ -384,4 +384,144 @@ export const updateAcademicMarks = async (req, res) => {
   }
 };
 
+// POST /api/candidates/:id/reset-attempt (Admin Only)
+export const resetCandidateAttempt = async (req, res) => {
+  const candidateId = req.params.id;
+  const { assessmentId } = req.body;
+
+  if (!candidateId) {
+    return res.status(400).json({ success: false, error: 'Candidate ID is required.' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // 1. Locate candidate identifiers across candidate_profiles, users, and candidates
+    const candLookup = await client.query(
+      `SELECT cp.id, cp.user_id, cp.email
+       FROM candidate_profiles cp
+       WHERE cp.id = $1 OR cp.user_id = $1
+       UNION
+       SELECT u.id, u.id as user_id, u.email
+       FROM users u
+       WHERE (u.id = $1 OR LOWER(u.email) = LOWER($1)) AND u.role = 'candidate'
+       UNION
+       SELECT c.id, c.id as user_id, NULL as email
+       FROM candidates c
+       WHERE c.id = $1`,
+      [candidateId]
+    );
+
+    const idsSet = new Set([candidateId]);
+    const emailsSet = new Set();
+
+    candLookup.rows.forEach(row => {
+      if (row.id) idsSet.add(row.id);
+      if (row.user_id) idsSet.add(row.user_id);
+      if (row.email) emailsSet.add(row.email.trim().toLowerCase());
+    });
+
+    const targetIds = Array.from(idsSet);
+    const targetEmails = Array.from(emailsSet);
+
+    // 2. Delete submission(s) from assessment_submissions and submissions
+    let deletedCount = 0;
+    if (assessmentId && assessmentId !== 'all') {
+      const delAsm = await client.query(
+        `DELETE FROM assessment_submissions 
+         WHERE (candidate_id = ANY($1::varchar[]) OR LOWER(candidate_email) = ANY($2::varchar[]))
+           AND assessment_id = $3
+         RETURNING id`,
+        [targetIds, targetEmails, assessmentId]
+      );
+      deletedCount += delAsm.rowCount || 0;
+
+      await client.query(
+        `DELETE FROM submissions 
+         WHERE candidate_id = ANY($1::varchar[]) AND assessment_id = $2`,
+        [targetIds, assessmentId]
+      );
+    } else {
+      const delAsm = await client.query(
+        `DELETE FROM assessment_submissions 
+         WHERE candidate_id = ANY($1::varchar[]) OR LOWER(candidate_email) = ANY($2::varchar[])
+         RETURNING id`,
+        [targetIds, targetEmails]
+      );
+      deletedCount += delAsm.rowCount || 0;
+
+      await client.query(
+        `DELETE FROM submissions 
+         WHERE candidate_id = ANY($1::varchar[])`,
+        [targetIds]
+      );
+    }
+
+    // 3. Re-calculate candidate scores from remaining submissions
+    const remaining = await client.query(
+      `SELECT score, category_scores, created_at FROM assessment_submissions 
+       WHERE candidate_id = ANY($1::varchar[]) OR LOWER(candidate_email) = ANY($2::varchar[])
+       ORDER BY created_at DESC LIMIT 1`,
+      [targetIds, targetEmails]
+    );
+
+    if (remaining.rows.length === 0) {
+      await client.query(
+        `UPDATE candidates SET 
+           readiness_status = 'In Progress',
+           job_readiness_score = 0,
+           aptitude_score = 0,
+           reasoning_score = 0,
+           technical_score = 0,
+           verbal_score = 0,
+           assessments_completed = 0
+         WHERE id = ANY($1::varchar[])`,
+        [targetIds]
+      );
+    } else {
+      const r = remaining.rows[0];
+      const scores = typeof r.category_scores === 'string' ? JSON.parse(r.category_scores) : (r.category_scores || {});
+      await client.query(
+        `UPDATE candidates SET 
+           readiness_status = 'Completed',
+           job_readiness_score = $1,
+           aptitude_score = COALESCE($2, aptitude_score),
+           reasoning_score = COALESCE($3, reasoning_score),
+           technical_score = COALESCE($4, technical_score),
+           verbal_score = COALESCE($5, verbal_score),
+           assessments_completed = GREATEST(1, COALESCE(assessments_completed, 1) - 1)
+         WHERE id = ANY($6::varchar[])`,
+        [
+          r.score,
+          scores.aptitude ?? scores.Aptitude ?? 0,
+          scores.reasoning ?? scores.Reasoning ?? 0,
+          scores.technical ?? scores.Technical ?? 0,
+          scores.verbal ?? scores.Verbal ?? 0,
+          targetIds
+        ]
+      );
+    }
+
+    await client.query('COMMIT');
+    clearCandidatesCache();
+
+    console.log(`✅ Candidate ${candidateId} assessment attempt reset by administrator.`);
+    return res.json({
+      success: true,
+      message: 'Assessment attempt reset successfully. The candidate can now retake the assessment.',
+      candidateId,
+      assessmentId: assessmentId || 'all',
+      deletedSubmissions: deletedCount
+    });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error(`❌ Error resetting candidate attempt:`, err.message);
+    return res.status(500).json({ success: false, error: err.message });
+  } finally {
+    client.release();
+  }
+};
+
+
 

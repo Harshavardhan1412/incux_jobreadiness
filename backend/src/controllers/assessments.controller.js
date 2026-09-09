@@ -259,6 +259,31 @@ export const deleteAssessment = async (req, res) => {
 export const getAssessmentQuestions = async (req, res) => {
   try {
     const isAdmin = req.user?.role === 'admin';
+    const candidateId = req.user?.id;
+    const candidateEmail = req.user?.email;
+
+    // Single Attempt Enforcement: If candidate already completed, block fetching questions
+    if (!isAdmin && (candidateId || candidateEmail)) {
+      const existing = await pool.query(
+        `SELECT id, score, accuracy, created_at FROM assessment_submissions 
+         WHERE assessment_id = $1 AND (candidate_id = $2 OR LOWER(candidate_email) = LOWER($3))
+         UNION
+         SELECT id, score, accuracy, created_at FROM submissions
+         WHERE assessment_id = $1 AND candidate_id = $2
+         LIMIT 1`,
+        [req.params.id, candidateId || '', candidateEmail || '']
+      );
+      if (existing.rows.length > 0) {
+        return res.status(403).json({
+          success: false,
+          error: 'You have already completed this assessment. Candidates are permitted to take each assessment only once.',
+          message: 'You have already completed this assessment. Candidates are permitted to take each assessment only once.',
+          alreadyCompleted: true,
+          submission: existing.rows[0]
+        });
+      }
+    }
+
     const result = await pool.query(
       `SELECT aq.id, aq.assessment_id, aq.question_id, aq.category, aq.topic,
               aq.question, aq.difficulty, aq.options,
