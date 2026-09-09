@@ -34,7 +34,10 @@ export const AssessmentPage = () => {
     setTimeRemainingSeconds,
     submitAssessment,
     navigateTo,
-    addToast
+    addToast,
+    role,
+    isAssessmentCompleted,
+    candidateSubmissions
   } = useApp();
 
   const [showSubmitModal, setShowSubmitModal] = useState(false);
@@ -46,6 +49,18 @@ export const AssessmentPage = () => {
   const fullscreenExitCountRef = useRef(0);
   const isSubmittedRef = useRef(false);
   const timerRef = useRef(null);
+
+  // Single attempt guard on active assessment
+  useEffect(() => {
+    if (activeAssessment?.id) {
+      const userSub = (candidateSubmissions || []).find(s => String(s.assessment_id || s.assessmentId || '').trim().toLowerCase() === String(activeAssessment.id).trim().toLowerCase());
+      if (userSub || isAssessmentCompleted?.(activeAssessment.id)) {
+        addToast('You have already completed this assessment. Candidates are permitted to take each assessment only once.', 'warning');
+        exitExamFullscreenAndStopMedia();
+        navigateTo('candidate-analytics');
+      }
+    }
+  }, [activeAssessment?.id, isAssessmentCompleted, candidateSubmissions]);
 
   // Fullscreen Request Helper
   const requestExamFullscreen = () => {

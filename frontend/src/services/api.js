@@ -50,6 +50,7 @@ export const api = {
     getCompanyEligibilityCriteria: () => request('GET', '/candidates/company-eligibility/criteria'),
     delete: (id) => request('DELETE', `/candidates/${id}`),
     submissions: (id) => request('GET', `/candidates/${id}/submissions`),
+    resetAttempt: (id, assessmentId) => request('POST', `/candidates/${id}/reset-attempt`, { assessmentId }),
   },
 
   assessments: {

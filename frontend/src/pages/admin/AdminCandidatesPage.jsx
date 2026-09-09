@@ -16,11 +16,12 @@ import {
   ArrowUpDown,
   FileText,
   Mail,
-  User
+  User,
+  RotateCcw
 } from 'lucide-react';
 
 export const AdminCandidatesPage = () => {
-  const { candidatesList, deleteCandidate, addToast, navigateTo } = useApp();
+  const { candidatesList, deleteCandidate, resetCandidateAttempt, addToast, navigateTo } = useApp();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCollege, setSelectedCollege] = useState('All');
@@ -29,10 +30,16 @@ export const AdminCandidatesPage = () => {
   const [selectedReadiness, setSelectedReadiness] = useState('All');
   const [viewCandidate, setViewCandidate] = useState(null);
 
+  const safeCandidatesList = useMemo(() => {
+    if (Array.isArray(candidatesList)) return candidatesList;
+    if (Array.isArray(candidatesList?.data)) return candidatesList.data;
+    return [];
+  }, [candidatesList]);
+
   const filteredCandidates = useMemo(() => {
-    return candidatesList.filter(c => {
-      const matchSearch = c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        c.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    return safeCandidatesList.filter(c => {
+      const matchSearch = (c.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (c.email || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
         (c.college && c.college.toLowerCase().includes(searchQuery.toLowerCase()));
 
       const matchCollege = selectedCollege === 'All' || c.college === selectedCollege;
@@ -42,7 +49,7 @@ export const AdminCandidatesPage = () => {
 
       return matchSearch && matchCollege && matchYear && matchStatus && matchReadiness;
     });
-  }, [candidatesList, searchQuery, selectedCollege, selectedYear, selectedStatus, selectedReadiness]);
+  }, [safeCandidatesList, searchQuery, selectedCollege, selectedYear, selectedStatus, selectedReadiness]);
 
   const handleDownloadCSV = () => {
     if (!filteredCandidates || filteredCandidates.length === 0) {
@@ -80,7 +87,7 @@ export const AdminCandidatesPage = () => {
     addToast(`Exported ${filteredCandidates.length} candidate record(s) to CSV.`, 'success');
   };
 
-  const uniqueColleges = Array.from(new Set(candidatesList.map(c => c.college || c.collegeName).filter(Boolean)));
+  const uniqueColleges = Array.from(new Set(safeCandidatesList.map(c => c.college || c.collegeName).filter(Boolean)));
 
   return (
     <div className="space-y-8 pb-16">
@@ -221,6 +228,18 @@ export const AdminCandidatesPage = () => {
                       <button
                         onClick={async () => {
                           const candName = cand.name || cand.fullName || cand.email || 'this candidate';
+                          if (window.confirm(`Allow Retake for "${candName}"?\n\nThis will reset their assessment attempt, clear previous submission record(s), and allow the candidate to retake the assessment.`)) {
+                            await resetCandidateAttempt(cand.id);
+                          }
+                        }}
+                        className="p-1.5 rounded-lg bg-slate-100 hover:bg-amber-50 hover:text-amber-600 text-slate-600 transition-colors"
+                        title="Allow Retake / Reset Attempt"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={async () => {
+                          const candName = cand.name || cand.fullName || cand.email || 'this candidate';
                           if (window.confirm(`Are you sure you want to permanently delete candidate "${candName}"? This will remove their profile and all assessment submissions from the database.`)) {
                             await deleteCandidate(cand.id);
                           }
@@ -289,24 +308,42 @@ export const AdminCandidatesPage = () => {
               </div>
             </div>
 
-            <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-100">
               <button
                 type="button"
-                onClick={() => setViewCandidate(null)}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded-xl font-bold text-slate-700"
-              >
-                Close
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setViewCandidate(null);
-                  navigateTo('candidate-analytics');
+                onClick={async () => {
+                  const candName = viewCandidate.name || viewCandidate.fullName || viewCandidate.email || 'this candidate';
+                  if (window.confirm(`Allow Retake for "${candName}"?\n\nThis will reset their assessment attempt, clear previous submission record(s), and allow the candidate to write the assessment again.`)) {
+                    await resetCandidateAttempt(viewCandidate.id);
+                    setViewCandidate(null);
+                  }
                 }}
-                className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl font-bold"
+                className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold flex items-center gap-1.5 transition-all shadow-sm shadow-amber-500/20"
+                title="Reset attempt and allow candidate to retake the assessment"
               >
-                View Candidate Analytics
+                <RotateCcw className="w-3.5 h-3.5" />
+                Allow Retake / Reset Attempt
               </button>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setViewCandidate(null)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded-xl font-bold text-slate-700"
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setViewCandidate(null);
+                    navigateTo('candidate-analytics');
+                  }}
+                  className="px-4 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl font-bold"
+                >
+                  View Candidate Analytics
+                </button>
+              </div>
             </div>
           </div>
         </Modal>
