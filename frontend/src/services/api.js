@@ -17,7 +17,13 @@ async function request(method, path, body) {
       headers: authHeaders(),
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
-    const data = await res.json().catch(() => ({}));
+    const text = await res.text();
+    let data;
+    try {
+      data = text ? JSON.parse(text) : {};
+    } catch {
+      data = { error: text || `Server error (HTTP ${res.status}). Please try again.` };
+    }
     if (!res.ok) {
       const err = new Error(data.error || data.message || `HTTP ${res.status}`);
       err.status = res.status;
@@ -28,6 +34,7 @@ async function request(method, path, body) {
   } catch (err) {
     console.warn(`[API] ${method} ${path} failed:`, err.message);
     return { ok: false, error: err.message, status: err.status || 500, data: err.data };
+  }
   }
 }
 
