@@ -80,7 +80,7 @@ export const AssessmentsListPage = () => {
 
         {/* Category Filter Tabs */}
         <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-bold">
-          {['All', 'Technical', 'Aptitude', 'Reasoning'].map((cat) => (
+          {['All', 'Coding', 'Technical', 'Aptitude', 'Reasoning'].map((cat) => (
             <button
               key={cat}
               onClick={() => setSelectedCategory(cat)}

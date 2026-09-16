@@ -771,22 +771,40 @@ export const AppProvider = ({ children }) => {
       topicStats[top].totalQuestions += 1;
 
       const userAns = answers[q.id];
-      const hasAnswered = userAns !== undefined && userAns !== null && String(userAns).trim() !== '';
+      const isCoding = q.type === 'Coding' || (typeof userAns === 'object' && userAns !== null);
+      const hasAnswered = isCoding || (userAns !== undefined && userAns !== null && String(userAns).trim() !== '');
 
       if (hasAnswered) {
-        const isCorrect = String(userAns).trim().toUpperCase() === correctAns;
-        if (isCorrect) {
-          correct += 1;
-          totalObtainedMarks += qMarks;
+        if (isCoding) {
+          const scorePct = Number(userAns?.score ?? (userAns?.passedTests && userAns?.totalTests ? (userAns.passedTests / userAns.totalTests) * 100 : 0));
+          const earned = Math.round((scorePct / 100) * qMarks);
+          totalObtainedMarks += earned;
+          categoryStats[cat].obtainedMarks += earned;
+          topicStats[top].obtainedMarks += earned;
 
-          categoryStats[cat].correctCount += 1;
-          categoryStats[cat].obtainedMarks += qMarks;
-
-          topicStats[top].correctCount += 1;
-          topicStats[top].obtainedMarks += qMarks;
+          if (scorePct >= 60) {
+            correct += 1;
+            categoryStats[cat].correctCount += 1;
+            topicStats[top].correctCount += 1;
+          } else {
+            incorrect += 1;
+            topicStats[top].incorrectCount += 1;
+          }
         } else {
-          incorrect += 1;
-          topicStats[top].incorrectCount += 1;
+          const isCorrect = String(userAns).trim().toUpperCase() === correctAns;
+          if (isCorrect) {
+            correct += 1;
+            totalObtainedMarks += qMarks;
+
+            categoryStats[cat].correctCount += 1;
+            categoryStats[cat].obtainedMarks += qMarks;
+
+            topicStats[top].correctCount += 1;
+            topicStats[top].obtainedMarks += qMarks;
+          } else {
+            incorrect += 1;
+            topicStats[top].incorrectCount += 1;
+          }
         }
       } else {
         unanswered += 1;
@@ -800,13 +818,14 @@ export const AppProvider = ({ children }) => {
       : 0;
     let accuracy = attemptedCount > 0 ? Math.round((correct / attemptedCount) * 100) : 0;
 
-    // Helper function to normalize category to one of the 4 standard sections
+    // Helper function to normalize category to one of the standard sections
     const normalizeSection = (rawCat) => {
       const c = (rawCat || '').toLowerCase().trim();
+      if (c.includes('code') || c.includes('prog')) return 'coding';
       if (c.includes('apt') || c.includes('quant') || c.includes('math')) return 'aptitude';
       if (c.includes('reason') || c.includes('logic')) return 'reasoning';
       if (c.includes('verbal') || c.includes('eng')) return 'verbal';
-      if (c.includes('tech') || c.includes('code') || c.includes('prog')) return 'technical';
+      if (c.includes('tech')) return 'technical';
       return c || 'technical';
     };
 
@@ -816,6 +835,7 @@ export const AppProvider = ({ children }) => {
       reasoning: 0,
       technical: 0,
       verbal: 0,
+      coding: 0,
     };
 
     const normalizedCategoryStats = {
@@ -823,6 +843,7 @@ export const AppProvider = ({ children }) => {
       reasoning: { totalMarks: 0, obtainedMarks: 0 },
       technical: { totalMarks: 0, obtainedMarks: 0 },
       verbal: { totalMarks: 0, obtainedMarks: 0 },
+      coding: { totalMarks: 0, obtainedMarks: 0 },
     };
 
     Object.keys(categoryStats).forEach(cat => {
@@ -1113,6 +1134,9 @@ export const AppProvider = ({ children }) => {
           codeSnippet: q.code_snippet,
           language: q.language,
           options: typeof q.options === 'string' ? JSON.parse(q.options) : (q.options || []),
+          test_cases: typeof q.test_cases === 'string' ? JSON.parse(q.test_cases) : (q.test_cases || []),
+          starter_templates: typeof q.starter_templates === 'string' ? JSON.parse(q.starter_templates) : (q.starter_templates || null),
+          constraints: q.constraints,
           correctAnswer: q.correct_answer,
           explanation: q.explanation,
           marks: Number(q.marks) > 0 ? Number(q.marks) : 1,
@@ -1181,7 +1205,10 @@ export const AppProvider = ({ children }) => {
           explanation: item.explanation,
           marks: item.marks,
           timeLimitSec: item.timeLimitSec,
-          tags: item.tags
+          tags: item.tags,
+          testCases: item.testCases || item.test_cases,
+          starterTemplates: item.starterTemplates || item.starter_templates,
+          constraints: item.constraints
         });
       });
 

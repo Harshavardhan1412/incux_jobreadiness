@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Modal } from '../../components/common/Modal';
 import { MediaPreviewWidget } from '../../components/candidate/MediaPreviewWidget';
+import { CodingWorkspace } from '../../components/candidate/CodingWorkspace';
 import {
   Clock,
   Bookmark,
@@ -15,7 +16,8 @@ import {
   CheckSquare,
   HelpCircle,
   Copy,
-  Check
+  Check,
+  Code2
 } from 'lucide-react';
 
 export const AssessmentPage = () => {
@@ -343,95 +345,104 @@ export const AssessmentPage = () => {
       </header>
 
       {/* MAIN CONTENT AREA */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-6">
+      <div className={`${currentQuestion?.type === 'Coding' ? 'max-w-[98vw] px-2 sm:px-4' : 'max-w-7xl px-4 sm:px-6 lg:px-8'} mx-auto mt-5 transition-all duration-200`}>
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           
-          {/* MAIN QUESTION CARD (8 cols on desktop) */}
-          <div className="lg:col-span-8 flex flex-col justify-between space-y-6">
-            <div className="bg-white rounded-2xl border border-slate-200/90 shadow-card p-6 sm:p-8 space-y-6">
-              
-              {/* Question Meta Header */}
-              <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-                <div className="flex items-center gap-2.5">
-                  <span className="px-2.5 py-1 bg-brand-50 text-brand-700 border border-brand-200 rounded-lg text-xs font-bold">
-                    Question {currentQuestionIndex + 1}
-                  </span>
-                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-                    {currentQuestion?.type || 'Single Choice'}
-                  </span>
-                  <span className="text-xs text-slate-400">• {currentQuestion?.marks || 4} Marks</span>
+          {/* MAIN QUESTION CARD / CODING WORKSPACE */}
+          <div className={`${currentQuestion?.type === 'Coding' ? 'lg:col-span-9' : 'lg:col-span-8'} flex flex-col justify-between space-y-6`}>
+            {currentQuestion?.type === 'Coding' ? (
+              <CodingWorkspace
+                question={currentQuestion}
+                savedAnswer={assessmentAnswers[currentQuestion?.id]}
+                onSaveAnswer={(ans) => setAssessmentAnswers(prev => ({ ...prev, [currentQuestion?.id]: ans }))}
+                addToast={addToast}
+              />
+            ) : (
+              <div className="bg-white rounded-2xl border border-slate-200/90 shadow-card p-6 sm:p-8 space-y-6">
+                
+                {/* Question Meta Header */}
+                <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+                  <div className="flex items-center gap-2.5">
+                    <span className="px-2.5 py-1 bg-brand-50 text-brand-700 border border-brand-200 rounded-lg text-xs font-bold">
+                      Question {currentQuestionIndex + 1}
+                    </span>
+                    <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                      {currentQuestion?.type || 'Single Choice'}
+                    </span>
+                    <span className="text-xs text-slate-400">• {currentQuestion?.marks || 4} Marks</span>
+                  </div>
+
+                  <button
+                    onClick={handleToggleReview}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
+                      isMarked
+                        ? 'bg-amber-50 border-amber-300 text-amber-700 shadow-2xs'
+                        : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                    }`}
+                  >
+                    <Flag className={`w-3.5 h-3.5 ${isMarked ? 'fill-amber-500 text-amber-500' : ''}`} />
+                    <span>{isMarked ? 'Marked for Review' : 'Mark for Review'}</span>
+                  </button>
                 </div>
 
-                <button
-                  onClick={handleToggleReview}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
-                    isMarked
-                      ? 'bg-amber-50 border-amber-300 text-amber-700 shadow-2xs'
-                      : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-                  }`}
-                >
-                  <Flag className={`w-3.5 h-3.5 ${isMarked ? 'fill-amber-500 text-amber-500' : ''}`} />
-                  <span>{isMarked ? 'Marked for Review' : 'Mark for Review'}</span>
-                </button>
-              </div>
+                {/* Question Text */}
+                <div className="space-y-4">
+                  <h2 className="text-base sm:text-lg font-bold text-slate-900 leading-relaxed">
+                    {currentQuestion?.question}
+                  </h2>
 
-              {/* Question Text */}
-              <div className="space-y-4">
-                <h2 className="text-base sm:text-lg font-bold text-slate-900 leading-relaxed">
-                  {currentQuestion?.question}
-                </h2>
-
-                {/* Code Snippet if applicable */}
-                {currentQuestion?.codeSnippet && (
-                  <div className="rounded-xl overflow-hidden border border-slate-800 bg-slate-900 text-slate-100 my-4 shadow-md font-mono text-xs sm:text-sm">
-                    <div className="flex items-center justify-between px-4 py-2 bg-slate-950 border-b border-slate-800 text-[11px] text-slate-400">
-                      <span className="capitalize">{currentQuestion.language || 'javascript'}</span>
-                      <button
-                        onClick={() => handleCopyCode(currentQuestion.codeSnippet)}
-                        className="hover:text-white flex items-center gap-1 transition-colors"
-                      >
-                        {copiedCode ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                        <span>{copiedCode ? 'Copied' : 'Copy'}</span>
-                      </button>
-                    </div>
-                    <pre className="p-4 overflow-x-auto leading-relaxed text-emerald-300">
-                      <code>{currentQuestion.codeSnippet}</code>
-                    </pre>
-                  </div>
-                )}
-              </div>
-
-              {/* Options List */}
-              <div className="space-y-3 pt-2">
-                {currentQuestion?.options?.map((opt) => {
-                  const isSelected = selectedOption === opt.id;
-
-                  return (
-                    <div
-                      key={opt.id}
-                      onClick={() => handleSelectOption(opt.id)}
-                      className={`flex items-start gap-3.5 p-4 rounded-xl border cursor-pointer transition-all ${
-                        isSelected
-                          ? 'bg-brand-50/80 border-brand-500 text-brand-950 shadow-xs ring-1 ring-brand-500'
-                          : 'bg-slate-50 hover:bg-slate-100/70 border-slate-200/80 text-slate-800'
-                      }`}
-                    >
-                      <div className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0 transition-colors ${
-                        isSelected
-                          ? 'bg-brand-600 text-white'
-                          : 'bg-white border border-slate-300 text-slate-600'
-                      }`}>
-                        {opt.id}
+                  {/* Code Snippet if applicable */}
+                  {currentQuestion?.codeSnippet && (
+                    <div className="rounded-xl overflow-hidden border border-slate-800 bg-slate-900 text-slate-100 my-4 shadow-md font-mono text-xs sm:text-sm">
+                      <div className="flex items-center justify-between px-4 py-2 bg-slate-950 border-b border-slate-800 text-[11px] text-slate-400">
+                        <span className="capitalize">{currentQuestion.language || 'javascript'}</span>
+                        <button
+                          onClick={() => handleCopyCode(currentQuestion.codeSnippet)}
+                          className="hover:text-white flex items-center gap-1 transition-colors"
+                        >
+                          {copiedCode ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                          <span>{copiedCode ? 'Copied' : 'Copy'}</span>
+                        </button>
                       </div>
-                      <span className="text-xs sm:text-sm font-medium leading-relaxed pt-0.5">
-                        {opt.text}
-                      </span>
+                      <pre className="p-4 overflow-x-auto leading-relaxed text-emerald-300">
+                        <code>{currentQuestion.codeSnippet}</code>
+                      </pre>
                     </div>
-                  );
-                })}
-              </div>
+                  )}
+                </div>
 
-            </div>
+                {/* Options List */}
+                <div className="space-y-3 pt-2">
+                  {currentQuestion?.options?.map((opt) => {
+                    const isSelected = selectedOption === opt.id;
+
+                    return (
+                      <div
+                        key={opt.id}
+                        onClick={() => handleSelectOption(opt.id)}
+                        className={`flex items-start gap-3.5 p-4 rounded-xl border cursor-pointer transition-all ${
+                          isSelected
+                            ? 'bg-brand-50/80 border-brand-500 text-brand-950 shadow-xs ring-1 ring-brand-500'
+                            : 'bg-slate-50 hover:bg-slate-100/70 border-slate-200/80 text-slate-800'
+                        }`}
+                      >
+                        <div className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0 transition-colors ${
+                          isSelected
+                            ? 'bg-brand-600 text-white'
+                            : 'bg-white border border-slate-300 text-slate-600'
+                        }`}>
+                          {opt.id}
+                        </div>
+                        <span className="text-xs sm:text-sm font-medium leading-relaxed pt-0.5">
+                          {opt.text}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+
+              </div>
+            )}
 
             {/* ACTION BAR: Previous, Next, Clear Selection */}
             <div className="bg-white rounded-2xl border border-slate-200/90 shadow-card p-4 flex items-center justify-between">
@@ -444,18 +455,24 @@ export const AssessmentPage = () => {
                 <span>Previous</span>
               </button>
 
-              <button
-                onClick={() => {
-                  setAssessmentAnswers(prev => {
-                    const copy = { ...prev };
-                    delete copy[currentQuestion.id];
-                    return copy;
-                  });
-                }}
-                className="text-xs font-semibold text-slate-400 hover:text-slate-600"
-              >
-                Clear Selection
-              </button>
+              {currentQuestion?.type !== 'Coding' ? (
+                <button
+                  onClick={() => {
+                    setAssessmentAnswers(prev => {
+                      const copy = { ...prev };
+                      delete copy[currentQuestion.id];
+                      return copy;
+                    });
+                  }}
+                  className="text-xs font-semibold text-slate-400 hover:text-slate-600"
+                >
+                  Clear Selection
+                </button>
+              ) : (
+                <span className="text-xs font-semibold text-slate-400">
+                  {assessmentAnswers[currentQuestion?.id]?.code ? 'Code Solution Saved' : 'Write & Test Code'}
+                </span>
+              )}
 
               <button
                 onClick={handleNext}
@@ -468,8 +485,8 @@ export const AssessmentPage = () => {
             </div>
           </div>
 
-          {/* RIGHT SIDEBAR: CAMERA PREVIEW & QUESTION PALETTE (4 cols on desktop) */}
-          <div className="lg:col-span-4 space-y-4">
+          {/* RIGHT SIDEBAR: CAMERA PREVIEW & QUESTION PALETTE */}
+          <div className={`${currentQuestion?.type === 'Coding' ? 'lg:col-span-3' : 'lg:col-span-4'} space-y-4`}>
             
             {/* Live Camera & Mic Status Widget */}
             {mediaStream && (
@@ -511,6 +528,7 @@ export const AssessmentPage = () => {
                   const isAns = !!assessmentAnswers[q.id];
                   const isRev = markedForReview.includes(q.id);
                   const isCur = idx === currentQuestionIndex;
+                  const isCodingQ = q.type === 'Coding';
 
                   let bgClass = 'bg-slate-100 text-slate-700 hover:bg-slate-200';
 
@@ -527,8 +545,10 @@ export const AssessmentPage = () => {
                       className={`h-10 rounded-xl text-xs font-bold flex items-center justify-center transition-all relative ${bgClass} ${
                         isCur ? 'ring-2 ring-brand-600 ring-offset-2 scale-105' : ''
                       }`}
+                      title={isCodingQ ? `Q${idx + 1}: Coding Challenge` : `Q${idx + 1}`}
                     >
-                      {idx + 1}
+                      {isCodingQ && <Code2 className="w-2.5 h-2.5 mr-0.5 opacity-80" />}
+                      <span>{idx + 1}</span>
                       {isRev && (
                         <div className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-amber-600 rounded-full ring-1 ring-white" />
                       )}

@@ -31,6 +31,18 @@ import {
 
 const FOLDERS = [
   {
+    id: 'Coding',
+    name: 'Coding Folder',
+    category: 'Coding',
+    description: 'Algorithmic challenges, code execution sandboxes, test suites (Python, JS, C++, Java)',
+    icon: Code2,
+    color: 'indigo',
+    cardBg: 'bg-indigo-50/50 border-indigo-200/80 hover:border-indigo-400',
+    activeCard: 'ring-2 ring-indigo-500 bg-indigo-50 border-indigo-500 shadow-md',
+    iconBg: 'bg-indigo-100 text-indigo-700',
+    badge: 'bg-indigo-100 text-indigo-800'
+  },
+  {
     id: 'Aptitude',
     name: 'Aptitude Folder',
     category: 'Aptitude',
@@ -93,10 +105,10 @@ export const AdminQuestionBankPage = () => {
 
   // Form State
   const [formData, setFormData] = useState({
-    category: 'Technical',
-    topic: 'Data Structures',
+    category: 'Coding',
+    topic: 'Algorithms & Problem Solving',
     difficulty: 'Medium',
-    type: 'Single Choice',
+    type: 'Coding',
     question: '',
     codeSnippet: '',
     language: 'javascript',
@@ -106,9 +118,20 @@ export const AdminQuestionBankPage = () => {
     optionD: '',
     correctAnswer: 'A',
     explanation: '',
-    marks: 4,
-    timeLimitSec: 60,
-    tags: 'Algorithms, Data Structures'
+    marks: 10,
+    timeLimitSec: 300,
+    tags: 'Algorithms, Data Structures',
+    constraints: '1 <= N <= 10^5\nTime Limit: 4.0s\nMemory Limit: 256MB',
+    testCases: [
+      { input: '5\n1 2 3 4 5', expectedOutput: '15', explanation: 'Sum of 5 numbers', isHidden: false },
+      { input: '3\n10 20 30', expectedOutput: '60', explanation: 'Hidden test case', isHidden: true }
+    ],
+    starterTemplates: {
+      python: '# Read from standard input and write to standard output\ndef solve():\n    import sys\n    input_data = sys.stdin.read().split()\n    if not input_data:\n        return\n    # Your logic here\n\nif __name__ == "__main__":\n    solve()',
+      javascript: '// Read from standard input and write to standard output\nconst fs = require("fs");\n\nfunction main() {\n  const input = fs.readFileSync(0, "utf-8").trim();\n  if (!input) return;\n  // Your logic here\n}\n\nmain();',
+      cpp: '#include <iostream>\n#include <vector>\nusing namespace std;\n\nint main() {\n    ios_base::sync_with_stdio(false);\n    cin.tie(NULL);\n    // Your logic here\n    return 0;\n}',
+      java: 'import java.util.*;\n\npublic class Solution {\n    public static void main(String[] args) {\n        Scanner sc = new Scanner(System.in);\n        // Your logic here\n    }\n}'
+    }
   });
 
   // Calculate stats & sub-topics per category folder
@@ -149,11 +172,20 @@ export const AdminQuestionBankPage = () => {
   }, [questionBank, searchQuery, selectedCategory, selectedTopic, selectedDifficulty, selectedType]);
 
   const handleOpenAddModal = (catChoice = null) => {
-    const cat = catChoice || (selectedCategory !== 'All' ? selectedCategory : 'Technical');
+    const cat = catChoice || (selectedCategory !== 'All' ? selectedCategory : 'Coding');
+    const isCoding = cat === 'Coding';
     setFormData(prev => ({
       ...prev,
       category: cat,
-      topic: cat === 'Aptitude' ? 'Quantitative Aptitude' : cat === 'Reasoning' ? 'Logical Deduction' : cat === 'Verbal' ? 'Vocabulary & Antonyms' : 'Data Structures'
+      type: isCoding ? 'Coding' : 'Single Choice',
+      topic: cat === 'Aptitude' ? 'Quantitative Aptitude'
+           : cat === 'Reasoning' ? 'Logical Deduction'
+           : cat === 'Verbal' ? 'Vocabulary & Antonyms'
+           : cat === 'Coding' ? 'Algorithms & Problem Solving'
+           : 'Data Structures',
+      marks: isCoding ? 10 : 4,
+      timeLimitSec: isCoding ? 300 : 60,
+      tags: isCoding ? 'Algorithms, Coding, Data Structures' : prev.tags
     }));
     setIsAddModalOpen(true);
   };
@@ -165,7 +197,9 @@ export const AdminQuestionBankPage = () => {
       return;
     }
 
-    const options = formData.type === 'True/False' ? [
+    const isCoding = formData.type === 'Coding' || formData.category === 'Coding';
+
+    const options = isCoding ? [] : (formData.type === 'True/False' ? [
       { id: 'A', text: 'True' },
       { id: 'B', text: 'False' }
     ] : [
@@ -173,31 +207,36 @@ export const AdminQuestionBankPage = () => {
       { id: 'B', text: formData.optionB || 'Option B' },
       { id: 'C', text: formData.optionC || 'Option C' },
       { id: 'D', text: formData.optionD || 'Option D' }
-    ];
+    ]);
 
     const newQ = {
       category: formData.category,
       topic: formData.topic,
       difficulty: formData.difficulty,
-      type: formData.type,
+      type: isCoding ? 'Coding' : formData.type,
       question: formData.question,
-      codeSnippet: formData.codeSnippet || null,
-      language: formData.language,
+      codeSnippet: isCoding ? null : (formData.codeSnippet || null),
+      language: isCoding ? 'all' : formData.language,
       options: options,
-      correctAnswer: formData.correctAnswer,
-      explanation: formData.explanation || 'Standard conceptual explanation.',
-      marks: Number(formData.marks) || 4,
-      timeLimitSec: Number(formData.timeLimitSec) || 60,
-      tags: formData.tags.split(',').map(t => t.trim())
+      correctAnswer: isCoding ? 'TESTCASES' : formData.correctAnswer,
+      explanation: formData.explanation || (isCoding ? 'Passes all visible and hidden automated test suites.' : 'Standard conceptual explanation.'),
+      marks: Number(formData.marks) || (isCoding ? 10 : 4),
+      timeLimitSec: Number(formData.timeLimitSec) || (isCoding ? 300 : 60),
+      tags: formData.tags.split(',').map(t => t.trim()).filter(Boolean),
+      testCases: isCoding ? formData.testCases : undefined,
+      test_cases: isCoding ? formData.testCases : undefined,
+      starterTemplates: isCoding ? formData.starterTemplates : undefined,
+      starter_templates: isCoding ? formData.starterTemplates : undefined,
+      constraints: isCoding ? formData.constraints : undefined
     };
 
     addQuestion(newQ);
     setIsAddModalOpen(false);
     setFormData({
-      category: 'Technical',
-      topic: 'Data Structures',
+      category: 'Coding',
+      topic: 'Algorithms & Problem Solving',
       difficulty: 'Medium',
-      type: 'Single Choice',
+      type: 'Coding',
       question: '',
       codeSnippet: '',
       language: 'javascript',
@@ -207,9 +246,20 @@ export const AdminQuestionBankPage = () => {
       optionD: '',
       correctAnswer: 'A',
       explanation: '',
-      marks: 4,
-      timeLimitSec: 60,
-      tags: 'Algorithms, Data Structures'
+      marks: 10,
+      timeLimitSec: 300,
+      tags: 'Algorithms, Data Structures',
+      constraints: '1 <= N <= 10^5\nTime Limit: 4.0s\nMemory Limit: 256MB',
+      testCases: [
+        { input: '5\n1 2 3 4 5', expectedOutput: '15', explanation: 'Sum of 5 numbers', isHidden: false },
+        { input: '3\n10 20 30', expectedOutput: '60', explanation: 'Hidden test case', isHidden: true }
+      ],
+      starterTemplates: {
+        python: '# Read from standard input and write to standard output\ndef solve():\n    import sys\n    input_data = sys.stdin.read().split()\n    if not input_data:\n        return\n    # Your logic here\n\nif __name__ == "__main__":\n    solve()',
+        javascript: '// Read from standard input and write to standard output\nconst fs = require("fs");\n\nfunction main() {\n  const input = fs.readFileSync(0, "utf-8").trim();\n  if (!input) return;\n  // Your logic here\n}\n\nmain();',
+        cpp: '#include <iostream>\n#include <vector>\nusing namespace std;\n\nint main() {\n    ios_base::sync_with_stdio(false);\n    cin.tie(NULL);\n    // Your logic here\n    return 0;\n}',
+        java: 'import java.util.*;\n\npublic class Solution {\n    public static void main(String[] args) {\n        Scanner sc = new Scanner(System.in);\n        // Your logic here\n    }\n}'
+      }
     });
   };
 
@@ -478,9 +528,10 @@ export const AdminQuestionBankPage = () => {
             <select
               value={selectedType}
               onChange={(e) => setSelectedType(e.target.value)}
-              className="px-3 py-2 bg-slate-50 text-xs rounded-xl border border-slate-200 outline-none text-slate-700"
+              className="px-3 py-2 bg-slate-50 text-xs rounded-xl border border-slate-200 outline-none text-slate-700 font-semibold"
             >
               <option value="All">All Question Types</option>
+              <option value="Coding">Coding Challenge</option>
               <option value="Single Choice">Single Choice</option>
               <option value="Code Snippet">Code Snippet</option>
               <option value="True/False">True/False</option>
@@ -518,62 +569,89 @@ export const AdminQuestionBankPage = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-                    {filteredQuestions.map((q) => (
-                      <tr key={q.id} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="py-3.5 px-4 font-mono text-[11px] text-slate-400 font-bold">
-                          {q.id}
-                        </td>
-                        <td className="py-3.5 px-4 space-y-1.5">
-                          <div className="font-bold text-slate-900 text-sm">{q.question}</div>
-                          
-                          {/* Render Options list directly */}
-                          {q.options && q.options.length > 0 && (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 mt-1 text-[11px]">
-                              {q.options.map((opt) => {
-                                const isCorrect = opt.id === q.correctAnswer;
-                                return (
-                                  <div
-                                    key={opt.id}
-                                    className={`px-2 py-0.5 rounded-lg border font-medium flex items-center gap-1.5 ${
-                                      isCorrect
-                                        ? 'bg-emerald-50 border-emerald-300 text-emerald-800 font-bold'
-                                        : 'bg-slate-50 border-slate-200 text-slate-600'
-                                    }`}
-                                  >
-                                    <span className={`w-4 h-4 rounded-md text-[10px] flex items-center justify-center font-bold ${
-                                      isCorrect ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-700'
-                                    }`}>
-                                      {opt.id}
-                                    </span>
-                                    <span className="truncate">{opt.text}</span>
-                                    {isCorrect && <CheckCircle2 className="w-3 h-3 text-emerald-600 ml-auto flex-shrink-0" />}
-                                  </div>
-                                );
-                              })}
+                    {filteredQuestions.map((q) => {
+                      const isCodingQ = q.type === 'Coding' || q.category === 'Coding';
+                      const testCasesCount = (q.testCases || q.test_cases || []).length;
+
+                      return (
+                        <tr key={q.id} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="py-3.5 px-4 font-mono text-[11px] text-slate-400 font-bold">
+                            {q.id}
+                          </td>
+                          <td className="py-3.5 px-4 space-y-1.5">
+                            <div className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                              {isCodingQ && <Code2 className="w-4 h-4 text-indigo-600 flex-shrink-0" />}
+                              <span>{q.question}</span>
                             </div>
-                          )}
-                        </td>
-                        <td className="py-3.5 px-4">
-                          <span className="font-semibold text-slate-800 bg-slate-100 px-2 py-0.5 rounded text-[11px]">
-                            {q.topic}
-                          </span>
-                        </td>
-                        <td className="py-3.5 px-4">
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                            q.difficulty === 'Easy'
-                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                              : q.difficulty === 'Medium'
-                              ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                              : 'bg-rose-50 text-rose-700 border border-rose-200'
-                          }`}>
-                            {q.difficulty}
-                          </span>
-                        </td>
-                        <td className="py-3.5 px-4">
-                          <span className="font-extrabold text-xs px-2.5 py-1 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-300">
-                            Option {q.correctAnswer}
-                          </span>
-                        </td>
+                            
+                            {/* Render Options or Coding summary */}
+                            {isCodingQ ? (
+                              <div className="flex flex-wrap items-center gap-2 mt-1 text-[11px]">
+                                <span className="px-2 py-0.5 rounded-md bg-indigo-50 border border-indigo-200 text-indigo-700 font-bold flex items-center gap-1">
+                                  <Code2 className="w-3 h-3" />
+                                  Coding Challenge
+                                </span>
+                                <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 font-medium">
+                                  {testCasesCount > 0 ? `${testCasesCount} Test Cases` : 'Interactive Test Suite'}
+                                </span>
+                                <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 font-medium">
+                                  Python • JS • C++ • Java
+                                </span>
+                              </div>
+                            ) : q.options && q.options.length > 0 ? (
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 mt-1 text-[11px]">
+                                {q.options.map((opt) => {
+                                  const isCorrect = opt.id === q.correctAnswer;
+                                  return (
+                                    <div
+                                      key={opt.id}
+                                      className={`px-2 py-0.5 rounded-lg border font-medium flex items-center gap-1.5 ${
+                                        isCorrect
+                                          ? 'bg-emerald-50 border-emerald-300 text-emerald-800 font-bold'
+                                          : 'bg-slate-50 border-slate-200 text-slate-600'
+                                      }`}
+                                    >
+                                      <span className={`w-4 h-4 rounded-md text-[10px] flex items-center justify-center font-bold ${
+                                        isCorrect ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-700'
+                                      }`}>
+                                        {opt.id}
+                                      </span>
+                                      <span className="truncate">{opt.text}</span>
+                                      {isCorrect && <CheckCircle2 className="w-3 h-3 text-emerald-600 ml-auto flex-shrink-0" />}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : null}
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <span className="font-semibold text-slate-800 bg-slate-100 px-2 py-0.5 rounded text-[11px]">
+                              {q.topic}
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                              q.difficulty === 'Easy'
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                : q.difficulty === 'Medium'
+                                ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                : 'bg-rose-50 text-rose-700 border border-rose-200'
+                            }`}>
+                              {q.difficulty}
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-4">
+                            {isCodingQ ? (
+                              <span className="font-extrabold text-[11px] px-2 py-1 rounded-md bg-indigo-100 text-indigo-800 border border-indigo-300 flex items-center gap-1 w-fit">
+                                <Code2 className="w-3 h-3" />
+                                Automated Tests
+                              </span>
+                            ) : (
+                              <span className="font-extrabold text-xs px-2.5 py-1 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                Option {q.correctAnswer}
+                              </span>
+                            )}
+                          </td>
                         <td className="py-3.5 px-4 text-slate-600 text-[11px]">
                           <div><strong>{q.marks || 4}</strong> Marks</div>
                           <div className="text-slate-400">{q.timeLimitSec || 60} sec</div>
@@ -604,7 +682,8 @@ export const AdminQuestionBankPage = () => {
                           </div>
                         </td>
                       </tr>
-                    ))}
+                    );
+                  })}
                   </tbody>
                 </table>
               </div>
@@ -634,18 +713,53 @@ export const AdminQuestionBankPage = () => {
             <span className="text-[11px] text-slate-500 font-semibold">Auto-assigned upon creation</span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
             <div>
               <label className="block font-bold text-slate-700 mb-1">Category *</label>
               <select
                 value={formData.category}
-                onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                onChange={(e) => {
+                  const cat = e.target.value;
+                  const isCoding = cat === 'Coding';
+                  setFormData(prev => ({
+                    ...prev,
+                    category: cat,
+                    type: isCoding ? 'Coding' : (prev.type === 'Coding' ? 'Single Choice' : prev.type),
+                    topic: isCoding ? 'Algorithms & Problem Solving' : prev.topic,
+                    marks: isCoding ? 10 : 4,
+                    timeLimitSec: isCoding ? 300 : 60
+                  }));
+                }}
                 className="w-full px-3 py-2 bg-slate-50 rounded-xl border border-slate-200 outline-none font-bold"
               >
+                <option value="Coding">Coding</option>
                 <option value="Technical">Technical</option>
                 <option value="Aptitude">Aptitude</option>
                 <option value="Reasoning">Reasoning</option>
                 <option value="Verbal">Verbal</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">Question Type *</label>
+              <select
+                value={formData.type}
+                onChange={(e) => {
+                  const t = e.target.value;
+                  setFormData(prev => ({
+                    ...prev,
+                    type: t,
+                    category: t === 'Coding' ? 'Coding' : (prev.category === 'Coding' ? 'Technical' : prev.category),
+                    marks: t === 'Coding' ? 10 : 4,
+                    timeLimitSec: t === 'Coding' ? 300 : 60
+                  }));
+                }}
+                className="w-full px-3 py-2 bg-slate-50 rounded-xl border border-slate-200 outline-none font-bold text-slate-800"
+              >
+                <option value="Coding">Coding Challenge</option>
+                <option value="Single Choice">Single Choice (MCQ)</option>
+                <option value="Code Snippet">Code Snippet (MCQ)</option>
+                <option value="True/False">True/False</option>
               </select>
             </div>
 
@@ -674,115 +788,259 @@ export const AdminQuestionBankPage = () => {
             </div>
           </div>
 
-
-
           {/* Question Text */}
           <div>
-            <label className="block font-bold text-slate-700 mb-1">Question Statement *</label>
+            <label className="block font-bold text-slate-700 mb-1">Question Statement / Problem Description *</label>
             <textarea
-              rows={2}
+              rows={formData.type === 'Coding' ? 3 : 2}
               required
               value={formData.question}
               onChange={(e) => setFormData({ ...formData, question: e.target.value })}
-              placeholder="e.g. Which algorithmic paradigm does Dijkstra's shortest path algorithm use?"
+              placeholder={formData.type === 'Coding' ? "Describe problem: Given an array of integers, return the sum of all elements..." : "e.g. Which algorithmic paradigm does Dijkstra's algorithm use?"}
               className="w-full p-3 bg-slate-50 rounded-xl border border-slate-200 focus:border-brand-500 outline-none"
             />
           </div>
 
-          {/* Technical Code Snippet */}
-          {formData.type === 'Code Snippet' && (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <label className="block font-bold text-slate-700">Code Snippet</label>
-                <select
-                  value={formData.language}
-                  onChange={(e) => setFormData({ ...formData, language: e.target.value })}
-                  className="px-2 py-1 bg-slate-50 rounded-lg border border-slate-200 text-[11px]"
-                >
-                  <option value="javascript">JavaScript</option>
-                  <option value="python">Python</option>
-                  <option value="java">Java</option>
-                  <option value="sql">SQL</option>
-                </select>
+          {/* Coding Challenge Specifications */}
+          {formData.type === 'Coding' ? (
+            <div className="space-y-4 p-4 bg-slate-50 rounded-2xl border border-slate-200">
+              <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                <div className="flex items-center gap-2 font-bold text-slate-900 text-xs">
+                  <Code2 className="w-4 h-4 text-indigo-600" />
+                  <span>Coding Challenge Specifications</span>
+                </div>
+                <span className="text-[11px] text-slate-500 font-medium">Supports Python, JavaScript, C++, Java</span>
               </div>
-              <textarea
-                rows={3}
-                value={formData.codeSnippet}
-                onChange={(e) => setFormData({ ...formData, codeSnippet: e.target.value })}
-                placeholder="// Enter code snippet here"
-                className="w-full p-3 bg-slate-900 text-emerald-400 font-mono rounded-xl border border-slate-700 outline-none"
-              />
-            </div>
-          )}
 
-          {/* Options */}
-          {formData.type !== 'True/False' ? (
-            <div className="grid grid-cols-2 gap-3">
+              {/* Constraints */}
               <div>
-                <label className="block font-bold text-slate-700 mb-1">Option A</label>
-                <input
-                  type="text"
-                  value={formData.optionA}
-                  onChange={(e) => setFormData({ ...formData, optionA: e.target.value })}
-                  placeholder="Option A description"
-                  className="w-full px-3 py-2 bg-slate-50 rounded-xl border border-slate-200 outline-none"
+                <label className="block font-bold text-slate-700 mb-1">Constraints</label>
+                <textarea
+                  rows={2}
+                  value={formData.constraints}
+                  onChange={(e) => setFormData({ ...formData, constraints: e.target.value })}
+                  placeholder="e.g. 1 <= N <= 10^5&#10;Time Limit: 4.0s&#10;Memory Limit: 256MB"
+                  className="w-full p-2.5 bg-white rounded-xl border border-slate-200 font-mono text-[11px] outline-none"
                 />
               </div>
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">Option B</label>
-                <input
-                  type="text"
-                  value={formData.optionB}
-                  onChange={(e) => setFormData({ ...formData, optionB: e.target.value })}
-                  placeholder="Option B description"
-                  className="w-full px-3 py-2 bg-slate-50 rounded-xl border border-slate-200 outline-none"
-                />
-              </div>
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">Option C</label>
-                <input
-                  type="text"
-                  value={formData.optionC}
-                  onChange={(e) => setFormData({ ...formData, optionC: e.target.value })}
-                  placeholder="Option C description"
-                  className="w-full px-3 py-2 bg-slate-50 rounded-xl border border-slate-200 outline-none"
-                />
-              </div>
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">Option D</label>
-                <input
-                  type="text"
-                  value={formData.optionD}
-                  onChange={(e) => setFormData({ ...formData, optionD: e.target.value })}
-                  placeholder="Option D description"
-                  className="w-full px-3 py-2 bg-slate-50 rounded-xl border border-slate-200 outline-none"
-                />
+
+              {/* Test Cases Manager */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="block font-bold text-slate-800 text-xs">
+                    Test Cases ({formData.testCases?.length || 0})
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFormData(prev => ({
+                        ...prev,
+                        testCases: [
+                          ...(prev.testCases || []),
+                          { input: '', expectedOutput: '', explanation: '', isHidden: false }
+                        ]
+                      }));
+                    }}
+                    className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-[11px] font-bold flex items-center gap-1 transition-all"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Add Test Case</span>
+                  </button>
+                </div>
+
+                <div className="space-y-3 max-h-56 overflow-y-auto pr-1">
+                  {(formData.testCases || []).map((tc, idx) => (
+                    <div key={idx} className="p-3 bg-white rounded-xl border border-slate-200 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-slate-700 text-xs">Test Case #{idx + 1}</span>
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                            tc.isHidden ? 'bg-amber-50 text-amber-700 border border-amber-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                          }`}>
+                            {tc.isHidden ? 'Hidden (Grading)' : 'Visible (Sample)'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <label className="flex items-center gap-1.5 cursor-pointer text-[11px] text-slate-600 font-medium">
+                            <input
+                              type="checkbox"
+                              checked={!!tc.isHidden}
+                              onChange={(e) => {
+                                const checked = e.target.checked;
+                                setFormData(prev => ({
+                                  ...prev,
+                                  testCases: prev.testCases.map((c, i) => i === idx ? { ...c, isHidden: checked } : c)
+                                }));
+                              }}
+                              className="rounded text-indigo-600"
+                            />
+                            <span>Hidden for scoring</span>
+                          </label>
+
+                          {(formData.testCases || []).length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setFormData(prev => ({
+                                  ...prev,
+                                  testCases: prev.testCases.filter((_, i) => i !== idx)
+                                }));
+                              }}
+                              className="text-rose-500 hover:text-rose-700 p-1"
+                              title="Delete test case"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <div>
+                          <span className="text-[10px] font-bold text-slate-500 uppercase block mb-0.5">Input (stdin)</span>
+                          <textarea
+                            rows={2}
+                            value={tc.input}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setFormData(prev => ({
+                                ...prev,
+                                testCases: prev.testCases.map((c, i) => i === idx ? { ...c, input: val } : c)
+                              }));
+                            }}
+                            placeholder="e.g. 5&#10;1 2 3 4 5"
+                            className="w-full p-2 bg-slate-50 rounded-lg border border-slate-200 font-mono text-[11px] outline-none"
+                          />
+                        </div>
+                        <div>
+                          <span className="text-[10px] font-bold text-slate-500 uppercase block mb-0.5">Expected Output (stdout)</span>
+                          <textarea
+                            rows={2}
+                            value={tc.expectedOutput}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setFormData(prev => ({
+                                ...prev,
+                                testCases: prev.testCases.map((c, i) => i === idx ? { ...c, expectedOutput: val } : c)
+                              }));
+                            }}
+                            placeholder="e.g. 15"
+                            className="w-full p-2 bg-slate-50 rounded-lg border border-slate-200 font-mono text-[11px] outline-none"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           ) : (
-            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-slate-600">
-              Options will be automatically set to: <strong>A. True</strong> and <strong>B. False</strong>
-            </div>
+            <>
+              {/* Technical Code Snippet */}
+              {formData.type === 'Code Snippet' && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="block font-bold text-slate-700">Code Snippet</label>
+                    <select
+                      value={formData.language}
+                      onChange={(e) => setFormData({ ...formData, language: e.target.value })}
+                      className="px-2 py-1 bg-slate-50 rounded-lg border border-slate-200 text-[11px]"
+                    >
+                      <option value="javascript">JavaScript</option>
+                      <option value="python">Python</option>
+                      <option value="java">Java</option>
+                      <option value="sql">SQL</option>
+                    </select>
+                  </div>
+                  <textarea
+                    rows={3}
+                    value={formData.codeSnippet}
+                    onChange={(e) => setFormData({ ...formData, codeSnippet: e.target.value })}
+                    placeholder="// Enter code snippet here"
+                    className="w-full p-3 bg-slate-900 text-emerald-400 font-mono rounded-xl border border-slate-700 outline-none"
+                  />
+                </div>
+              )}
+
+              {/* Options */}
+              {formData.type !== 'True/False' ? (
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Option A</label>
+                    <input
+                      type="text"
+                      value={formData.optionA}
+                      onChange={(e) => setFormData({ ...formData, optionA: e.target.value })}
+                      placeholder="Option A description"
+                      className="w-full px-3 py-2 bg-slate-50 rounded-xl border border-slate-200 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Option B</label>
+                    <input
+                      type="text"
+                      value={formData.optionB}
+                      onChange={(e) => setFormData({ ...formData, optionB: e.target.value })}
+                      placeholder="Option B description"
+                      className="w-full px-3 py-2 bg-slate-50 rounded-xl border border-slate-200 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Option C</label>
+                    <input
+                      type="text"
+                      value={formData.optionC}
+                      onChange={(e) => setFormData({ ...formData, optionC: e.target.value })}
+                      placeholder="Option C description"
+                      className="w-full px-3 py-2 bg-slate-50 rounded-xl border border-slate-200 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Option D</label>
+                    <input
+                      type="text"
+                      value={formData.optionD}
+                      onChange={(e) => setFormData({ ...formData, optionD: e.target.value })}
+                      placeholder="Option D description"
+                      className="w-full px-3 py-2 bg-slate-50 rounded-xl border border-slate-200 outline-none"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-slate-600">
+                  Options will be automatically set to: <strong>A. True</strong> and <strong>B. False</strong>
+                </div>
+              )}
+            </>
           )}
 
           {/* Correct Answer & Marks */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
-              <label className="block font-bold text-slate-700 mb-1">Correct Answer</label>
-              <select
-                value={formData.correctAnswer}
-                onChange={(e) => setFormData({ ...formData, correctAnswer: e.target.value })}
-                className="w-full px-3 py-2 bg-slate-50 rounded-xl border border-slate-200 outline-none font-bold"
-              >
-                <option value="A">Option A</option>
-                <option value="B">Option B</option>
-                {formData.type !== 'True/False' && (
-                  <>
-                    <option value="C">Option C</option>
-                    <option value="D">Option D</option>
-                  </>
-                )}
-              </select>
+              <label className="block font-bold text-slate-700 mb-1">
+                {formData.type === 'Coding' ? 'Evaluation Method' : 'Correct Answer'}
+              </label>
+              {formData.type === 'Coding' ? (
+                <div className="w-full px-3 py-2 bg-indigo-50 rounded-xl border border-indigo-200 text-indigo-700 font-bold text-xs flex items-center gap-1.5">
+                  <CheckCircle2 className="w-4 h-4 text-indigo-600 flex-shrink-0" />
+                  <span>Automated Sandbox</span>
+                </div>
+              ) : (
+                <select
+                  value={formData.correctAnswer}
+                  onChange={(e) => setFormData({ ...formData, correctAnswer: e.target.value })}
+                  className="w-full px-3 py-2 bg-slate-50 rounded-xl border border-slate-200 outline-none font-bold"
+                >
+                  <option value="A">Option A</option>
+                  <option value="B">Option B</option>
+                  {formData.type !== 'True/False' && (
+                    <>
+                      <option value="C">Option C</option>
+                      <option value="D">Option D</option>
+                    </>
+                  )}
+                </select>
+              )}
             </div>
 
             <div>
@@ -791,7 +1049,7 @@ export const AdminQuestionBankPage = () => {
                 type="number"
                 value={formData.marks}
                 onChange={(e) => setFormData({ ...formData, marks: e.target.value })}
-                className="w-full px-3 py-2 bg-slate-50 rounded-xl border border-slate-200 outline-none"
+                className="w-full px-3 py-2 bg-slate-50 rounded-xl border border-slate-200 outline-none font-bold"
               />
             </div>
 
@@ -805,8 +1063,6 @@ export const AdminQuestionBankPage = () => {
               />
             </div>
           </div>
-
-
 
           <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
             <button
@@ -836,6 +1092,15 @@ export const AdminQuestionBankPage = () => {
         >
           <div className="space-y-4 text-xs">
             <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
+              <div className="flex items-center gap-2 mb-2">
+                {(previewQuestion.type === 'Coding' || previewQuestion.category === 'Coding') && (
+                  <span className="px-2 py-0.5 rounded bg-indigo-100 text-indigo-700 font-bold text-[10px] flex items-center gap-1">
+                    <Code2 className="w-3 h-3" />
+                    Coding Challenge
+                  </span>
+                )}
+                <span className="text-[11px] text-slate-500 font-semibold">{previewQuestion.marks || 4} Marks • {previewQuestion.timeLimitSec || 60}s</span>
+              </div>
               <h3 className="font-bold text-slate-900 text-sm leading-relaxed">{previewQuestion.question}</h3>
               {previewQuestion.codeSnippet && (
                 <pre className="mt-3 p-3 bg-slate-900 text-emerald-400 rounded-lg overflow-x-auto font-mono text-[11px]">
@@ -844,27 +1109,72 @@ export const AdminQuestionBankPage = () => {
               )}
             </div>
 
-            <div className="space-y-2">
-              <span className="font-bold text-slate-400 uppercase text-[10px]">Options</span>
-              {previewQuestion.options?.map(opt => (
-                <div
-                  key={opt.id}
-                  className={`p-3 rounded-xl border flex items-center gap-3 ${
-                    opt.id === previewQuestion.correctAnswer
-                      ? 'bg-emerald-50 border-emerald-300 text-emerald-950 font-bold'
-                      : 'bg-white border-slate-200 text-slate-700'
-                  }`}
-                >
-                  <span className="w-5 h-5 rounded-md bg-slate-200 flex items-center justify-center text-xs font-bold">
-                    {opt.id}
+            {/* Coding Challenge Details */}
+            {(previewQuestion.type === 'Coding' || previewQuestion.category === 'Coding') ? (
+              <div className="space-y-3">
+                {previewQuestion.constraints && (
+                  <div className="p-3 bg-amber-50/70 border border-amber-200 rounded-xl text-amber-900">
+                    <span className="font-bold block text-[10px] uppercase mb-1">Constraints:</span>
+                    <pre className="font-mono text-[11px] whitespace-pre-wrap">{previewQuestion.constraints}</pre>
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <span className="font-bold text-slate-700 uppercase text-[10px]">
+                    Test Cases ({(previewQuestion.testCases || previewQuestion.test_cases || []).length})
                   </span>
-                  <span>{opt.text}</span>
-                  {opt.id === previewQuestion.correctAnswer && (
-                    <span className="ml-auto text-[10px] uppercase font-bold text-emerald-600">Correct Answer</span>
-                  )}
+                  <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                    {(previewQuestion.testCases || previewQuestion.test_cases || []).map((tc, idx) => (
+                      <div key={idx} className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 space-y-1.5">
+                        <div className="flex items-center justify-between text-[10px]">
+                          <span className="font-bold text-slate-700">Test Case #{idx + 1}</span>
+                          <span className={`px-1.5 py-0.5 rounded font-bold ${
+                            tc.isHidden ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'
+                          }`}>
+                            {tc.isHidden ? 'Hidden (Scoring)' : 'Sample (Visible)'}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 font-mono text-[11px]">
+                          <div className="p-1.5 bg-white rounded border border-slate-200">
+                            <span className="text-[9px] uppercase text-slate-400 font-bold block">Input:</span>
+                            <span>{tc.input || '(empty)'}</span>
+                          </div>
+                          <div className="p-1.5 bg-white rounded border border-slate-200">
+                            <span className="text-[9px] uppercase text-slate-400 font-bold block">Expected:</span>
+                            <span>{tc.expectedOutput || tc.expected_output || '(empty)'}</span>
+                          </div>
+                        </div>
+                        {tc.explanation && (
+                          <div className="text-[10px] text-slate-500 italic">{tc.explanation}</div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              ))}
-            </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <span className="font-bold text-slate-400 uppercase text-[10px]">Options</span>
+                {previewQuestion.options?.map(opt => (
+                  <div
+                    key={opt.id}
+                    className={`p-3 rounded-xl border flex items-center gap-3 ${
+                      opt.id === previewQuestion.correctAnswer
+                        ? 'bg-emerald-50 border-emerald-300 text-emerald-950 font-bold'
+                        : 'bg-white border-slate-200 text-slate-700'
+                    }`}
+                  >
+                    <span className="w-5 h-5 rounded-md bg-slate-200 flex items-center justify-center text-xs font-bold">
+                      {opt.id}
+                    </span>
+                    <span>{opt.text}</span>
+                    {opt.id === previewQuestion.correctAnswer && (
+                      <span className="ml-auto text-[10px] uppercase font-bold text-emerald-600">Correct Answer</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
 
             {previewQuestion.explanation && (
               <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-900">

@@ -100,7 +100,8 @@ export const syncAssessmentQuestions = async (client, assessmentId, selectedQues
 
     // 2. Fetch question details from questions table
     const qDetailsRes = await client.query(
-      `SELECT id, category, topic, question, difficulty, options, correct_answer, marks
+      `SELECT id, category, topic, question, difficulty, options, correct_answer, marks,
+              test_cases, starter_templates, constraints
        FROM questions
        WHERE id = ANY($1::varchar[])`,
       [idsToLink]
@@ -110,8 +111,8 @@ export const syncAssessmentQuestions = async (client, assessmentId, selectedQues
     for (const q of qDetailsRes.rows) {
       const aqId = `aq-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
       await client.query(
-        `INSERT INTO assessment_questions (id, assessment_id, question_id, category, topic, question, difficulty, options, correct_answer, marks)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        `INSERT INTO assessment_questions (id, assessment_id, question_id, category, topic, question, difficulty, options, correct_answer, marks, test_cases, starter_templates, constraints)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
          ON CONFLICT (assessment_id, question_id) DO UPDATE SET
            category = EXCLUDED.category,
            topic = EXCLUDED.topic,
@@ -119,8 +120,25 @@ export const syncAssessmentQuestions = async (client, assessmentId, selectedQues
            difficulty = EXCLUDED.difficulty,
            options = EXCLUDED.options,
            correct_answer = EXCLUDED.correct_answer,
-           marks = EXCLUDED.marks`,
-        [aqId, assessmentId, q.id, q.category, q.topic, q.question, q.difficulty, JSON.stringify(q.options), q.correct_answer, q.marks || 1]
+           marks = EXCLUDED.marks,
+           test_cases = EXCLUDED.test_cases,
+           starter_templates = EXCLUDED.starter_templates,
+           constraints = EXCLUDED.constraints`,
+        [
+          aqId,
+          assessmentId,
+          q.id,
+          q.category,
+          q.topic,
+          q.question,
+          q.difficulty,
+          JSON.stringify(q.options || []),
+          q.correct_answer,
+          q.marks || 1,
+          q.test_cases ? JSON.stringify(q.test_cases) : null,
+          q.starter_templates ? JSON.stringify(q.starter_templates) : null,
+          q.constraints || null
+        ]
       );
     }
   } else {
@@ -262,8 +280,13 @@ export const getAssessmentQuestions = async (req, res) => {
     const candidateId = req.user?.id;
     const candidateEmail = req.user?.email;
 
+    const allowRetake = req.query?.retake === 'true' || 
+                        req.headers?.['x-allow-retake'] === 'true' || 
+                        process.env.ALLOW_ASSESSMENT_RETAKE === 'true' || 
+                        isAdmin;
+
     // Single Attempt Enforcement: If candidate already completed, block fetching questions
-    if (!isAdmin && (candidateId || candidateEmail)) {
+    if (!allowRetake && (candidateId || candidateEmail)) {
       const existing = await pool.query(
         `SELECT id, score, accuracy, created_at FROM assessment_submissions 
          WHERE assessment_id = $1 AND (candidate_id = $2 OR LOWER(candidate_email) = LOWER($3))
@@ -287,9 +310,14 @@ export const getAssessmentQuestions = async (req, res) => {
     const result = await pool.query(
       `SELECT aq.id, aq.assessment_id, aq.question_id, aq.category, aq.topic,
               aq.question, aq.difficulty, aq.options,
+              COALESCE(q.type, 'Single Choice') as type,
+              COALESCE(aq.test_cases, q.test_cases) as test_cases,
+              COALESCE(aq.starter_templates, q.starter_templates) as starter_templates,
+              COALESCE(aq.constraints, q.constraints) as constraints,
               ${isAdmin ? 'aq.correct_answer,' : ''}
               aq.marks, aq.created_at
        FROM assessment_questions aq
+       LEFT JOIN questions q ON aq.question_id = q.id
        WHERE aq.assessment_id = $1
        ORDER BY aq.created_at ASC`,
       [req.params.id]
