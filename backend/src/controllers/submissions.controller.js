@@ -201,9 +201,12 @@ export const submitAssessment = async (req, res) => {
 export const getAllSubmissions = async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT s.*, c.name as candidate_name, c.email as candidate_email, c.college
+      `SELECT s.*, 
+              COALESCE(cp.name, s.candidate_name, 'Candidate') as candidate_name, 
+              COALESCE(cp.email, s.candidate_email) as candidate_email, 
+              cp.college
        FROM assessment_submissions s
-       LEFT JOIN candidates c ON s.candidate_id = c.id OR LOWER(s.candidate_email) = LOWER(c.email)
+       LEFT JOIN candidate_profiles cp ON s.candidate_id = cp.id OR s.candidate_id = cp.user_id OR LOWER(s.candidate_email) = LOWER(cp.email)
        ORDER BY s.created_at DESC`
     );
     res.json({ success: true, data: result.rows });

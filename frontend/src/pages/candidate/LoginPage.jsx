@@ -13,8 +13,8 @@ import {
 
 export const LoginPage = () => {
   const { loginCandidate, navigateTo } = useApp();
-  const [email, setEmail] = useState('john.doe@techgrad.edu');
-  const [password, setPassword] = useState('Password@123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);

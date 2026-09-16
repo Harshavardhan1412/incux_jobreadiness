@@ -81,7 +81,10 @@ export const api = {
 
   admin: {
     stats: () => request('GET', '/admin/stats'),
-    analytics: () => request('GET', '/admin/analytics'),
+    analytics: (params = {}) => {
+      const qs = new URLSearchParams(params).toString();
+      return request('GET', `/admin/analytics${qs ? '?' + qs : ''}`);
+    },
     reports: () => request('GET', '/admin/reports'),
   },
 
