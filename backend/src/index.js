@@ -130,6 +130,7 @@ app.use('/api/questions', questionsRoutes);
 app.use('/api/submissions', submissionsRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/code', codeRoutes);
+app.use('/code', codeRoutes);
 
 // ─── 404 & Global Error Handler ──────────────────────────────────────────────
 app.use((_req, res) => res.status(404).json({ error: 'API endpoint not found.' }));
