@@ -16,6 +16,7 @@ import assessmentsRoutes from './routes/assessments.routes.js';
 import questionsRoutes from './routes/questions.routes.js';
 import submissionsRoutes from './routes/submissions.routes.js';
 import adminRoutes from './routes/admin.routes.js';
+import codeRoutes from './routes/code.routes.js';
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '5000', 10);
@@ -128,6 +129,7 @@ app.use('/api/assessments', assessmentsRoutes);
 app.use('/api/questions', questionsRoutes);
 app.use('/api/submissions', submissionsRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/code', codeRoutes);
 
 // ─── 404 & Global Error Handler ──────────────────────────────────────────────
 app.use((_req, res) => res.status(404).json({ error: 'API endpoint not found.' }));

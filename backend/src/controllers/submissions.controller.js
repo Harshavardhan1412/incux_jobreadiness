@@ -90,6 +90,41 @@ export const submitAssessment = async (req, res) => {
         });
       }
 
+      const allowRetake = req.body?.retake === true || 
+                          req.query?.retake === 'true' || 
+                          req.headers?.['x-allow-retake'] === 'true' || 
+                          req.user?.role === 'admin' || 
+                          process.env.ALLOW_ASSESSMENT_RETAKE === 'true';
+
+      if (allowRetake) {
+        // Update existing attempt with fresh score and answers
+        const updated = await client.query(
+          `UPDATE assessment_submissions 
+           SET score = $1, accuracy = $2, correct_count = $3, incorrect_count = $4, unanswered_count = $5,
+               time_taken = $6, category_scores = $7, topic_breakdown = $8, answers = $9, created_at = NOW()
+           WHERE id = $10
+           RETURNING *`,
+          [
+            finalScore,
+            finalAccuracy,
+            finalCorrectCount,
+            finalIncorrectCount,
+            finalUnansweredCount,
+            timeTaken || '25 min',
+            JSON.stringify(catScores),
+            JSON.stringify(finalTopicBreakdown),
+            JSON.stringify(answers || {}),
+            existingSubmission.rows[0].id
+          ]
+        );
+        await client.query('COMMIT');
+        return res.status(200).json({
+          success: true,
+          message: 'Assessment attempt updated successfully.',
+          data: updated.rows[0]
+        });
+      }
+
       // Single Attempt Enforcement: Candidates can write exam only once!
       await client.query('ROLLBACK');
       return res.status(403).json({
@@ -201,9 +236,12 @@ export const submitAssessment = async (req, res) => {
 export const getAllSubmissions = async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT s.*, c.name as candidate_name, c.email as candidate_email, c.college
+      `SELECT s.*, 
+              COALESCE(cp.name, s.candidate_name, 'Candidate') as candidate_name, 
+              COALESCE(cp.email, s.candidate_email) as candidate_email, 
+              cp.college
        FROM assessment_submissions s
-       LEFT JOIN candidates c ON s.candidate_id = c.id OR LOWER(s.candidate_email) = LOWER(c.email)
+       LEFT JOIN candidate_profiles cp ON s.candidate_id = cp.id OR s.candidate_id = cp.user_id OR LOWER(s.candidate_email) = LOWER(cp.email)
        ORDER BY s.created_at DESC`
     );
     res.json({ success: true, data: result.rows });

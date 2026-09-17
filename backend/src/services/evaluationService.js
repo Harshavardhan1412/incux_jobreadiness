@@ -128,22 +128,40 @@ export const evaluateSubmission = async ({
       topicStats[qTopic].totalQuestions += 1;
 
       const userAnswer = answerEntries[qId];
-      const hasAnswered = userAnswer !== undefined && userAnswer !== null && String(userAnswer).trim() !== '';
+      const isCodingAnswer = typeof userAnswer === 'object' && userAnswer !== null && (userAnswer.code !== undefined || userAnswer.score !== undefined);
+      const hasAnswered = isCodingAnswer || (userAnswer !== undefined && userAnswer !== null && String(userAnswer).trim() !== '');
 
       if (hasAnswered) {
-        const isCorrect = String(userAnswer).trim().toUpperCase() === q.correctAnswer;
-        if (isCorrect) {
-          correctCount += 1;
-          totalObtainedMarks += qMarks;
+        if (isCodingAnswer) {
+          const codingScorePct = Number(userAnswer.score ?? 0);
+          const earned = Math.round((codingScorePct / 100) * qMarks);
+          totalObtainedMarks += earned;
+          categoryStats[qCategory].obtainedMarks += earned;
+          topicStats[qTopic].obtainedMarks += earned;
 
-          categoryStats[qCategory].correctCount += 1;
-          categoryStats[qCategory].obtainedMarks += qMarks;
-
-          topicStats[qTopic].correctCount += 1;
-          topicStats[qTopic].obtainedMarks += qMarks;
+          if (codingScorePct >= 60) {
+            correctCount += 1;
+            categoryStats[qCategory].correctCount += 1;
+            topicStats[qTopic].correctCount += 1;
+          } else {
+            incorrectCount += 1;
+            topicStats[qTopic].incorrectCount += 1;
+          }
         } else {
-          incorrectCount += 1;
-          topicStats[qTopic].incorrectCount += 1;
+          const isCorrect = String(userAnswer).trim().toUpperCase() === q.correctAnswer;
+          if (isCorrect) {
+            correctCount += 1;
+            totalObtainedMarks += qMarks;
+
+            categoryStats[qCategory].correctCount += 1;
+            categoryStats[qCategory].obtainedMarks += qMarks;
+
+            topicStats[qTopic].correctCount += 1;
+            topicStats[qTopic].obtainedMarks += qMarks;
+          } else {
+            incorrectCount += 1;
+            topicStats[qTopic].incorrectCount += 1;
+          }
         }
       } else {
         unansweredCount += 1;
@@ -181,10 +199,11 @@ export const evaluateSubmission = async ({
   // Helper function to normalize category to one of the 4 standard sections
   const normalizeSection = (rawCat) => {
     const c = (rawCat || '').toLowerCase().trim();
+    if (c.includes('code') || c.includes('prog')) return 'coding';
     if (c.includes('apt') || c.includes('quant') || c.includes('math')) return 'aptitude';
     if (c.includes('reason') || c.includes('logic')) return 'reasoning';
     if (c.includes('verbal') || c.includes('eng')) return 'verbal';
-    if (c.includes('tech') || c.includes('code') || c.includes('prog')) return 'technical';
+    if (c.includes('tech')) return 'technical';
     return c || 'technical';
   };
 
@@ -194,6 +213,7 @@ export const evaluateSubmission = async ({
     reasoning: 0,
     technical: 0,
     verbal: 0,
+    coding: 0,
   };
 
   // Intermediate accumulator for normalized sections
@@ -202,6 +222,7 @@ export const evaluateSubmission = async ({
     reasoning: { totalMarks: 0, obtainedMarks: 0 },
     technical: { totalMarks: 0, obtainedMarks: 0 },
     verbal: { totalMarks: 0, obtainedMarks: 0 },
+    coding: { totalMarks: 0, obtainedMarks: 0 },
   };
 
   Object.keys(categoryStats).forEach((cat) => {
@@ -222,6 +243,12 @@ export const evaluateSubmission = async ({
       categoryScores[sec] = 0;
     }
   });
+
+  if (categoryStats['Coding'] && categoryStats['Coding'].totalMarks > 0) {
+    categoryScores.coding = Math.round((categoryStats['Coding'].obtainedMarks / categoryStats['Coding'].totalMarks) * 100);
+  } else if (categoryScores.technical > 0) {
+    categoryScores.coding = categoryScores.technical;
+  }
 
   // Build topic breakdown with accurate topic marks & performance
   const topicBreakdown = Object.keys(topicStats).map((topic) => {

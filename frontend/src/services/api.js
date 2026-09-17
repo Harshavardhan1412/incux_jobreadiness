@@ -11,8 +11,9 @@ const authHeaders = () => ({
 });
 
 async function request(method, path, body) {
+  const cleanPath = path.startsWith('/api/') ? path.slice(4) : (path.startsWith('/') ? path : `/${path}`);
   try {
-    const res = await fetch(`${BASE}${path}`, {
+    const res = await fetch(`${BASE}${cleanPath}`, {
       method,
       headers: authHeaders(),
       ...(body ? { body: JSON.stringify(body) } : {}),
@@ -30,10 +31,13 @@ async function request(method, path, body) {
       err.data = data;
       throw err;
     }
+    if (typeof data === 'object' && data !== null && !Array.isArray(data)) {
+      return { ok: true, ...data, data, status: res.status };
+    }
     return { ok: true, data, status: res.status };
   } catch (err) {
     console.warn(`[API] ${method} ${path} failed:`, err.message);
-    return { ok: false, error: err.message, status: err.status || 500, data: err.data };
+    return { ok: false, success: false, error: err.message, status: err.status || 500, data: err.data };
   }
   }
 }
@@ -41,6 +45,18 @@ async function request(method, path, body) {
 // ─── API client ──────────────────────────────────────────────────────────────
 export const api = {
   health: () => request('GET', '/health'),
+
+  // Generic HTTP convenience helpers
+  get: (path) => request('GET', path),
+  post: (path, body) => request('POST', path, body),
+  put: (path, body) => request('PUT', path, body),
+  delete: (path) => request('DELETE', path),
+
+  code: {
+    run: (body) => request('POST', '/code/run', body),
+    submit: (body) => request('POST', '/code/submit', body),
+    getLanguages: () => request('GET', '/code/languages'),
+  },
 
   auth: {
     register: (body) => request('POST', '/auth/register', body),
@@ -88,7 +104,10 @@ export const api = {
 
   admin: {
     stats: () => request('GET', '/admin/stats'),
-    analytics: () => request('GET', '/admin/analytics'),
+    analytics: (params = {}) => {
+      const qs = new URLSearchParams(params).toString();
+      return request('GET', `/admin/analytics${qs ? '?' + qs : ''}`);
+    },
     reports: () => request('GET', '/admin/reports'),
   },
 

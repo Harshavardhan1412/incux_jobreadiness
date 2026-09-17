@@ -285,8 +285,15 @@ export const initSchema = async () => {
       ALTER TABLE questions ADD COLUMN IF NOT EXISTS tags TEXT[];
       ALTER TABLE questions ADD COLUMN IF NOT EXISTS status VARCHAR(32) DEFAULT 'Active';
       ALTER TABLE questions ADD COLUMN IF NOT EXISTS source VARCHAR(32) DEFAULT 'Manual';
+      ALTER TABLE questions ADD COLUMN IF NOT EXISTS test_cases JSONB;
+      ALTER TABLE questions ADD COLUMN IF NOT EXISTS starter_templates JSONB;
+      ALTER TABLE questions ADD COLUMN IF NOT EXISTS constraints TEXT;
       ALTER TABLE questions ADD COLUMN IF NOT EXISTS created_by VARCHAR(64);
       ALTER TABLE questions ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP;
+
+      ALTER TABLE assessment_questions ADD COLUMN IF NOT EXISTS test_cases JSONB;
+      ALTER TABLE assessment_questions ADD COLUMN IF NOT EXISTS starter_templates JSONB;
+      ALTER TABLE assessment_questions ADD COLUMN IF NOT EXISTS constraints TEXT;
 
       ALTER TABLE assessment_questions ADD COLUMN IF NOT EXISTS category VARCHAR(64);
       ALTER TABLE assessment_questions ADD COLUMN IF NOT EXISTS topic VARCHAR(255);

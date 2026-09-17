@@ -22,8 +22,8 @@ export const AdminLoginPage = () => {
   const [isLoading, setIsLoading] = useState(false);
 
   const fillAdminCredentials = () => {
-    setEmail('admin@readysetjob.com');
-    setPassword('Admin@2026');
+    setEmail('');
+    setPassword('');
     setError('');
   };
 

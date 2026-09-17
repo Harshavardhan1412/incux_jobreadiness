@@ -7,6 +7,7 @@ import ImprovementRoadmap from '../../components/analytics/ImprovementRoadmap';
 import { ScoreRing } from '../../components/common/ScoreRing';
 import confetti from 'canvas-confetti';
 import { mockStudent } from '../../data/analyticsData';
+import { AssessmentReportModal } from '../../components/candidate/AssessmentReportModal';
 import {
   Award,
   Target,
@@ -18,12 +19,14 @@ import {
   ClipboardCheck,
   TrendingUp,
   Layers,
-  BookOpen
+  BookOpen,
+  Download
 } from 'lucide-react';
 
 export default function CandidateAnalyticsPage() {
-  const { currentUser, latestResult, startAssessment } = useApp();
+  const { currentUser, latestResult, startAssessment, addToast } = useApp();
   const [activeSection, setActiveSection] = useState(latestResult ? 'results' : 'overview');
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
 
   useEffect(() => {
     // Launch celebratory confetti if score >= 60
@@ -223,19 +226,29 @@ export default function CandidateAnalyticsPage() {
     <div className="space-y-8">
 
       {/* Sticky Tab Sub-Header */}
-      <div className="sticky top-16 z-20 bg-white/95 backdrop-blur-md border border-slate-200/80 rounded-2xl p-1.5 shadow-subtle flex flex-wrap gap-1">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => handleNavigate(tab.id)}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeSection === tab.id
+      <div className="sticky top-16 z-20 bg-white/95 backdrop-blur-md border border-slate-200/80 rounded-2xl p-1.5 shadow-subtle flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex flex-wrap gap-1">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => handleNavigate(tab.id)}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeSection === tab.id
                 ? 'bg-slate-900 text-white shadow-xs'
                 : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-              }`}
-          >
-            {tab.label}
-          </button>
-        ))}
+                }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        <button
+          onClick={() => setIsReportModalOpen(true)}
+          className="px-3.5 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center gap-1.5"
+        >
+          <Download className="w-3.5 h-3.5" />
+          <span>Download Report</span>
+        </button>
       </div>
 
       {/* Main Content Sections */}
@@ -254,14 +267,21 @@ export default function CandidateAnalyticsPage() {
                 <h2 className="text-2xl font-extrabold text-slate-900 tracking-tight">
                   {latestResult.assessmentName || 'Assessment'} Results
                 </h2>
-                <p className="text-xs sm:text-sm text-slate-500">
-                  Completed on {latestResult.completedAt || 'Today'} • Evaluated with PostgreSQL database question keys
-                </p>
               </div>
 
-              <div className="px-3.5 py-2 bg-slate-100 text-slate-600 rounded-xl text-xs font-semibold flex items-center gap-2 border border-slate-200 select-none shadow-2xs">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                <span>Attempt Complete (1 of 1 Attempt Used)</span>
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  onClick={() => setIsReportModalOpen(true)}
+                  className="px-4 py-2.5 bg-gradient-to-r from-brand-600 to-brand-500 hover:from-brand-700 hover:to-brand-600 active:scale-[0.98] text-white rounded-xl text-xs font-bold shadow-md shadow-brand-500/20 transition-all flex items-center gap-2"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>Download Official Report (PDF)</span>
+                </button>
+
+                <div className="px-3.5 py-2 bg-slate-100 text-slate-600 rounded-xl text-xs font-semibold flex items-center gap-2 border border-slate-200 select-none shadow-2xs">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  <span>Attempt Complete (1 of 1 Attempt Used)</span>
+                </div>
               </div>
             </div>
 
@@ -502,6 +522,30 @@ export default function CandidateAnalyticsPage() {
       <footer className="text-center py-6 text-xs text-slate-400 border-t border-slate-200/60 font-medium">
         IncuxAI Candidate Analytics Portal • ReadySetJob Platform
       </footer>
+
+      {/* Downloadable Official Candidate Assessment Report Modal */}
+      <AssessmentReportModal
+        isOpen={isReportModalOpen}
+        onClose={() => setIsReportModalOpen(false)}
+        candidate={currentUser}
+        result={latestResult || {
+          score: studentData.overallScore,
+          totalMarks: 100,
+          obtainedMarks: studentData.overallScore,
+          accuracy: studentData.overallScore,
+          correctCount: Math.round((studentData.overallScore / 100) * 20),
+          incorrectCount: 20 - Math.round((studentData.overallScore / 100) * 20),
+          unansweredCount: 0,
+          totalQuestions: 20,
+          timeTaken: '28 min',
+          completedAt: new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+          assessmentName: 'Comprehensive Job Readiness Assessment',
+          categoryScores: studentData.categoryScores,
+          topicBreakdown: studentData.examAttempts?.[studentData.examAttempts.length - 1]?.categories?.technical?.topics || []
+        }}
+        studentData={studentData}
+        addToast={addToast}
+      />
     </div>
   );
 }

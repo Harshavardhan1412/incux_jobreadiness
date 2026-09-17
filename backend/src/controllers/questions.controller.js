@@ -35,7 +35,7 @@ export const getAllQuestions = async (req, res) => {
     let sql = `
       SELECT id, category, topic, difficulty, type, question,
              code_snippet, language, marks, time_limit_sec,
-             status, source, options,
+             status, source, options, test_cases, starter_templates, constraints,
              ${isAdmin ? 'correct_answer, explanation,' : ''}
              tags, created_at, updated_at
       FROM questions
@@ -68,13 +68,37 @@ export const getAllQuestions = async (req, res) => {
 
 // POST /api/questions  (admin only)
 export const createQuestion = async (req, res) => {
-  const { id: customId, category, topic, difficulty, type, question, codeSnippet, language, options, correctAnswer, explanation, marks, timeLimitSec, tags } = req.body;
+  const {
+    id: customId,
+    category,
+    topic,
+    difficulty,
+    type,
+    question,
+    codeSnippet,
+    language,
+    options,
+    correctAnswer,
+    explanation,
+    marks,
+    timeLimitSec,
+    tags,
+    testCases,
+    test_cases,
+    starterTemplates,
+    starter_templates,
+    constraints
+  } = req.body;
+
   const id = customId || `q-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
+  const resolvedTestCases = testCases || test_cases || null;
+  const resolvedStarterTemplates = starterTemplates || starter_templates || null;
+
   try {
     clearQuestionsCache();
     const result = await pool.query(
-      `INSERT INTO questions (id, category, topic, difficulty, type, question, code_snippet, language, options, correct_answer, explanation, marks, time_limit_sec, tags)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+      `INSERT INTO questions (id, category, topic, difficulty, type, question, code_snippet, language, options, correct_answer, explanation, marks, time_limit_sec, tags, test_cases, starter_templates, constraints)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
        ON CONFLICT (id) DO UPDATE SET
          category = EXCLUDED.category,
          topic = EXCLUDED.topic,
@@ -89,10 +113,30 @@ export const createQuestion = async (req, res) => {
          marks = EXCLUDED.marks,
          time_limit_sec = EXCLUDED.time_limit_sec,
          tags = EXCLUDED.tags,
+         test_cases = EXCLUDED.test_cases,
+         starter_templates = EXCLUDED.starter_templates,
+         constraints = EXCLUDED.constraints,
          updated_at = CURRENT_TIMESTAMP
        RETURNING *`,
-      [id, category || 'Technical', topic || 'General', difficulty || 'Medium', type || 'Single Choice', question, codeSnippet || null, language || null,
-       JSON.stringify(options || []), correctAnswer || 'A', explanation || null, marks || 4, timeLimitSec || 60, tags || []]
+      [
+        id,
+        category || 'Technical',
+        topic || 'General',
+        difficulty || 'Medium',
+        type || 'Single Choice',
+        question,
+        codeSnippet || null,
+        language || null,
+        JSON.stringify(options || []),
+        correctAnswer || 'A',
+        explanation || null,
+        marks || 4,
+        timeLimitSec || 60,
+        tags || [],
+        resolvedTestCases ? JSON.stringify(resolvedTestCases) : null,
+        resolvedStarterTemplates ? JSON.stringify(resolvedStarterTemplates) : null,
+        constraints || null
+      ]
     );
     res.status(201).json({ success: true, data: result.rows[0] });
   } catch (err) {
@@ -102,8 +146,27 @@ export const createQuestion = async (req, res) => {
 
 // PUT /api/questions/:id
 export const updateQuestion = async (req, res) => {
-  const { category, topic, difficulty, type, question, options, correctAnswer, explanation, marks } = req.body;
+  const {
+    category,
+    topic,
+    difficulty,
+    type,
+    question,
+    options,
+    correctAnswer,
+    explanation,
+    marks,
+    testCases,
+    test_cases,
+    starterTemplates,
+    starter_templates,
+    constraints
+  } = req.body;
+
+  const resolvedTestCases = testCases || test_cases || null;
+  const resolvedStarterTemplates = starterTemplates || starter_templates || null;
   const client = await pool.connect();
+
   try {
     await client.query('BEGIN');
     clearQuestionsCache();
@@ -119,9 +182,26 @@ export const updateQuestion = async (req, res) => {
          correct_answer=COALESCE($7, correct_answer), 
          explanation=COALESCE($8, explanation),
          marks=COALESCE($9, marks),
+         test_cases=CASE WHEN $10::text IS NOT NULL THEN $10::jsonb ELSE test_cases END,
+         starter_templates=CASE WHEN $11::text IS NOT NULL THEN $11::jsonb ELSE starter_templates END,
+         constraints=COALESCE($12, constraints),
          updated_at=CURRENT_TIMESTAMP 
-       WHERE id=$10 RETURNING *`,
-      [category, topic, difficulty, type, question, options ? JSON.stringify(options) : null, correctAnswer, explanation, marks, req.params.id]
+       WHERE id=$13 RETURNING *`,
+      [
+        category,
+        topic,
+        difficulty,
+        type,
+        question,
+        options ? JSON.stringify(options) : null,
+        correctAnswer,
+        explanation,
+        marks,
+        resolvedTestCases ? JSON.stringify(resolvedTestCases) : null,
+        resolvedStarterTemplates ? JSON.stringify(resolvedStarterTemplates) : null,
+        constraints,
+        req.params.id
+      ]
     );
 
     if (result.rows.length === 0) {
@@ -140,9 +220,24 @@ export const updateQuestion = async (req, res) => {
          question = $4,
          options = $5,
          correct_answer = $6,
-         marks = $7
-       WHERE question_id = $8`,
-      [updatedQ.category, updatedQ.topic, updatedQ.difficulty, updatedQ.question, JSON.stringify(updatedQ.options), updatedQ.correct_answer, updatedQ.marks, req.params.id]
+         marks = $7,
+         test_cases = $8,
+         starter_templates = $9,
+         constraints = $10
+       WHERE question_id = $11`,
+      [
+        updatedQ.category,
+        updatedQ.topic,
+        updatedQ.difficulty,
+        updatedQ.question,
+        JSON.stringify(updatedQ.options),
+        updatedQ.correct_answer,
+        updatedQ.marks,
+        updatedQ.test_cases ? JSON.stringify(updatedQ.test_cases) : null,
+        updatedQ.starter_templates ? JSON.stringify(updatedQ.starter_templates) : null,
+        updatedQ.constraints || null,
+        req.params.id
+      ]
     );
 
     await client.query('COMMIT');
