@@ -1,6 +1,7 @@
 import express from 'express';
 import {
   executeSingleCode,
+  executeSingleCodeWithCache,
   evaluateCodeAgainstTestCases,
   isLanguageSupported,
   LANGUAGE_CONFIG
@@ -185,7 +186,7 @@ router.post('/run', optionalAuthToken, async (req, res) => {
 
     // Case 1: Custom stdin execution or direct test
     if (typeof stdin === 'string' && (!testCases || testCases.length === 0)) {
-      const execResult = await executeSingleCode({
+      const execResult = await executeSingleCodeWithCache({
         language,
         sourceCode,
         stdin,

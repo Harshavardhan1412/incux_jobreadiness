@@ -8,6 +8,9 @@
  * Enforces hard timeouts (8-10s) and stdout/stderr output caps (10,000 characters).
  */
 
+import crypto from 'crypto';
+import { redisClient, isRedisAvailable } from '../db/redis.js';
+
 const MAX_OUTPUT_LENGTH = 10000;
 const DEFAULT_TIMEOUT_MS = 8000;
 
@@ -351,6 +354,52 @@ export const executeSingleCode = async ({
 };
 
 /**
+ * Executes code with Redis result caching (Stage 2 Scaling).
+ * Candidates frequently re-run identical or starter code.
+ * Deterministic outcomes ('Success', 'Wrong Answer') are cached for 600s (10 min).
+ * Transient infrastructure errors, timeouts, and service outages are NEVER cached.
+ */
+export const executeSingleCodeWithCache = async (params) => {
+  const { language, sourceCode, stdin = '' } = params;
+
+  if (!isRedisAvailable()) {
+    return await executeSingleCode(params);
+  }
+
+  const hash = crypto
+    .createHash('sha256')
+    .update(`${language}:${sourceCode}:${stdin}`)
+    .digest('hex');
+  const cacheKey = `exec_cache:${hash}`;
+
+  try {
+    const cached = await redisClient.get(cacheKey);
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      return {
+        ...parsed,
+        cached: true
+      };
+    }
+  } catch (err) {
+    console.warn('[Redis] Cache read warning:', err.message);
+  }
+
+  const result = await executeSingleCode(params);
+
+  // Strictly cache deterministic results (never cache timeouts, 503s, or network failures)
+  if (result.status === 'Success' || result.status === 'Wrong Answer') {
+    try {
+      await redisClient.setEx(cacheKey, 600, JSON.stringify(result));
+    } catch (err) {
+      console.warn('[Redis] Cache write warning:', err.message);
+    }
+  }
+
+  return result;
+};
+
+/**
  * Normalizes string output for whitespace-resilient comparisons
  */
 export const cleanOutput = (str) => {
@@ -387,7 +436,8 @@ const mapConcurrent = async (items, limit, fn) => {
 
 /**
  * Runs code against a test case suite using sandboxed remote execution.
- * Evaluates test cases in parallel up to a concurrency cap (Stage 1 Scaling).
+ * Evaluates test cases in parallel up to a concurrency cap (Stage 1 Scaling),
+ * with Redis caching for identical runs (Stage 2 Scaling).
  */
 export const evaluateCodeAgainstTestCases = async ({
   language,
@@ -430,7 +480,7 @@ export const evaluateCodeAgainstTestCases = async ({
       };
     }
 
-    const execRes = await executeSingleCode({
+    const execRes = await executeSingleCodeWithCache({
       language,
       sourceCode,
       stdin: input,
