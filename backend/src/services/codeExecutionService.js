@@ -365,7 +365,29 @@ export const cleanOutput = (str) => {
 };
 
 /**
- * Runs code against a test case suite using sandboxed remote execution
+ * Concurrency-bounded map helper (in-process worker pool, zero external dependencies)
+ * Runs up to `limit` promises concurrently to avoid container starvation
+ */
+const mapConcurrent = async (items, limit, fn) => {
+  if (!items || items.length === 0) return [];
+  const concurrency = Math.max(1, Math.min(limit || 6, items.length));
+  const results = new Array(items.length);
+  let index = 0;
+
+  const workers = Array.from({ length: concurrency }, async () => {
+    while (index < items.length) {
+      const currentIndex = index++;
+      results[currentIndex] = await fn(items[currentIndex], currentIndex);
+    }
+  });
+
+  await Promise.all(workers);
+  return results;
+};
+
+/**
+ * Runs code against a test case suite using sandboxed remote execution.
+ * Evaluates test cases in parallel up to a concurrency cap (Stage 1 Scaling).
  */
 export const evaluateCodeAgainstTestCases = async ({
   language,
@@ -385,29 +407,27 @@ export const evaluateCodeAgainstTestCases = async ({
     };
   }
 
-  const results = [];
-  let passedCount = 0;
-  let hasCompilationError = false;
-  let compilationStderr = '';
-  let overallVerdict = 'Accepted';
+  // Concurrency cap: default 6 concurrent executions per submission (customizable via env)
+  const concurrencyLimit = parseInt(process.env.CODE_EXEC_CONCURRENCY || '6', 10);
 
-  for (let i = 0; i < testCases.length; i++) {
-    const tc = testCases[i];
+  let compilationErrorResult = null;
+
+  // Execute test cases concurrently with bounded concurrency
+  const results = await mapConcurrent(testCases, concurrencyLimit, async (tc, index) => {
     const isHidden = Boolean(tc.isHidden ?? tc.is_hidden ?? false);
     const input = String(tc.input ?? '');
     const expected = cleanOutput(String(tc.expectedOutput ?? tc.expected_output ?? ''));
 
-    // Fast-fail if previous test failed due to compilation error
-    if (hasCompilationError) {
-      results.push({
-        id: tc.id || (i + 1),
+    // Fast-fail: if a compilation error was already detected by any worker, skip execution
+    if (compilationErrorResult) {
+      return {
+        id: tc.id || (index + 1),
         isHidden,
         status: 'Compilation Error',
         passed: false,
-        stderr: compilationStderr,
+        stderr: compilationErrorResult.stderr,
         timeMs: 0
-      });
-      continue;
+      };
     }
 
     const execRes = await executeSingleCode({
@@ -418,92 +438,93 @@ export const evaluateCodeAgainstTestCases = async ({
     });
 
     if (execRes.status === 'Compilation Error') {
-      hasCompilationError = true;
-      compilationStderr = execRes.stderr;
-      overallVerdict = 'Compilation Error';
-      results.push({
-        id: tc.id || (i + 1),
+      compilationErrorResult = execRes;
+      return {
+        id: tc.id || (index + 1),
         isHidden,
         status: 'Compilation Error',
         passed: false,
         stderr: execRes.stderr,
         timeMs: execRes.timeMs || 0
-      });
-      continue;
+      };
     }
 
     if (execRes.status === 'Time Limit Exceeded') {
-      if (overallVerdict === 'Accepted') overallVerdict = 'Time Limit Exceeded';
-      results.push({
-        id: tc.id || (i + 1),
+      return {
+        id: tc.id || (index + 1),
         isHidden,
         status: 'Time Limit Exceeded',
         passed: false,
         timeMs: execRes.timeMs || 0,
         stderr: 'Execution timed out.'
-      });
-      continue;
+      };
     }
 
     if (execRes.status === 'Runtime Error') {
-      if (overallVerdict === 'Accepted') overallVerdict = 'Runtime Error';
-      results.push({
-        id: tc.id || (i + 1),
+      return {
+        id: tc.id || (index + 1),
         isHidden,
         status: 'Runtime Error',
         passed: false,
         stderr: execRes.stderr,
         timeMs: execRes.timeMs || 0
-      });
-      continue;
+      };
     }
 
     if (execRes.status === 'Service Unavailable') {
-      if (overallVerdict === 'Accepted') overallVerdict = 'Service Unavailable';
-      results.push({
-        id: tc.id || (i + 1),
+      return {
+        id: tc.id || (index + 1),
         isHidden,
         status: 'Service Unavailable',
         passed: false,
         stderr: execRes.stderr,
         timeMs: 0
-      });
-      continue;
+      };
     }
 
     const actual = cleanOutput(execRes.stdout);
-    const passed = actual === expected;
-
-    if (passed) {
-      passedCount++;
-    } else if (overallVerdict === 'Accepted') {
-      overallVerdict = 'Wrong Answer';
-    }
+    const passed = execRes.status === 'Success' && actual === expected;
+    const status = passed ? 'Passed' : (execRes.status === 'Success' ? 'Wrong Answer' : execRes.status);
 
     if (isHidden && !includeHiddenDetails) {
-      results.push({
-        id: tc.id || (i + 1),
+      return {
+        id: tc.id || (index + 1),
         isHidden: true,
-        status: passed ? 'Passed' : 'Wrong Answer',
+        status,
         passed,
         timeMs: execRes.timeMs || 0
-      });
-    } else {
-      results.push({
-        id: tc.id || (i + 1),
-        isHidden,
-        status: passed ? 'Passed' : 'Wrong Answer',
-        passed,
-        input,
-        expectedOutput: expected,
-        actualOutput: actual,
-        stdout: execRes.stdout,
-        stderr: execRes.stderr,
-        timeMs: execRes.timeMs || 0
-      });
+      };
     }
+
+    return {
+      id: tc.id || (index + 1),
+      isHidden,
+      status,
+      passed,
+      input,
+      expectedOutput: expected,
+      actualOutput: actual,
+      stdout: execRes.stdout,
+      stderr: execRes.stderr,
+      timeMs: execRes.timeMs || 0
+    };
+  });
+
+  // Calculate overall verdict
+  let overallVerdict = 'Accepted';
+  if (results.some(r => r.status === 'Compilation Error')) {
+    overallVerdict = 'Compilation Error';
+  } else if (results.some(r => r.status === 'Service Unavailable')) {
+    overallVerdict = 'Service Unavailable';
+  } else if (results.some(r => r.status === 'Time Limit Exceeded')) {
+    overallVerdict = 'Time Limit Exceeded';
+  } else if (results.some(r => r.status === 'Runtime Error')) {
+    overallVerdict = 'Runtime Error';
+  } else if (results.some(r => !r.passed)) {
+    overallVerdict = 'Wrong Answer';
   }
 
+  const passedCount = results.filter(r => r.passed).length;
   const scorePercentage = testCases.length > 0 ? Math.round((passedCount / testCases.length) * 100) : 100;
 
   return {
