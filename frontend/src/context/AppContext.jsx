@@ -8,6 +8,7 @@ import {
   INITIAL_ADMIN_KPIS,
   INITIAL_RECOMMENDATIONS
 } from '../data/mockData';
+import { isCodingQuestion } from '../utils/questionUtils';
 
 const AppContext = createContext();
 
@@ -653,22 +654,36 @@ export const AppProvider = ({ children }) => {
     // Get questions matching assessment category
     const cat = (asm.category || 'Technical').trim();
     const isAllMix = ['All', 'Full Length', 'All Mix (Combined)', 'All Mix'].some(m => m.toLowerCase() === cat.toLowerCase());
+    const isCodingCat = cat.toLowerCase() === 'coding';
 
     let availableQuestions = [];
-    if (isAllMix) {
-      availableQuestions = cleanQuestionBank;
+    if (isCodingCat) {
+      availableQuestions = cleanQuestionBank.filter(isCodingQuestion);
+    } else if (isAllMix) {
+      // All Mix: strictly non-coding objective MCQs across all 4 pillars
+      availableQuestions = cleanQuestionBank.filter(q => !isCodingQuestion(q));
     } else {
-      availableQuestions = cleanQuestionBank.filter(q => q.category && q.category.trim().toLowerCase() === cat.toLowerCase());
+      // Sectional MCQ assessment: strictly only questions matching this category and NOT coding
+      availableQuestions = cleanQuestionBank.filter(q => q.category && q.category.trim().toLowerCase() === cat.toLowerCase() && !isCodingQuestion(q));
     }
 
     if (availableQuestions.length === 0) {
-      availableQuestions = cleanQuestionBank;
+      availableQuestions = isCodingCat
+        ? cleanQuestionBank.filter(isCodingQuestion)
+        : cleanQuestionBank.filter(q => !isCodingQuestion(q));
     }
 
     let selectedQList = [];
     if (asm.selectedQuestionIds && asm.selectedQuestionIds.length > 0) {
       const idSet = new Set(asm.selectedQuestionIds);
       selectedQList = cleanQuestionBank.filter(q => idSet.has(q.id));
+      // Strictly enforce track isolation on pre-selected question IDs
+      if (isCodingCat) {
+        selectedQList = selectedQList.filter(isCodingQuestion);
+      } else {
+        // Both Sectional and All Mix strictly exclude coding questions
+        selectedQList = selectedQList.filter(q => !isCodingQuestion(q));
+      }
     }
 
     if (selectedQList.length === 0 && availableQuestions.length > 0) {
@@ -683,12 +698,12 @@ export const AppProvider = ({ children }) => {
         const perCat = Math.max(1, Math.floor(targetCount / categories.length));
         const mixPool = [];
         categories.forEach(c => {
-          const list = cleanQuestionBank.filter(q => q.category && q.category.trim().toLowerCase() === c.toLowerCase());
+          const list = cleanQuestionBank.filter(q => q.category && q.category.trim().toLowerCase() === c.toLowerCase() && !isCodingQuestion(q));
           const shuffled = [...list].sort(() => 0.5 - Math.random());
           mixPool.push(...shuffled.slice(0, perCat));
         });
         if (mixPool.length < targetCount) {
-          const rem = cleanQuestionBank.filter(q => !mixPool.some(m => m.id === q.id));
+          const rem = cleanQuestionBank.filter(q => !mixPool.some(m => m.id === q.id) && !isCodingQuestion(q));
           const shuffledRem = [...rem].sort(() => 0.5 - Math.random());
           mixPool.push(...shuffledRem.slice(0, targetCount - mixPool.length));
         }
