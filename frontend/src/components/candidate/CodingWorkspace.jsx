@@ -92,6 +92,29 @@ public class Main {
         scanner.close();
     }
 }
+`,
+  c: `// C (GCC)
+#include <stdio.h>
+#include <stdlib.h>
+
+int main() {
+    // Read input and write your solution logic here
+
+    return 0;
+}
+`,
+  typescript: `// TypeScript
+import * as fs from 'fs';
+
+function solve(): void {
+    const input: string = fs.readFileSync(0, 'utf-8').trim();
+    if (!input) return;
+
+    // Write your solution logic here
+
+}
+
+solve();
 `
 };
 
@@ -141,6 +164,30 @@ export const CodingWorkspace = ({
   const [copiedInputIdx, setCopiedInputIdx] = useState(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [autoSavePulse, setAutoSavePulse] = useState(false);
+  const [availableLanguages, setAvailableLanguages] = useState([]);
+
+  // Fetch supported languages dynamically from backend remote executor
+  useEffect(() => {
+    api.code.getLanguages()
+      .then(res => {
+        if (res && res.languages && Array.isArray(res.languages)) {
+          setAvailableLanguages(res.languages);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const languagesList = useMemo(() => {
+    if (availableLanguages.length > 0) return availableLanguages;
+    return [
+      { id: 'python', name: 'Python 3', version: '3.12' },
+      { id: 'javascript', name: 'JavaScript', version: 'Node.js 20' },
+      { id: 'cpp', name: 'C++', version: 'GCC 14.1' },
+      { id: 'java', name: 'Java', version: 'OpenJDK 17' },
+      { id: 'c', name: 'C', version: 'GCC 14.1' },
+      { id: 'typescript', name: 'TypeScript', version: '5.6' }
+    ];
+  }, [availableLanguages]);
 
   // Extract starter templates
   const starterTemplates = useMemo(() => {
@@ -154,7 +201,9 @@ export const CodingWorkspace = ({
       python: t.python || DEFAULT_STARTER_CODES.python,
       javascript: t.javascript || DEFAULT_STARTER_CODES.javascript,
       cpp: t.cpp || DEFAULT_STARTER_CODES.cpp,
-      java: t.java || DEFAULT_STARTER_CODES.java
+      java: t.java || DEFAULT_STARTER_CODES.java,
+      c: t.c || DEFAULT_STARTER_CODES.c,
+      typescript: t.typescript || DEFAULT_STARTER_CODES.typescript
     };
   }, [question]);
 
@@ -190,7 +239,9 @@ export const CodingWorkspace = ({
         python: prev.python || starterTemplates.python,
         javascript: prev.javascript || starterTemplates.javascript,
         cpp: prev.cpp || starterTemplates.cpp,
-        java: prev.java || starterTemplates.java
+        java: prev.java || starterTemplates.java,
+        c: prev.c || starterTemplates.c,
+        typescript: prev.typescript || starterTemplates.typescript
       }));
     }
   }, [question?.id, savedAnswer?.language, savedAnswer?.code]);
@@ -298,7 +349,12 @@ export const CodingWorkspace = ({
         testCases: visibleTestCases
       };
 
-      const res = await api.post('/api/code/run', payload);
+      const res = await api.code.run(payload);
+
+      if (res.status === 429 || res.data?.status === 'Rate Limited' || res.data?.status === 'Busy') {
+        if (addToast) addToast(res.error || res.data?.error || 'Execution in progress or cooling down. Please wait a moment.', 'warning');
+        return;
+      }
 
       if (res.success && res.evaluation) {
         const evalRes = res.evaluation;
@@ -312,15 +368,21 @@ export const CodingWorkspace = ({
           if (addToast) addToast(`Accepted! Passed ${evalRes.totalTests}/${evalRes.totalTests} sample testcases.`, 'success');
         } else if (evalRes.verdict === 'Compilation Error') {
           if (addToast) addToast('Compile Error. Check terminal output.', 'error');
+        } else if (evalRes.verdict === 'Service Unavailable') {
+          if (addToast) addToast('Code execution service is temporarily unavailable — you can still write and submit your code, it will be evaluated shortly.', 'error');
         } else {
           if (addToast) addToast(`${evalRes.verdict}: ${evalRes.passedTests}/${evalRes.totalTests} passed.`, 'warning');
         }
       } else {
-        if (addToast) addToast(res.error || 'Execution failed', 'error');
+        const errMsg = res.error || 'Code execution service is temporarily unavailable — you can still write and submit your code, it will be evaluated shortly.';
+        if (addToast) addToast(errMsg, 'error');
       }
     } catch (err) {
       console.error('Error running code:', err);
-      if (addToast) addToast(err.message || 'Execution error', 'error');
+      const errMsg = err.status === 429
+        ? (err.error || err.message || 'Please wait a moment before running code again.')
+        : 'Code execution service is temporarily unavailable — you can still write and submit your code, it will be evaluated shortly.';
+      if (addToast) addToast(errMsg, err.status === 429 ? 'warning' : 'error');
     } finally {
       setIsRunning(false);
     }
@@ -343,7 +405,12 @@ export const CodingWorkspace = ({
         testCases: baseTestCases
       };
 
-      const res = await api.post('/api/code/submit', payload);
+      const res = await api.code.submit(payload);
+
+      if (res.status === 429) {
+        if (addToast) addToast(res.error || 'A submission or execution is already in progress. Please wait a moment.', 'warning');
+        return;
+      }
 
       if (res.success && res.evaluation) {
         const evalRes = res.evaluation;
@@ -412,11 +479,15 @@ export const CodingWorkspace = ({
 
         setShowPostSubmitModal(true);
       } else {
-        if (addToast) addToast(res.error || 'Submission failed', 'error');
+        const errMsg = res.error || 'Code execution service is temporarily unavailable — you can still write and submit your code, it will be evaluated shortly.';
+        if (addToast) addToast(errMsg, 'error');
       }
     } catch (err) {
       console.error('Error submitting code:', err);
-      if (addToast) addToast(err.message || 'Submission error', 'error');
+      const errMsg = err.status === 429
+        ? (err.error || 'A submission or execution is already in progress. Please wait a moment.')
+        : 'Code execution service is temporarily unavailable — you can still write and submit your code, it will be evaluated shortly.';
+      if (addToast) addToast(errMsg, err.status === 429 ? 'warning' : 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -440,7 +511,9 @@ export const CodingWorkspace = ({
   // Monaco Language Mapping
   const monacoLanguage = useMemo(() => {
     if (selectedLanguage === 'cpp') return 'cpp';
+    if (selectedLanguage === 'c') return 'c';
     if (selectedLanguage === 'javascript') return 'javascript';
+    if (selectedLanguage === 'typescript') return 'typescript';
     if (selectedLanguage === 'java') return 'java';
     return 'python';
   }, [selectedLanguage]);
@@ -770,10 +843,11 @@ export const CodingWorkspace = ({
                 }}
                 className="bg-[#333333] hover:bg-[#3e3e3e] text-zinc-100 font-bold text-xs px-3 py-1.5 rounded-lg border border-zinc-700 focus:outline-none focus:ring-1 focus:ring-emerald-500 cursor-pointer transition-colors"
               >
-                <option value="python">Python 3 (3.14)</option>
-                <option value="javascript">JavaScript (Node.js 24)</option>
-                <option value="cpp">C++ (GCC 14.2)</option>
-                <option value="java">Java (OpenJDK 22)</option>
+                {languagesList.map((lang) => (
+                  <option key={lang.id} value={lang.id}>
+                    {lang.name} {lang.version ? `(${lang.version})` : ''}
+                  </option>
+                ))}
               </select>
             </div>
 

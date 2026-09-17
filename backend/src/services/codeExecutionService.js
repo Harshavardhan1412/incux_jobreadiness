@@ -1,27 +1,87 @@
-import { spawn } from 'child_process';
-import fs from 'fs/promises';
-import path from 'path';
-import os from 'os';
-
 /**
- * Robust Multi-Language Code Execution Sandbox
- * Supports Python, JavaScript (Node), C++ (GCC), and Java (OpenJDK).
- * Executes code in isolated temporary directories with strict timeouts and memory safety.
+ * Sandboxed Remote Multi-Language Code Execution Service
+ *
+ * Replaces insecure, host-dependent local child_process spawning with isolated
+ * containerized execution via Judge0 CE / Piston APIs.
+ *
+ * Supported: Python, JavaScript (Node), C++ (GCC), Java (OpenJDK), C (GCC), TypeScript.
+ * Enforces hard timeouts (8-10s) and stdout/stderr output caps (10,000 characters).
  */
 
-const SUPPORTED_LANGUAGES = ['python', 'javascript', 'cpp', 'c++', 'java'];
+const MAX_OUTPUT_LENGTH = 10000;
+const DEFAULT_TIMEOUT_MS = 8000;
 
-export const isLanguageSupported = (lang) => {
-  if (!lang) return false;
-  return SUPPORTED_LANGUAGES.includes(lang.toLowerCase().trim());
+export const LANGUAGE_CONFIG = {
+  python: {
+    id: 'python',
+    name: 'Python',
+    version: '3.12.5',
+    judge0Id: 100, // Python (3.12.5)
+    judge0FallbackId: 71, // Python (3.8.1)
+    pistonLang: 'python',
+    pistonVersion: '3.10.0',
+    fileName: 'solution.py'
+  },
+  javascript: {
+    id: 'javascript',
+    name: 'JavaScript',
+    version: 'Node.js 20',
+    judge0Id: 97, // JavaScript (Node.js 20.17.0)
+    judge0FallbackId: 63,
+    pistonLang: 'javascript',
+    pistonVersion: '18.15.0',
+    fileName: 'solution.js'
+  },
+  cpp: {
+    id: 'cpp',
+    name: 'C++',
+    version: 'GCC 14.1.0',
+    judge0Id: 105, // C++ (GCC 14.1.0)
+    judge0FallbackId: 54,
+    pistonLang: 'cpp',
+    pistonVersion: '10.2.0',
+    fileName: 'solution.cpp'
+  },
+  java: {
+    id: 'java',
+    name: 'Java',
+    version: 'OpenJDK 17',
+    judge0Id: 91, // Java (JDK 17.0.6)
+    judge0FallbackId: 62,
+    pistonLang: 'java',
+    pistonVersion: '15.0.2',
+    fileName: 'Main.java'
+  },
+  c: {
+    id: 'c',
+    name: 'C',
+    version: 'GCC 14.1.0',
+    judge0Id: 103, // C (GCC 14.1.0)
+    judge0FallbackId: 50,
+    pistonLang: 'c',
+    pistonVersion: '10.2.0',
+    fileName: 'solution.c'
+  },
+  typescript: {
+    id: 'typescript',
+    name: 'TypeScript',
+    version: '5.6.2',
+    judge0Id: 101, // TypeScript (5.6.2)
+    judge0FallbackId: 74,
+    pistonLang: 'typescript',
+    pistonVersion: '5.0.3',
+    fileName: 'solution.ts'
+  }
 };
 
-const normalizeLanguage = (lang) => {
+export const normalizeLanguage = (lang) => {
   const l = (lang || '').toLowerCase().trim();
   if (l === 'c++' || l === 'cpp') return 'cpp';
   if (l === 'js' || l === 'javascript' || l === 'node') return 'javascript';
   if (l === 'py' || l === 'python' || l === 'python3') return 'python';
   if (l === 'java') return 'java';
+  if (l === 'c') return 'c';
+  if (l === 'ts' || l === 'typescript') return 'typescript';
   return l;
 };
 
@@ -96,45 +156,120 @@ const spawnProcess = (cmd, args, stdin = '', cwd, timeoutMs = 4000) => {
     let stderr = '';
     let timedOut = false;
 
-    const proc = spawn(cmd, args, {
-      cwd,
-      timeout: timeoutMs,
-      windowsHide: true,
-      maxBuffer: 1024 * 512 // 512 KB max buffer
+/**
+ * Normalizes Java source code so it conforms to standard Main class expectations
+ */
+const normalizeJavaCode = (code) => {
+  if (!code) return code;
+  let updated = code.replace(/public\s+class\s+([A-Za-z0-9_]+)/g, 'public class Main');
+  if (!updated.includes('class Main') && !updated.includes('public class')) {
+    updated = `public class Main {\n${updated}\n}`;
+  }
+  return updated;
+};
+
+/**
+ * Execute code via Judge0 CE Remote Sandbox
+ */
+const executeViaJudge0 = async ({ langConfig, sourceCode, stdin, timeoutMs }) => {
+  const judge0BaseUrl = process.env.JUDGE0_URL || 'https://ce.judge0.com';
+  const cpuTimeLimitSec = Math.max(1, Math.min(10, Math.ceil(timeoutMs / 1000)));
+
+  const controller = new AbortController();
+  const abortTimer = setTimeout(() => controller.abort(), timeoutMs + 3000);
+
+  const finalSource = langConfig.id === 'java' ? normalizeJavaCode(sourceCode) : sourceCode;
+
+  try {
+    const response = await fetch(`${judge0BaseUrl}/submissions?wait=true`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(process.env.JUDGE0_API_KEY ? { 'X-RapidAPI-Key': process.env.JUDGE0_API_KEY } : {})
+      },
+      body: JSON.stringify({
+        language_id: langConfig.judge0Id,
+        source_code: finalSource,
+        stdin: stdin || '',
+        cpu_time_limit: cpuTimeLimitSec,
+        wall_time_limit: cpuTimeLimitSec + 2,
+        memory_limit: 256000 // 256 MB
+      }),
+      signal: controller.signal
     });
 
-    // Enforce manual timer backup in case OS spawn timeout hangs
-    const timer = setTimeout(() => {
-      timedOut = true;
-      try {
-        proc.kill('SIGKILL');
-      } catch (e) {}
-    }, timeoutMs + 200);
+    clearTimeout(abortTimer);
 
-    if (stdin) {
-      try {
-        proc.stdin.write(stdin);
-        proc.stdin.end();
-      } catch (e) {
-        // Stream may have closed
-      }
-    } else {
-      try {
-        proc.stdin.end();
-      } catch (e) {}
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => '');
+      throw new Error(`Judge0 HTTP ${response.status}: ${errorText || response.statusText}`);
     }
 
-    proc.stdout.on('data', (data) => {
-      if (stdout.length < 50000) {
-        stdout += data.toString();
-      }
-    });
+    const data = await response.json();
+    const statusId = data.status?.id;
+    const timeMs = data.time ? Math.round(parseFloat(data.time) * 1000) : 0;
 
-    proc.stderr.on('data', (data) => {
-      if (stderr.length < 50000) {
-        stderr += data.toString();
-      }
-    });
+    let normalizedStatus = 'Success';
+    let exitCode = 0;
+    let timedOut = false;
+    let stderr = data.stderr || '';
+
+    if (statusId === 3) {
+      // 3: Accepted
+      normalizedStatus = 'Success';
+      exitCode = 0;
+    } else if (statusId === 5) {
+      // 5: Time Limit Exceeded
+      normalizedStatus = 'Time Limit Exceeded';
+      exitCode = 124;
+      timedOut = true;
+      stderr = `Time Limit Exceeded (Execution exceeded ${cpuTimeLimitSec}s)`;
+    } else if (statusId === 6) {
+      // 6: Compilation Error
+      normalizedStatus = 'Compilation Error';
+      exitCode = 1;
+      stderr = data.compile_output || stderr || 'Compilation Error';
+    } else if (statusId >= 7 && statusId <= 12) {
+      // 7..12: Runtime Error
+      normalizedStatus = 'Runtime Error';
+      exitCode = 1;
+      stderr = stderr || data.message || `Runtime Error (${data.status?.description || 'Terminated'})`;
+    } else {
+      normalizedStatus = data.status?.description || 'Execution Error';
+      exitCode = statusId === 4 ? 0 : 1;
+    }
+
+    return {
+      status: normalizedStatus,
+      exitCode,
+      stdout: truncateOutput(data.stdout || ''),
+      stderr: truncateOutput(stderr),
+      executionTimeMs: timeMs,
+      timeMs,
+      timedOut
+    };
+  } catch (err) {
+    clearTimeout(abortTimer);
+    if (err.name === 'AbortError') {
+      return {
+        status: 'Time Limit Exceeded',
+        exitCode: 124,
+        stdout: '',
+        stderr: `Time Limit Exceeded (Execution timed out after ${timeoutMs / 1000}s)`,
+        executionTimeMs: timeoutMs,
+        timeMs: timeoutMs,
+        timedOut: true
+      };
+    }
+    throw err;
+  }
+};
+
+/**
+ * Execute code via Piston Remote Sandbox
+ */
+const executeViaPiston = async ({ langConfig, sourceCode, stdin, timeoutMs }) => {
+  const pistonBaseUrl = process.env.PISTON_URL || 'http://localhost:2000';
 
     proc.on('close', (code, signal) => {
       clearTimeout(timer);
@@ -204,26 +339,33 @@ const spawnProcess = (cmd, args, stdin = '', cwd, timeoutMs = 4000) => {
 };
 
 /**
- * Executes a single snippet with provided standard input
+ * Unified execution entrypoint.
+ * Automatically delegates to Judge0 CE or Piston based on configuration.
  */
 export const executeSingleCode = async ({
   language,
   sourceCode,
   stdin = '',
-  timeoutMs = 4000
+  timeoutMs = DEFAULT_TIMEOUT_MS
 }) => {
-  const lang = normalizeLanguage(language);
-  if (!isLanguageSupported(lang)) {
+  const normLang = normalizeLanguage(language);
+  const langConfig = LANGUAGE_CONFIG[normLang];
+
+  if (!langConfig) {
+    const supportedList = Object.keys(LANGUAGE_CONFIG).join(', ');
     return {
       status: 'Unsupported Language',
       exitCode: 1,
       stdout: '',
-      stderr: `Language '${language}' is not supported. Supported: python, javascript, cpp, java`,
-      timeMs: 0
+      stderr: `Language '${language}' is not supported. Supported: ${supportedList}`,
+      executionTimeMs: 0,
+      timeMs: 0,
+      timedOut: false
     };
   }
 
-  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), `rsj-exec-${lang}-`));
+  const executor = (process.env.CODE_EXECUTOR || '').toLowerCase().trim();
+  const usePiston = executor === 'piston' || Boolean(process.env.PISTON_URL);
 
   try {
     if (lang === 'python') {
@@ -238,67 +380,36 @@ export const executeSingleCode = async ({
       await fs.writeFile(filePath, sourceCode, 'utf-8');
       return await spawnProcess('node', [filePath], stdin, tmpDir, timeoutMs);
     }
+    return await executeViaJudge0({ langConfig, sourceCode, stdin, timeoutMs });
+  } catch (err) {
+    console.error(`Remote code execution failed via ${usePiston ? 'Piston' : 'Judge0'}:`, err.message);
 
-    if (lang === 'cpp') {
-      const srcPath = path.join(tmpDir, 'solution.cpp');
-      const binPath = path.join(tmpDir, 'solution.exe');
-      await fs.writeFile(srcPath, sourceCode, 'utf-8');
-
-      // 1. Compile C++ with -O2 optimization
-      const compileRes = await spawnProcess('g++', ['-O2', srcPath, '-o', binPath], '', tmpDir, 6000);
-      if (compileRes.exitCode !== 0) {
-        return {
-          status: 'Compilation Error',
-          exitCode: compileRes.exitCode,
-          stdout: '',
-          stderr: compileRes.stderr || 'C++ compilation failed.',
-          timeMs: compileRes.timeMs
-        };
+    // If Piston failed and Judge0 is available as fallback
+    if (usePiston) {
+      console.warn('Piston failed, attempting fallback to Judge0 CE...');
+      try {
+        return await executeViaJudge0({ langConfig, sourceCode, stdin, timeoutMs });
+      } catch (fallbackErr) {
+        console.error('Judge0 fallback also failed:', fallbackErr.message);
       }
-
-      // 2. Execute compiled binary
-      return await spawnProcess(binPath, [], stdin, tmpDir, timeoutMs);
     }
 
-    if (lang === 'java') {
-      // Detect public class name from code or default to Main / Solution
-      const match = sourceCode.match(/public\s+class\s+([A-Za-z0-9_]+)/);
-      let className = match ? match[1] : 'Main';
-      let javaCode = sourceCode;
-
-      if (!match && !sourceCode.includes('class Main') && !sourceCode.includes('class Solution')) {
-        className = 'Main';
-        javaCode = `public class Main {\n${sourceCode}\n}`;
-      }
-
-      const srcPath = path.join(tmpDir, `${className}.java`);
-      await fs.writeFile(srcPath, javaCode, 'utf-8');
-
-      // 1. Compile Java
-      const compileRes = await spawnProcess('javac', [srcPath], '', tmpDir, 8000);
-      if (compileRes.exitCode !== 0) {
-        return {
-          status: 'Compilation Error',
-          exitCode: compileRes.exitCode,
-          stdout: '',
-          stderr: compileRes.stderr || 'Java compilation failed.',
-          timeMs: compileRes.timeMs
-        };
-      }
-
-      // 2. Run Java bytecode
-      return await spawnProcess('java', ['-cp', tmpDir, className], stdin, tmpDir, timeoutMs);
-    }
-  } finally {
-    // Clean up temporary sandbox directory safely
-    await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+    return {
+      status: 'Service Unavailable',
+      exitCode: 1,
+      stdout: '',
+      stderr: 'Code execution service is temporarily unavailable — you can still write and submit your code, it will be evaluated shortly.',
+      executionTimeMs: 0,
+      timeMs: 0,
+      timedOut: false
+    };
   }
 };
 
 /**
  * Normalizes string output for whitespace-resilient comparisons
  */
-const cleanOutput = (str) => {
+export const cleanOutput = (str) => {
   if (typeof str !== 'string') return '';
   return str
     .replace(/\r\n/g, '\n')
@@ -310,14 +421,14 @@ const cleanOutput = (str) => {
 };
 
 /**
- * Runs code against a test case suite and calculates verdict and pass rate
+ * Runs code against a test case suite using sandboxed remote execution
  */
 export const evaluateCodeAgainstTestCases = async ({
   language,
   sourceCode,
   testCases = [],
   includeHiddenDetails = false,
-  timeoutMs = 4000
+  timeoutMs = DEFAULT_TIMEOUT_MS
 }) => {
   if (!Array.isArray(testCases) || testCases.length === 0) {
     return {
@@ -333,6 +444,7 @@ export const evaluateCodeAgainstTestCases = async ({
   const results = [];
   let passedCount = 0;
   let hasCompilationError = false;
+  let compilationStderr = '';
   let overallVerdict = 'Accepted';
 
   for (let i = 0; i < testCases.length; i++) {
@@ -341,13 +453,14 @@ export const evaluateCodeAgainstTestCases = async ({
     const input = String(tc.input ?? '');
     const expected = cleanOutput(String(tc.expectedOutput ?? tc.expected_output ?? ''));
 
-    // If previous test failed due to compilation error, no need to re-compile
+    // Fast-fail if previous test failed due to compilation error
     if (hasCompilationError) {
       results.push({
         id: tc.id || (i + 1),
         isHidden,
         status: 'Compilation Error',
         passed: false,
+        stderr: compilationStderr,
         timeMs: 0
       });
       continue;
@@ -362,6 +475,7 @@ export const evaluateCodeAgainstTestCases = async ({
 
     if (execRes.status === 'Compilation Error') {
       hasCompilationError = true;
+      compilationStderr = execRes.stderr;
       overallVerdict = 'Compilation Error';
       results.push({
         id: tc.id || (i + 1),
@@ -369,7 +483,7 @@ export const evaluateCodeAgainstTestCases = async ({
         status: 'Compilation Error',
         passed: false,
         stderr: execRes.stderr,
-        timeMs: execRes.timeMs
+        timeMs: execRes.timeMs || 0
       });
       continue;
     }
@@ -381,7 +495,7 @@ export const evaluateCodeAgainstTestCases = async ({
         isHidden,
         status: 'Time Limit Exceeded',
         passed: false,
-        timeMs: execRes.timeMs,
+        timeMs: execRes.timeMs || 0,
         stderr: 'Execution timed out.'
       });
       continue;
@@ -395,7 +509,20 @@ export const evaluateCodeAgainstTestCases = async ({
         status: 'Runtime Error',
         passed: false,
         stderr: execRes.stderr,
-        timeMs: execRes.timeMs
+        timeMs: execRes.timeMs || 0
+      });
+      continue;
+    }
+
+    if (execRes.status === 'Service Unavailable') {
+      if (overallVerdict === 'Accepted') overallVerdict = 'Service Unavailable';
+      results.push({
+        id: tc.id || (i + 1),
+        isHidden,
+        status: 'Service Unavailable',
+        passed: false,
+        stderr: execRes.stderr,
+        timeMs: 0
       });
       continue;
     }
@@ -409,14 +536,13 @@ export const evaluateCodeAgainstTestCases = async ({
       overallVerdict = 'Wrong Answer';
     }
 
-    // For hidden test cases, protect answer confidentiality unless requested
     if (isHidden && !includeHiddenDetails) {
       results.push({
         id: tc.id || (i + 1),
         isHidden: true,
         status: passed ? 'Passed' : 'Wrong Answer',
         passed,
-        timeMs: execRes.timeMs
+        timeMs: execRes.timeMs || 0
       });
     } else {
       results.push({
@@ -429,12 +555,12 @@ export const evaluateCodeAgainstTestCases = async ({
         actualOutput: actual,
         stdout: execRes.stdout,
         stderr: execRes.stderr,
-        timeMs: execRes.timeMs
+        timeMs: execRes.timeMs || 0
       });
     }
   }
 
-  const scorePercentage = Math.round((passedCount / testCases.length) * 100);
+  const scorePercentage = testCases.length > 0 ? Math.round((passedCount / testCases.length) * 100) : 100;
 
   return {
     passed: passedCount === testCases.length,
