@@ -1,5 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
+import { api } from '../../services/api';
 import { Modal } from '../../components/common/Modal';
 import { AssessmentReportModal } from '../../components/candidate/AssessmentReportModal';
 import {
@@ -18,7 +19,8 @@ import {
   FileText,
   Mail,
   User,
-  RotateCcw
+  RotateCcw,
+  ShieldAlert
 } from 'lucide-react';
 
 export const AdminCandidatesPage = () => {
@@ -31,6 +33,27 @@ export const AdminCandidatesPage = () => {
   const [selectedReadiness, setSelectedReadiness] = useState('All');
   const [viewCandidate, setViewCandidate] = useState(null);
   const [reportCandidate, setReportCandidate] = useState(null);
+  const [candidateProctoringEvents, setCandidateProctoringEvents] = useState([]);
+  const [loadingProctoring, setLoadingProctoring] = useState(false);
+
+  useEffect(() => {
+    if (viewCandidate?.id) {
+      setLoadingProctoring(true);
+      api.submissions.getProctoringEvents(viewCandidate.id)
+        .then(res => {
+          const list = Array.isArray(res?.data?.data)
+            ? res.data.data
+            : Array.isArray(res?.data)
+            ? res.data
+            : [];
+          setCandidateProctoringEvents(list);
+        })
+        .catch(() => setCandidateProctoringEvents([]))
+        .finally(() => setLoadingProctoring(false));
+    } else {
+      setCandidateProctoringEvents([]);
+    }
+  }, [viewCandidate?.id]);
 
   const safeCandidatesList = useMemo(() => {
     if (Array.isArray(candidatesList)) return candidatesList;
@@ -308,6 +331,86 @@ export const AdminCandidatesPage = () => {
                   {viewCandidate.overallScore ?? viewCandidate.jobReadinessScore ?? viewCandidate.job_readiness_score ?? 0}%
                 </span>
               </div>
+            </div>
+
+            {/* Proctoring Alerts & Telemetry Section */}
+            <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <ShieldAlert className="w-4 h-4 text-brand-600" />
+                  <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                    Proctoring & Exam Integrity Summary
+                  </h4>
+                </div>
+                <span className="text-[10px] text-slate-500 font-medium">MediaPipe Face-Presence Detection</span>
+              </div>
+
+              {/* KPI metrics */}
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="p-2 bg-white rounded-xl border border-slate-200 shadow-2xs">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase block">Tab Switches</span>
+                  <strong className="text-sm font-extrabold text-slate-900">0</strong>
+                </div>
+                <div className={`p-2 rounded-xl border shadow-2xs ${
+                  candidateProctoringEvents.length === 0
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                    : candidateProctoringEvents.length < 3
+                    ? 'bg-amber-50 border-amber-200 text-amber-800'
+                    : 'bg-rose-50 border-rose-200 text-rose-800'
+                }`}>
+                  <span className="text-[10px] font-bold uppercase block">Face Warnings</span>
+                  <strong className="text-sm font-extrabold">
+                    {candidateProctoringEvents.length} / 3
+                  </strong>
+                </div>
+                <div className={`p-2 rounded-xl border shadow-2xs ${
+                  viewCandidate.autoSubmitted || candidateProctoringEvents.length >= 3
+                    ? 'bg-rose-50 border-rose-200 text-rose-800'
+                    : 'bg-white border-slate-200 text-slate-900'
+                }`}>
+                  <span className="text-[10px] font-bold text-slate-500 uppercase block">Auto-Submitted</span>
+                  <strong className="text-xs font-extrabold">
+                    {viewCandidate.autoSubmitted || candidateProctoringEvents.length >= 3 ? 'Yes (Proctoring)' : 'No'}
+                  </strong>
+                </div>
+              </div>
+
+              {/* Violation Events Timeline / Table */}
+              {loadingProctoring ? (
+                <div className="text-center py-2 text-xs text-slate-500 font-medium">Loading proctoring logs...</div>
+              ) : candidateProctoringEvents.length > 0 ? (
+                <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Logged Violations:</span>
+                  {candidateProctoringEvents.map((evt, idx) => (
+                    <div key={evt.id || idx} className="p-2 bg-white rounded-xl border border-slate-200 flex items-center justify-between text-[11px] gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold ${
+                          evt.type === 'NO_FACE'
+                            ? 'bg-rose-100 text-rose-800'
+                            : evt.type === 'MULTIPLE_FACES'
+                            ? 'bg-purple-100 text-purple-800'
+                            : evt.type === 'EYE_GAZE_DIVERTED'
+                            ? 'bg-orange-100 text-orange-800'
+                            : 'bg-amber-100 text-amber-800'
+                        }`}>
+                          {evt.type === 'EYE_GAZE_DIVERTED' ? 'EYE GAZE' : evt.type}
+                        </span>
+                        <span className="text-slate-700 font-medium">
+                          {evt.details?.reason || evt.details?.message || 'Proctoring violation recorded'}
+                        </span>
+                      </div>
+                      <span className="text-slate-400 text-[10px] font-mono whitespace-nowrap">
+                        {new Date(evt.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-[11px] font-medium text-emerald-800 flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                  <span>No proctoring violations recorded for this candidate attempt. Full facial presence verified.</span>
+                </div>
+              )}
             </div>
 
             <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-100">

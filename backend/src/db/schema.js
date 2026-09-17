@@ -170,6 +170,17 @@ const schemaSQL = `
       updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
       CONSTRAINT uq_company_role UNIQUE (company, role)
     );
+
+    -- 10. proctoring_events: Stores face-presence, gaze orientation & proctoring violation logs
+    CREATE TABLE IF NOT EXISTS proctoring_events (
+      id VARCHAR(64) PRIMARY KEY,
+      attempt_id VARCHAR(128) NOT NULL,
+      candidate_id VARCHAR(64),
+      assessment_id VARCHAR(64),
+      type VARCHAR(64) NOT NULL,
+      timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+      details JSONB
+    );
 `;
 
 export const initSchema = async () => {
@@ -302,6 +313,14 @@ export const initSchema = async () => {
       ALTER TABLE assessment_questions ADD COLUMN IF NOT EXISTS options JSONB;
       ALTER TABLE assessment_questions ADD COLUMN IF NOT EXISTS correct_answer VARCHAR(16);
       ALTER TABLE assessment_questions ADD COLUMN IF NOT EXISTS marks INT DEFAULT 1;
+
+      ALTER TABLE assessment_submissions ADD COLUMN IF NOT EXISTS proctoring_violations INT DEFAULT 0;
+      ALTER TABLE assessment_submissions ADD COLUMN IF NOT EXISTS auto_submitted BOOLEAN DEFAULT FALSE;
+      ALTER TABLE assessment_submissions ADD COLUMN IF NOT EXISTS auto_submit_reason VARCHAR(128);
+
+      CREATE INDEX IF NOT EXISTS idx_proctoring_attempt ON proctoring_events(attempt_id);
+      CREATE INDEX IF NOT EXISTS idx_proctoring_candidate ON proctoring_events(candidate_id);
+      CREATE INDEX IF NOT EXISTS idx_proctoring_assessment ON proctoring_events(assessment_id);
     `);
     console.log('✅ Safe column alterations applied.');
 

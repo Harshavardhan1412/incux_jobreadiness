@@ -20,7 +20,10 @@ export const submitAssessment = async (req, res) => {
     categoryScores: clientCategoryScores,
     topicBreakdown: clientTopicBreakdown,
     questionIds,
-    answers
+    answers,
+    proctoringViolations,
+    autoSubmitted,
+    autoSubmitReason
   } = req.body;
 
   // Prevent candidate identity spoofing (IDOR prevention)
@@ -101,8 +104,9 @@ export const submitAssessment = async (req, res) => {
         const updated = await client.query(
           `UPDATE assessment_submissions 
            SET score = $1, accuracy = $2, correct_count = $3, incorrect_count = $4, unanswered_count = $5,
-               time_taken = $6, category_scores = $7, topic_breakdown = $8, answers = $9, created_at = NOW()
-           WHERE id = $10
+               time_taken = $6, category_scores = $7, topic_breakdown = $8, answers = $9, created_at = NOW(),
+               proctoring_violations = $10, auto_submitted = $11, auto_submit_reason = $12
+           WHERE id = $13
            RETURNING *`,
           [
             finalScore,
@@ -114,6 +118,9 @@ export const submitAssessment = async (req, res) => {
             JSON.stringify(catScores),
             JSON.stringify(finalTopicBreakdown),
             JSON.stringify(answers || {}),
+            Number(proctoringViolations || 0),
+            Boolean(autoSubmitted),
+            autoSubmitReason || null,
             existingSubmission.rows[0].id
           ]
         );
@@ -157,8 +164,8 @@ export const submitAssessment = async (req, res) => {
     // 3. Insert into assessment_submissions table
     const result = await client.query(
       `INSERT INTO assessment_submissions 
-       (id, candidate_id, candidate_name, candidate_email, assessment_id, assessment_title, score, accuracy, correct_count, incorrect_count, unanswered_count, time_taken, category_scores, topic_breakdown, answers)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+       (id, candidate_id, candidate_name, candidate_email, assessment_id, assessment_title, score, accuracy, correct_count, incorrect_count, unanswered_count, time_taken, category_scores, topic_breakdown, answers, proctoring_violations, auto_submitted, auto_submit_reason)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
        RETURNING *`,
       [
         id,
@@ -175,7 +182,10 @@ export const submitAssessment = async (req, res) => {
         timeTaken || '28 min',
         JSON.stringify(finalCategoryScores),
         JSON.stringify(finalTopicBreakdown),
-        JSON.stringify(answers || {})
+        JSON.stringify(answers || {}),
+        Number(proctoringViolations || 0),
+        Boolean(autoSubmitted),
+        autoSubmitReason || null
       ]
     );
 
@@ -268,3 +278,77 @@ export const getMySubmissions = async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 };
+
+// POST /api/submissions/proctoring-event
+export const logProctoringEvent = async (req, res) => {
+  try {
+    const {
+      attemptId,
+      candidateId: bodyCandId,
+      assessmentId,
+      type, // 'NO_FACE' | 'LOOKING_AWAY' | 'MULTIPLE_FACES'
+      timestamp,
+      details
+    } = req.body;
+
+    if (!attemptId || !type) {
+      return res.status(400).json({ success: false, error: 'attemptId and type are required' });
+    }
+
+    const candidateId = req.user?.id || bodyCandId || null;
+    const asmId = assessmentId || null;
+    const eventId = `pe-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
+    const eventTime = timestamp ? new Date(timestamp) : new Date();
+
+    const insertResult = await pool.query(
+      `INSERT INTO proctoring_events (id, attempt_id, candidate_id, assessment_id, type, timestamp, details)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING *`,
+      [
+        eventId,
+        String(attemptId),
+        candidateId,
+        asmId,
+        String(type).toUpperCase(),
+        eventTime,
+        details ? JSON.stringify(details) : null
+      ]
+    );
+
+    return res.status(201).json({
+      success: true,
+      data: insertResult.rows[0]
+    });
+  } catch (err) {
+    console.error('Error logging proctoring event:', err);
+    return res.status(500).json({ success: false, error: 'Failed to record proctoring event' });
+  }
+};
+
+// GET /api/submissions/proctoring-events/:attemptId
+export const getProctoringEvents = async (req, res) => {
+  try {
+    const { attemptId } = req.params;
+    if (!attemptId) {
+      return res.status(400).json({ success: false, error: 'attemptId is required' });
+    }
+
+    const result = await pool.query(
+      `SELECT id, attempt_id, candidate_id, assessment_id, type, timestamp, details
+       FROM proctoring_events
+       WHERE attempt_id = $1 OR candidate_id = $1
+       ORDER BY timestamp ASC`,
+      [attemptId]
+    );
+
+    return res.status(200).json({
+      success: true,
+      count: result.rows.length,
+      data: result.rows
+    });
+  } catch (err) {
+    console.error('Error fetching proctoring events:', err);
+    return res.status(500).json({ success: false, error: 'Failed to fetch proctoring events' });
+  }
+};
+

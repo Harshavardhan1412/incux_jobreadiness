@@ -726,7 +726,7 @@ export const AppProvider = ({ children }) => {
     setCurrentView('take-assessment');
   };
 
-  const submitAssessment = async (answers, timeSpentMin = 28) => {
+  const submitAssessment = async (answers, timeSpentMin = 28, metadata = {}) => {
     // Generate calculated score for the active assessment's exact questions
     const asmQuestions = (activeAssessment?.questions && activeAssessment.questions.length > 0)
       ? activeAssessment.questions
@@ -927,7 +927,10 @@ export const AppProvider = ({ children }) => {
       categoryScores,
       topicBreakdown,
       questionIds: asmQuestions.map(q => q.id),
-      answers: answers
+      answers: answers,
+      proctoringViolations: Number(metadata.proctoringViolations || 0),
+      autoSubmitted: Boolean(metadata.autoSubmitted),
+      autoSubmitReason: metadata.autoSubmitReason || null
     });
 
     // Check if backend rejected because already submitted

@@ -1,8 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
+import { api } from '../../services/api';
 import { Modal } from '../../components/common/Modal';
 import { MediaPreviewWidget } from '../../components/candidate/MediaPreviewWidget';
 import { CodingWorkspace } from '../../components/candidate/CodingWorkspace';
+import {
+  getFaceLandmarker,
+  classifyFrame,
+  GRACE_PERIOD_MS,
+  DETECTION_INTERVAL_MS,
+  MAX_ALLOWED_STRIKES
+} from '../../services/proctoringService';
 import {
   Clock,
   Bookmark,
@@ -17,14 +25,24 @@ import {
   HelpCircle,
   Copy,
   Check,
-  Code2
+  Code2,
+  Camera,
+  VideoOff,
+  ShieldAlert,
+  EyeOff,
+  UserX,
+  Users,
+  RefreshCw,
+  AlertTriangle
 } from 'lucide-react';
 
 export const AssessmentPage = () => {
   const {
     activeAssessment,
     mediaStream,
+    setMediaStream,
     stopMediaStream,
+    currentUser,
     questionBank,
     assessmentAnswers,
     setAssessmentAnswers,
@@ -47,6 +65,28 @@ export const AssessmentPage = () => {
   const [showEnterFullscreenModal, setShowEnterFullscreenModal] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Proctoring & Camera States
+  const [cameraReady, setCameraReady] = useState(false);
+  const [cameraDenied, setCameraDenied] = useState(false);
+  const [isRequestingCamera, setIsRequestingCamera] = useState(false);
+  const [proctorState, setProctorState] = useState({ status: 'initializing', reason: '', message: '' });
+  const [violationCount, setViolationCount] = useState(0);
+  const [isPausedForWarning, setIsPausedForWarning] = useState(false);
+  const [warningModalData, setWarningModalData] = useState({
+    isOpen: false,
+    violationNumber: 0,
+    reason: '',
+    message: '',
+    isFinal: false
+  });
+
+  const videoElementRef = useRef(null);
+  const violationCountRef = useRef(0);
+  const badStateStartTimeRef = useRef(null);
+  const lastBadStatusRef = useRef(null);
+  const detectionIntervalRef = useRef(null);
+  const attemptIdRef = useRef(`att-${activeAssessment?.id || 'asm'}-${currentUser?.id || 'cand'}-${Date.now()}`);
 
   const fullscreenExitCountRef = useRef(0);
   const isSubmittedRef = useRef(false);
@@ -93,6 +133,36 @@ export const AssessmentPage = () => {
     stopMediaStream();
   };
 
+  // Camera Gating: Request webcam access for proctoring
+  const requestCamera = async () => {
+    setIsRequestingCamera(true);
+    setCameraDenied(false);
+    try {
+      if (mediaStream && mediaStream.getVideoTracks().some(t => t.readyState === 'live')) {
+        setCameraReady(true);
+        setIsRequestingCamera(false);
+        return;
+      }
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
+        audio: false
+      });
+      setMediaStream(stream);
+      setCameraReady(true);
+      setCameraDenied(false);
+    } catch (err) {
+      console.error('Camera access denied or unavailable:', err);
+      setCameraDenied(true);
+      setCameraReady(false);
+    } finally {
+      setIsRequestingCamera(false);
+    }
+  };
+
+  useEffect(() => {
+    requestCamera();
+  }, []);
+
   const handleAutoSubmit = async (reason) => {
     if (isSubmittedRef.current || isSubmitting) return;
     isSubmittedRef.current = true;
@@ -102,12 +172,20 @@ export const AssessmentPage = () => {
       clearInterval(timerRef.current);
     }
 
+    if (detectionIntervalRef.current) {
+      clearInterval(detectionIntervalRef.current);
+    }
+
     exitExamFullscreenAndStopMedia();
 
     try {
       const durationSec = (activeAssessment?.durationMinutes * 60 || 1800) - timeRemainingSeconds;
       const timeSpentMin = Math.max(1, Math.round(durationSec / 60));
-      const res = await submitAssessment(assessmentAnswers, timeSpentMin);
+      const res = await submitAssessment(assessmentAnswers, timeSpentMin, {
+        proctoringViolations: violationCountRef.current,
+        autoSubmitted: true,
+        autoSubmitReason: reason || 'proctoring_violations'
+      });
       if (res && !res.ok) {
         if (res.status === 409) {
           addToast?.('This assessment has already been submitted.', 'info');
@@ -131,10 +209,18 @@ export const AssessmentPage = () => {
       clearInterval(timerRef.current);
     }
 
+    if (detectionIntervalRef.current) {
+      clearInterval(detectionIntervalRef.current);
+    }
+
     try {
       const durationSec = (activeAssessment?.durationMinutes * 60 || 1800) - timeRemainingSeconds;
       const timeSpentMin = Math.max(1, Math.round(durationSec / 60));
-      const res = await submitAssessment(assessmentAnswers, timeSpentMin);
+      const res = await submitAssessment(assessmentAnswers, timeSpentMin, {
+        proctoringViolations: violationCountRef.current,
+        autoSubmitted: false,
+        autoSubmitReason: null
+      });
 
       if (res && !res.ok) {
         if (res.status === 409) {
@@ -155,6 +241,127 @@ export const AssessmentPage = () => {
       setIsSubmitting(false);
     }
   };
+
+  // Live Face-Presence Proctoring Loop with MediaPipe Tasks Vision
+  useEffect(() => {
+    if (!cameraReady || !mediaStream || isSubmitting || isSubmittedRef.current) {
+      return;
+    }
+
+    let landmarker = null;
+    let isCancelled = false;
+
+    const startProctoringLoop = async () => {
+      try {
+        landmarker = await getFaceLandmarker();
+        if (isCancelled) return;
+
+        detectionIntervalRef.current = setInterval(() => {
+          if (isCancelled || isSubmittedRef.current || isPausedForWarning || !videoElementRef.current) {
+            return;
+          }
+
+          const video = videoElementRef.current;
+          if (video.readyState < 2 || video.paused || video.ended) {
+            return;
+          }
+
+          try {
+            const results = landmarker.detectForVideo(video, performance.now());
+            const classification = classifyFrame(results);
+            setProctorState(classification);
+
+            if (classification.status === 'face_ok') {
+              badStateStartTimeRef.current = null;
+              lastBadStatusRef.current = null;
+            } else {
+              // Non face_ok state (no_face, looking_away, multiple_faces)
+              if (badStateStartTimeRef.current === null) {
+                badStateStartTimeRef.current = Date.now();
+                lastBadStatusRef.current = classification.status;
+              } else {
+                const elapsed = Date.now() - badStateStartTimeRef.current;
+                if (elapsed >= GRACE_PERIOD_MS) {
+                  // Confirmed violation after grace period
+                  badStateStartTimeRef.current = null;
+                  const nextCount = violationCountRef.current + 1;
+                  violationCountRef.current = nextCount;
+                  setViolationCount(nextCount);
+
+                  const isEyeGaze = classification.gazeDirection &&
+                    classification.gazeDirection !== 'head_turned' &&
+                    classification.gazeDirection !== 'none' &&
+                    classification.gazeDirection !== 'center';
+
+                  const violationType = classification.status === 'no_face'
+                    ? 'NO_FACE'
+                    : classification.status === 'multiple_faces'
+                    ? 'MULTIPLE_FACES'
+                    : isEyeGaze
+                    ? 'EYE_GAZE_DIVERTED'
+                    : 'LOOKING_AWAY';
+
+                  api.submissions.logProctoringEvent({
+                    attemptId: attemptIdRef.current,
+                    candidateId: currentUser?.id,
+                    assessmentId: activeAssessment?.id,
+                    type: violationType,
+                    timestamp: new Date().toISOString(),
+                    details: {
+                      reason: classification.reason,
+                      message: classification.message,
+                      yaw: classification.yaw,
+                      pitch: classification.pitch,
+                      gazeDirection: classification.gazeDirection || null,
+                      gazeScores: classification.gazeScores || null,
+                      strikeNumber: nextCount,
+                      elapsedMs: elapsed
+                    }
+                  }).catch(e => console.warn('Failed to log proctoring event:', e));
+
+                  if (nextCount < MAX_ALLOWED_STRIKES) {
+                    setIsPausedForWarning(true);
+                    setWarningModalData({
+                      isOpen: true,
+                      violationNumber: nextCount,
+                      reason: classification.reason,
+                      message: classification.message,
+                      isFinal: false
+                    });
+                  } else {
+                    setIsPausedForWarning(true);
+                    setWarningModalData({
+                      isOpen: true,
+                      violationNumber: 3,
+                      reason: 'Maximum proctoring violations reached (3 of 3 strikes)',
+                      message: 'Assessment auto-submitted due to repeated proctoring violations.',
+                      isFinal: true
+                    });
+                    setTimeout(() => {
+                      handleAutoSubmit('proctoring_violations');
+                    }, 1500);
+                  }
+                }
+              }
+            }
+          } catch (detectErr) {
+            console.warn('Proctoring detection tick error:', detectErr);
+          }
+        }, DETECTION_INTERVAL_MS);
+      } catch (err) {
+        console.warn('FaceLandmarker load error:', err);
+      }
+    };
+
+    startProctoringLoop();
+
+    return () => {
+      isCancelled = true;
+      if (detectionIntervalRef.current) {
+        clearInterval(detectionIntervalRef.current);
+      }
+    };
+  }, [cameraReady, mediaStream, isPausedForWarning, isSubmitting]);
 
   // Fullscreen, Keydown & Tab Switch Violation Listeners
   useEffect(() => {
@@ -226,8 +433,12 @@ export const AssessmentPage = () => {
     };
   }, []);
 
-  // Live Timer Countdown
+  // Live Timer Countdown (Pauses during camera blocking or proctoring warning modal)
   useEffect(() => {
+    if (cameraDenied || isPausedForWarning || isSubmitting) {
+      return;
+    }
+
     timerRef.current = setInterval(() => {
       setTimeRemainingSeconds((prev) => {
         if (prev <= 1) {
@@ -242,7 +453,7 @@ export const AssessmentPage = () => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, []);
+  }, [cameraDenied, isPausedForWarning, isSubmitting]);
 
   const formatTime = (seconds) => {
     const m = Math.floor(seconds / 60);
@@ -488,10 +699,16 @@ export const AssessmentPage = () => {
           {/* RIGHT SIDEBAR: CAMERA PREVIEW & QUESTION PALETTE */}
           <div className={`${currentQuestion?.type === 'Coding' ? 'lg:col-span-3' : 'lg:col-span-4'} space-y-4`}>
             
-            {/* Live Camera & Mic Status Widget */}
+            {/* Live Camera & Proctoring Status Widget */}
             {mediaStream && (
               <div className="flex justify-end lg:justify-start">
-                <MediaPreviewWidget stream={mediaStream} />
+                <MediaPreviewWidget
+                  stream={mediaStream}
+                  videoRef={videoElementRef}
+                  proctorState={proctorState}
+                  violationCount={violationCount}
+                  isDetecting={cameraReady && !isSubmitting && !isPausedForWarning}
+                />
               </div>
             )}
 
@@ -727,6 +944,124 @@ export const AssessmentPage = () => {
               <RotateCcw className="w-4 h-4" />
               <span>Re-Enter Full Screen & Resume Exam</span>
             </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* CAMERA ACCESS BLOCKING GATE */}
+      {cameraDenied && (
+        <div className="fixed inset-0 z-50 bg-slate-900/90 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-8 shadow-2xl border border-slate-200 text-center space-y-6 animate-in fade-in zoom-in-95 duration-200">
+            <div className="w-16 h-16 bg-rose-100 rounded-2xl flex items-center justify-center mx-auto text-rose-600 shadow-inner">
+              <VideoOff className="w-8 h-8" />
+            </div>
+
+            <div className="space-y-2">
+              <h3 className="text-xl font-extrabold text-slate-900">Webcam Access Required</h3>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Continuous face-presence proctoring is strictly required for this assessment to ensure testing integrity. You cannot begin the test without camera access.
+              </p>
+            </div>
+
+            <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl text-left text-xs text-amber-800 space-y-1.5 font-medium">
+              <div className="font-bold flex items-center gap-1.5 text-amber-900">
+                <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                <span>Privacy & Transparency Guarantee:</span>
+              </div>
+              <p>Face detection is processed 100% locally in your browser using MediaPipe. No webcam video or photos are ever saved or uploaded to the server.</p>
+            </div>
+
+            <button
+              onClick={requestCamera}
+              disabled={isRequestingCamera}
+              className="w-full py-3.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-extrabold shadow-lg shadow-brand-600/30 transition-all flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <RefreshCw className={`w-4 h-4 ${isRequestingCamera ? 'animate-spin' : ''}`} />
+              <span>{isRequestingCamera ? 'Requesting Access...' : 'Allow Camera & Start Assessment'}</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* PROCTORING WARNING MODAL (STRIKE 1 OR 2) */}
+      <Modal
+        isOpen={warningModalData.isOpen && !warningModalData.isFinal}
+        onClose={() => {}}
+        title={`⚠️ Proctoring Warning: Strike ${warningModalData.violationNumber} of 3`}
+        subtitle="Face-presence integrity alert"
+      >
+        <div className="space-y-4 text-xs text-slate-600 leading-relaxed">
+          <div className="p-4 bg-amber-50 border border-amber-300 rounded-2xl flex items-start gap-3.5">
+            <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center flex-shrink-0 text-amber-700 mt-0.5">
+              {warningModalData.reason?.includes('Multiple') ? (
+                <Users className="w-5 h-5" />
+              ) : warningModalData.reason?.includes('away') || warningModalData.reason?.includes('turn') || warningModalData.reason?.includes('tilt') ? (
+                <EyeOff className="w-5 h-5" />
+              ) : (
+                <UserX className="w-5 h-5" />
+              )}
+            </div>
+            <div className="space-y-1.5 flex-1">
+              <h4 className="font-bold text-amber-950 text-sm">{warningModalData.reason || 'Proctoring Violation Detected'}</h4>
+              <p className="text-amber-800 font-medium">
+                {warningModalData.message || 'Please face the camera directly and stay focused on the screen.'}
+              </p>
+              <div className="mt-2 p-2.5 bg-white/90 rounded-xl border border-amber-200 text-[11px] font-semibold text-amber-900">
+                ⏱️ The exam countdown timer is currently paused. Please adjust your posture and face the camera before resuming.
+              </div>
+            </div>
+          </div>
+
+          <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between text-xs font-bold">
+            <span className="text-slate-600">Proctoring Strikes Recorded:</span>
+            <span className="px-2.5 py-1 bg-amber-500 text-white rounded-lg shadow-xs">
+              Strike {warningModalData.violationNumber} of 3
+            </span>
+          </div>
+
+          <div className="text-[11px] text-rose-700 font-bold bg-rose-50 p-3 rounded-xl border border-rose-200">
+            🚨 Critical: Reaching 3 strikes will immediately auto-submit your assessment.
+          </div>
+
+          <div className="flex justify-end pt-2">
+            <button
+              onClick={() => {
+                setWarningModalData(prev => ({ ...prev, isOpen: false }));
+                setIsPausedForWarning(false);
+              }}
+              className="w-full py-3 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold shadow-md shadow-brand-600/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <CheckCircle2 className="w-4 h-4" />
+              <span>I Understand — Resume Exam</span>
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* PROCTORING 3RD STRIKE AUTO-SUBMIT MODAL */}
+      <Modal
+        isOpen={warningModalData.isOpen && warningModalData.isFinal}
+        onClose={() => {}}
+        title="🚨 Exam Auto-Submitted: Maximum Violations Reached"
+        subtitle="Assessment terminated due to repeated proctoring strikes"
+      >
+        <div className="space-y-4 text-xs text-slate-600 leading-relaxed">
+          <div className="p-4 bg-rose-50 border border-rose-300 rounded-2xl flex items-start gap-3.5">
+            <AlertCircle className="w-8 h-8 text-rose-600 flex-shrink-0 mt-0.5 animate-bounce" />
+            <div className="space-y-1.5">
+              <h4 className="font-bold text-rose-950 text-sm">3 of 3 Proctoring Strikes Exceeded</h4>
+              <p className="text-rose-800 font-medium">
+                Your assessment has been automatically submitted due to repeated face-presence violations.
+              </p>
+              <p className="text-slate-600 text-[11px] mt-1">
+                Your answers recorded up to this point are being evaluated and saved to the proctoring audit log.
+              </p>
+            </div>
+          </div>
+
+          <div className="py-2 flex items-center justify-center gap-2 text-xs font-bold text-slate-500">
+            <RefreshCw className="w-4 h-4 animate-spin text-brand-600" />
+            <span>Submitting assessment and redirecting...</span>
           </div>
         </div>
       </Modal>

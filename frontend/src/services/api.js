@@ -93,6 +93,8 @@ export const api = {
   submissions: {
     submit: (body) => request('POST', '/submissions', body),
     my: () => request('GET', '/submissions/my'),
+    logProctoringEvent: (body) => request('POST', '/submissions/proctoring-event', body),
+    getProctoringEvents: (attemptId) => request('GET', `/submissions/proctoring-events/${encodeURIComponent(attemptId)}`),
   },
 
   admin: {

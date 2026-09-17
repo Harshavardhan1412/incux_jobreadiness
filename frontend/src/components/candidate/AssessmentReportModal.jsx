@@ -677,9 +677,15 @@ export const AssessmentReportModal = ({
                     </div>
 
                     <div className="text-right space-y-0.5">
-                      <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full text-[10px] font-black">
-                        <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                        Verified Digital Credential
+                      <div className="flex flex-col items-end gap-1">
+                        <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full text-[10px] font-black">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                          Verified Digital Credential
+                        </div>
+                        <div className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-md text-[9px] font-bold">
+                          <ShieldCheck className="w-2.5 h-2.5 text-blue-600" />
+                          AI Face Proctoring Monitored
+                        </div>
                       </div>
                       <div className="text-[10px] text-slate-500 font-mono">
                         Report ID: <strong className="text-slate-800">{reportId}</strong>
