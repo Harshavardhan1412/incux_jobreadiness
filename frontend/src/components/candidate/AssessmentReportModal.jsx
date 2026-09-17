@@ -717,38 +717,38 @@ export const AssessmentReportModal = ({
 
                   <div className="grid grid-cols-4 gap-3 text-xs">
                     {/* Candidate Identity */}
-                    <div className="space-y-0.5">
-                      <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block">Candidate Identity</span>
-                      <strong className="text-xs font-black text-slate-900 block leading-tight">{candidateName}</strong>
-                      <span className="text-slate-600 text-[10px] block truncate">{candidateEmail}</span>
-                      <span className="text-slate-500 text-[10px] block">{candidatePhone}</span>
+                    <div className="flex flex-col justify-start gap-1">
+                      <span className="text-[9px] font-extrabold uppercase tracking-wider text-slate-400 block leading-none">Candidate Identity</span>
+                      <strong className="text-xs font-black text-slate-900 block leading-snug">{candidateName}</strong>
+                      <span className="text-slate-600 text-[10.5px] block truncate leading-snug font-medium">{candidateEmail}</span>
+                      <span className="text-slate-500 text-[10.5px] block leading-snug font-mono">{candidatePhone}</span>
                     </div>
 
                     {/* Institution */}
-                    <div className="space-y-0.5">
-                      <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block">Institution / Degree</span>
-                      <strong className="text-xs font-black text-slate-900 block leading-tight">{college}</strong>
-                      <span className="text-slate-700 text-[10px] block font-semibold">{degree} • {branch}</span>
-                      <span className="text-slate-500 text-[10px] block">Class of {gradYear} • {expLevel}</span>
+                    <div className="flex flex-col justify-start gap-1">
+                      <span className="text-[9px] font-extrabold uppercase tracking-wider text-slate-400 block leading-none">Institution / Degree</span>
+                      <strong className="text-xs font-black text-slate-900 block leading-snug">{college}</strong>
+                      <span className="text-slate-700 text-[10.5px] block font-semibold leading-snug">{degree} • {branch}</span>
+                      <span className="text-slate-500 text-[10.5px] block leading-snug">Class of {gradYear} • {expLevel}</span>
                     </div>
 
                     {/* Academic Baseline Marks */}
-                    <div className="space-y-0.5">
-                      <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block">Academic Baseline Marks</span>
-                      <div className="space-y-0.5 text-[10px]">
-                        <div className="flex justify-between text-slate-600">
+                    <div className="flex flex-col justify-start gap-1">
+                      <span className="text-[9px] font-extrabold uppercase tracking-wider text-slate-400 block leading-none">Academic Baseline Marks</span>
+                      <div className="flex flex-col gap-1 text-[10.5px] pt-0.5">
+                        <div className="flex justify-between items-center text-slate-600 leading-snug">
                           <span>10th Standard:</span>
                           <strong className="text-slate-900 font-bold">{candTenth ? `${candTenth}%` : 'N/A'}</strong>
                         </div>
-                        <div className="flex justify-between text-slate-600">
+                        <div className="flex justify-between items-center text-slate-600 leading-snug">
                           <span>12th / Diploma:</span>
                           <strong className="text-slate-900 font-bold">{candTwelfth ? `${candTwelfth}%` : 'N/A'}</strong>
                         </div>
-                        <div className="flex justify-between text-slate-600">
+                        <div className="flex justify-between items-center text-slate-600 leading-snug">
                           <span>Graduation:</span>
                           <strong className="text-slate-900 font-bold">{candGrad ? `${candGrad}%` : 'N/A'}</strong>
                         </div>
-                        <div className="flex justify-between text-slate-600">
+                        <div className="flex justify-between items-center text-slate-600 leading-snug">
                           <span>Active Backlogs:</span>
                           <strong className={candBacklogs === 0 ? 'text-emerald-700 font-bold' : 'text-rose-700 font-bold'}>
                             {candBacklogs === 0 ? '0 (Cleared)' : `${candBacklogs} Active`}
@@ -758,12 +758,12 @@ export const AssessmentReportModal = ({
                     </div>
 
                     {/* Placement Standing */}
-                    <div className="space-y-1">
-                      <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block">Readiness Tier</span>
-                      <span className={`inline-block px-2 py-0.5 text-[11px] font-black rounded-lg border ${readiness.pillBg} ${readiness.textColor}`}>
+                    <div className="flex flex-col justify-between gap-1.5">
+                      <span className="text-[9px] font-extrabold uppercase tracking-wider text-slate-400 block leading-none">Readiness Tier</span>
+                      <div className={`inline-flex items-center justify-center px-2.5 py-1 text-[10.5px] font-black leading-tight rounded-lg border text-center ${readiness.pillBg} ${readiness.textColor}`}>
                         {readiness.tier}
-                      </span>
-                      <div className="text-[9px] text-slate-600 pt-0.5">
+                      </div>
+                      <div className="text-[10px] text-slate-600 leading-snug pt-0.5">
                         Campus Cutoff Status: <strong className={isAcademicallyEligible ? 'text-emerald-700 font-bold' : 'text-amber-700 font-bold'}>
                           {isAcademicallyEligible ? 'Eligible for Day-1' : 'Check Criteria'}
                         </strong>
@@ -888,8 +888,8 @@ export const AssessmentReportModal = ({
                                   />
                                 </div>
                               </td>
-                              <td className="py-2 px-3 text-right">
-                                <span className={`inline-block px-2 py-0.5 rounded text-[9px] font-extrabold border ${
+                              <td className="py-2.5 px-3 text-right">
+                                <span className={`inline-flex items-center justify-center px-2.5 py-1 rounded-md text-[9.5px] font-extrabold leading-none border ${
                                   p.candidateScore >= 75
                                     ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                                     : isPassing
@@ -1197,29 +1197,29 @@ export const AssessmentReportModal = ({
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-2 text-xs">
-                    <div className="p-2.5 rounded-xl bg-white border border-slate-200 shadow-2xs space-y-0.5">
-                      <span className="text-[8.5px] font-bold uppercase tracking-wider text-rose-600 block leading-tight">High Priority Focus</span>
-                      <strong className="text-xs text-slate-900 block leading-tight">{highPriorityAreas.length} Critical Topics</strong>
-                      <p className="text-[9.5px] text-slate-500 leading-tight truncate">
+                  <div className="grid grid-cols-3 gap-3 text-xs">
+                    <div className="p-3 rounded-xl bg-white border border-slate-200 shadow-2xs flex flex-col justify-between gap-1.5">
+                      <span className="text-[9px] font-extrabold uppercase tracking-wider text-rose-600 block leading-none">High Priority Focus</span>
+                      <strong className="text-xs font-black text-slate-900 block leading-snug">{highPriorityAreas.length} Critical Topics</strong>
+                      <p className="text-[10px] text-slate-500 leading-normal truncate font-medium">
                         {highPriorityAreas.slice(0, 2).map(h => h.topic).join(', ') || 'Solid core foundations.'}
                       </p>
                     </div>
 
-                    <div className="p-2.5 rounded-xl bg-white border border-slate-200 shadow-2xs space-y-0.5">
-                      <span className="text-[8.5px] font-bold uppercase tracking-wider text-amber-600 block leading-tight">Medium Priority</span>
-                      <strong className="text-xs text-slate-900 block leading-tight">{mediumPriorityAreas.length} Topics to Refine</strong>
-                      <p className="text-[9.5px] text-slate-500 leading-tight truncate">
+                    <div className="p-3 rounded-xl bg-white border border-slate-200 shadow-2xs flex flex-col justify-between gap-1.5">
+                      <span className="text-[9px] font-extrabold uppercase tracking-wider text-amber-600 block leading-none">Medium Priority</span>
+                      <strong className="text-xs font-black text-slate-900 block leading-snug">{mediumPriorityAreas.length} Topics to Refine</strong>
+                      <p className="text-[10px] text-slate-500 leading-normal truncate font-medium">
                         {mediumPriorityAreas.slice(0, 2).map(m => m.topic).join(', ') || 'All major topics proficient.'}
                       </p>
                     </div>
 
-                    <div className="p-2.5 rounded-xl bg-white border border-slate-200 shadow-2xs space-y-0.5">
-                      <span className="text-[8.5px] font-bold uppercase tracking-wider text-brand-600 block leading-tight">Placement Outlook</span>
-                      <strong className="text-xs text-brand-700 block leading-tight truncate">
+                    <div className="p-3 rounded-xl bg-white border border-slate-200 shadow-2xs flex flex-col justify-between gap-1.5">
+                      <span className="text-[9px] font-extrabold uppercase tracking-wider text-brand-600 block leading-none">Placement Outlook</span>
+                      <strong className="text-xs font-black text-brand-700 block leading-snug truncate">
                         {score >= 75 ? 'Tier-1 & Dream Qualified' : score >= 65 ? 'Day-1 Drives Eligible' : 'Needs Practice Mock Tests'}
                       </strong>
-                      <p className="text-[9.5px] text-slate-500 leading-tight">
+                      <p className="text-[10px] text-slate-500 leading-normal font-medium">
                         {score >= 70 ? 'Eligible for campus hiring drives.' : 'Complete 2 mock assessments to qualify.'}
                       </p>
                     </div>

@@ -11,7 +11,6 @@ import { CandidateDashboard } from './pages/candidate/CandidateDashboard';
 import { AssessmentsListPage } from './pages/candidate/AssessmentsListPage';
 import { AssessmentPage } from './pages/candidate/AssessmentPage';
 
-import { FinalReportPage } from './pages/candidate/FinalReportPage';
 import CandidateAnalyticsPage from './pages/candidate/CandidateAnalyticsPage';
 
 // Admin Pages

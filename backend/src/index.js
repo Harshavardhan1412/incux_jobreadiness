@@ -33,11 +33,10 @@ const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173,http:/
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow non-browser requests with no origin (curl, mobile apps, health checks)
-    if (!origin || allowedOrigins.includes(origin) || (process.env.NODE_ENV !== 'production' && origin.startsWith('http://localhost:'))) {
+    if (!origin || allowedOrigins.includes(origin) || (process.env.NODE_ENV !== 'production' && (origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')))) {
       callback(null, true);
     } else {
-      callback(new Error('Blocked by CORS security policy'));
+      callback(null, false);
     }
   },
   credentials: true,

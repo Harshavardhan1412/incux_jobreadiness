@@ -23,10 +23,19 @@ async function request(method, path, body) {
     try {
       data = text ? JSON.parse(text) : {};
     } catch {
-      data = { error: text || `Server error (HTTP ${res.status}). Please try again.` };
+      data = { error: text && text.length < 150 ? text : `Server connection error (HTTP ${res.status}).` };
     }
     if (!res.ok) {
-      const err = new Error(data.error || data.message || `HTTP ${res.status}`);
+      const rawErr = data.error || data.message;
+      let errorMsg;
+      if (rawErr && typeof rawErr === 'string' && !rawErr.startsWith('HTTP ')) {
+        errorMsg = rawErr;
+      } else if (res.status >= 500) {
+        errorMsg = `Server connection error (HTTP ${res.status}). Please try again in a moment.`;
+      } else {
+        errorMsg = `Request failed (HTTP ${res.status}). Please check your input.`;
+      }
+      const err = new Error(errorMsg);
       err.status = res.status;
       err.data = data;
       throw err;
@@ -37,8 +46,10 @@ async function request(method, path, body) {
     return { ok: true, data, status: res.status };
   } catch (err) {
     console.warn(`[API] ${method} ${path} failed:`, err.message);
-    return { ok: false, success: false, error: err.message, status: err.status || 500, data: err.data };
-  }
+    const friendlyMsg = (err.message && !err.message.startsWith('HTTP ')) 
+      ? err.message 
+      : `Server connection error (HTTP ${err.status || 500}). Please try again.`;
+    return { ok: false, success: false, error: friendlyMsg, status: err.status || 500, data: err.data };
   }
 }
 
