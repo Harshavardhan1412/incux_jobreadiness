@@ -37,6 +37,7 @@ export const getAllCandidates = async (req, res) => {
         COALESCE(c.reasoning_score, NULLIF((s.category_scores->>'reasoning'), '')::int, NULLIF((s.category_scores->>'Reasoning'), '')::int, 0) as reasoning_score,
         COALESCE(c.technical_score, NULLIF((s.category_scores->>'technical'), '')::int, NULLIF((s.category_scores->>'Technical'), '')::int, 0) as technical_score,
         COALESCE(c.verbal_score, NULLIF((s.category_scores->>'verbal'), '')::int, NULLIF((s.category_scores->>'Verbal'), '')::int, NULLIF((s.category_scores->>'english'), '')::int, 0) as verbal_score,
+        COALESCE(c.coding_score, NULLIF((s.category_scores->>'coding'), '')::int, NULLIF((s.category_scores->>'Coding'), '')::int, 0) as coding_score,
         COALESCE(c.assessments_completed, 0) as assessments_completed,
         CASE WHEN s.latest_score IS NOT NULL OR COALESCE(c.assessments_completed, 0) > 0 THEN 'Completed' ELSE 'Active' END as assessment_status,
         COALESCE(cp.created_at, c.created_at) as created_at
@@ -95,6 +96,7 @@ export const getCandidateById = async (req, res) => {
         COALESCE(c.reasoning_score, NULLIF((s.category_scores->>'reasoning'), '')::int, NULLIF((s.category_scores->>'Reasoning'), '')::int, 0) as reasoning_score,
         COALESCE(c.technical_score, NULLIF((s.category_scores->>'technical'), '')::int, NULLIF((s.category_scores->>'Technical'), '')::int, 0) as technical_score,
         COALESCE(c.verbal_score, NULLIF((s.category_scores->>'verbal'), '')::int, NULLIF((s.category_scores->>'Verbal'), '')::int, NULLIF((s.category_scores->>'english'), '')::int, 0) as verbal_score,
+        COALESCE(c.coding_score, NULLIF((s.category_scores->>'coding'), '')::int, NULLIF((s.category_scores->>'Coding'), '')::int, 0) as coding_score,
         COALESCE(c.assessments_completed, 0) as assessments_completed,
         CASE WHEN s.latest_score IS NOT NULL OR COALESCE(c.assessments_completed, 0) > 0 THEN 'Completed' ELSE 'Active' END as assessment_status,
         COALESCE(cp.created_at, c.created_at) as created_at
@@ -475,6 +477,7 @@ export const resetCandidateAttempt = async (req, res) => {
            reasoning_score = 0,
            technical_score = 0,
            verbal_score = 0,
+           coding_score = 0,
            assessments_completed = 0
          WHERE id = ANY($1::varchar[])`,
         [targetIds]
@@ -490,14 +493,16 @@ export const resetCandidateAttempt = async (req, res) => {
            reasoning_score = COALESCE($3, reasoning_score),
            technical_score = COALESCE($4, technical_score),
            verbal_score = COALESCE($5, verbal_score),
+           coding_score = COALESCE($6, coding_score),
            assessments_completed = GREATEST(1, COALESCE(assessments_completed, 1) - 1)
-         WHERE id = ANY($6::varchar[])`,
+         WHERE id = ANY($7::varchar[])`,
         [
           r.score,
           scores.aptitude ?? scores.Aptitude ?? 0,
           scores.reasoning ?? scores.Reasoning ?? 0,
           scores.technical ?? scores.Technical ?? 0,
           scores.verbal ?? scores.Verbal ?? 0,
+          scores.coding ?? scores.Coding ?? 0,
           targetIds
         ]
       );

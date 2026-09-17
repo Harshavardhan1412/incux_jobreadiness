@@ -176,6 +176,7 @@ export const loginCandidate = async (req, res) => {
               COALESCE(c.reasoning_score, 0) as reasoning_score,
               COALESCE(c.technical_score, 0) as technical_score,
               COALESCE(c.verbal_score, 0) as verbal_score,
+              COALESCE(c.coding_score, 0) as coding_score,
               COALESCE(c.assessments_completed, 0) as assessments_completed,
               COALESCE(cp.tenth_marks, c.tenth_marks) as tenth_marks,
               COALESCE(cp.twelfth_diploma_marks, c.twelfth_diploma_marks) as twelfth_diploma_marks,
@@ -223,6 +224,8 @@ export const loginCandidate = async (req, res) => {
       technicalScore: user.technical_score || 0,
       verbalScore: user.verbal_score || 0,
       verbal_score: user.verbal_score || 0,
+      codingScore: user.coding_score || 0,
+      coding_score: user.coding_score || 0,
       assessmentsCompleted: user.assessments_completed || 0,
       tenthMarks: user.tenth_marks,
       twelfthDiplomaMarks: user.twelfth_diploma_marks,
@@ -293,6 +296,7 @@ export const getMe = async (req, res) => {
         COALESCE(c.reasoning_score, 0) as reasoning_score,
         COALESCE(c.technical_score, 0) as technical_score,
         COALESCE(c.verbal_score, 0) as verbal_score,
+        COALESCE(c.coding_score, 0) as coding_score,
         COALESCE(c.assessments_completed, 0) as assessments_completed,
         COALESCE(c.readiness_status, 'In Progress') as readiness_status,
         COALESCE(cp.created_at, c.created_at) as created_at
@@ -314,6 +318,7 @@ export const getMe = async (req, res) => {
       row.reasoningScore = row.reasoning_score || 0;
       row.technicalScore = row.technical_score || 0;
       row.verbalScore = row.verbal_score || 0;
+      row.codingScore = row.coding_score || 0;
       return res.json({ success: true, candidate: row, role: 'candidate' });
     }
     const userRes = await pool.query('SELECT id, name, email, role FROM users WHERE id=$1', [req.user.id]);

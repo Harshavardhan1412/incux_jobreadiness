@@ -48,6 +48,7 @@ const schemaSQL = `
       reasoning_score INT DEFAULT 0,
       technical_score INT DEFAULT 0,
       verbal_score INT DEFAULT 0,
+      coding_score INT DEFAULT 0,
       assessments_completed INT DEFAULT 0,
       tenth_marks NUMERIC(5,2),
       twelfth_diploma_marks NUMERIC(5,2),
@@ -254,6 +255,7 @@ export const initSchema = async () => {
       ALTER TABLE candidates ADD COLUMN IF NOT EXISTS reasoning_score INT DEFAULT 0;
       ALTER TABLE candidates ADD COLUMN IF NOT EXISTS technical_score INT DEFAULT 0;
       ALTER TABLE candidates ADD COLUMN IF NOT EXISTS verbal_score INT DEFAULT 0;
+      ALTER TABLE candidates ADD COLUMN IF NOT EXISTS coding_score INT DEFAULT 0;
       ALTER TABLE candidates ADD COLUMN IF NOT EXISTS tenth_marks NUMERIC(5,2);
       ALTER TABLE candidates ADD COLUMN IF NOT EXISTS twelfth_diploma_marks NUMERIC(5,2);
       ALTER TABLE candidates ADD COLUMN IF NOT EXISTS graduation_percentage NUMERIC(5,2);
@@ -351,6 +353,12 @@ export const initSchema = async () => {
           NULLIF((sub.category_scores->>'verbal'), '')::int,
           NULLIF((sub.category_scores->>'Verbal'), '')::int,
           NULLIF((sub.category_scores->>'english'), '')::int,
+          0
+        ),
+        coding_score = COALESCE(
+          NULLIF((sub.category_scores->>'coding'), '')::int,
+          NULLIF((sub.category_scores->>'Coding'), '')::int,
+          c.coding_score,
           0
         )
       FROM (

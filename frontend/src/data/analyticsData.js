@@ -4,6 +4,7 @@ export const COLORS = {
   technical: '#F59E0B',
   english: '#8B5CF6',
   verbal: '#8B5CF6',
+  coding: '#6366F1',
 };
 
 export const COLORS_LIGHT = {
@@ -12,6 +13,7 @@ export const COLORS_LIGHT = {
   technical: '#FCD34D',
   english: '#C4B5FD',
   verbal: '#C4B5FD',
+  coding: '#C7D2FE',
 };
 
 export const mockStudent = {
@@ -72,6 +74,17 @@ export const mockStudent = {
             { name: 'Para Jumbles', score: 2, maxScore: 5 },
           ],
         },
+        coding: {
+          score: 14,
+          maxScore: 25,
+          topics: [
+            { name: 'Array Operations', score: 3, maxScore: 5 },
+            { name: 'String Processing', score: 3, maxScore: 5 },
+            { name: 'Dynamic Programming', score: 2, maxScore: 5 },
+            { name: 'Sorting & Searching', score: 3, maxScore: 5 },
+            { name: 'Recursion & Backtracking', score: 3, maxScore: 5 },
+          ],
+        },
       },
     },
     {
@@ -123,6 +136,17 @@ export const mockStudent = {
             { name: 'Para Jumbles', score: 2, maxScore: 5 },
           ],
         },
+        coding: {
+          score: 17,
+          maxScore: 25,
+          topics: [
+            { name: 'Array Operations', score: 4, maxScore: 5 },
+            { name: 'String Processing', score: 4, maxScore: 5 },
+            { name: 'Dynamic Programming', score: 3, maxScore: 5 },
+            { name: 'Sorting & Searching', score: 3, maxScore: 5 },
+            { name: 'Recursion & Backtracking', score: 3, maxScore: 5 },
+          ],
+        },
       },
     },
     {
@@ -172,6 +196,17 @@ export const mockStudent = {
             { name: 'Sentence Improvement', score: 4, maxScore: 5 },
             { name: 'Vocabulary', score: 3, maxScore: 5 },
             { name: 'Para Jumbles', score: 2, maxScore: 5 },
+          ],
+        },
+        coding: {
+          score: 20,
+          maxScore: 25,
+          topics: [
+            { name: 'Array Operations', score: 5, maxScore: 5 },
+            { name: 'String Processing', score: 4, maxScore: 5 },
+            { name: 'Dynamic Programming', score: 4, maxScore: 5 },
+            { name: 'Sorting & Searching', score: 4, maxScore: 5 },
+            { name: 'Recursion & Backtracking', score: 3, maxScore: 5 },
           ],
         },
       },
@@ -792,10 +827,12 @@ export function computeImprovements(student) {
 
 export function getCategoryPercents(attempt) {
   if (!attempt || !attempt.categories) {
-    return { aptitude: 84, reasoning: 72, technical: 84, english: 72, verbal: 72 };
+    return { aptitude: 84, reasoning: 72, technical: 84, english: 72, verbal: 72, coding: 80 };
   }
   const engCat = attempt.categories.verbal || attempt.categories.english || { score: 0, maxScore: 25 };
   const engPct = engCat.maxScore > 0 ? Math.round((engCat.score / engCat.maxScore) * 100) : 0;
+  const codingCat = attempt.categories.coding || { score: 0, maxScore: 25 };
+  const codingPct = codingCat.maxScore > 0 ? Math.round((codingCat.score / codingCat.maxScore) * 100) : (attempt.categories.coding?.score ?? 0);
 
   return {
     aptitude: attempt.categories.aptitude?.maxScore > 0 ? Math.round((attempt.categories.aptitude.score / attempt.categories.aptitude.maxScore) * 100) : 0,
@@ -803,5 +840,6 @@ export function getCategoryPercents(attempt) {
     technical: attempt.categories.technical?.maxScore > 0 ? Math.round((attempt.categories.technical.score / attempt.categories.technical.maxScore) * 100) : 0,
     english: engPct,
     verbal: engPct,
+    coding: codingPct,
   };
 }

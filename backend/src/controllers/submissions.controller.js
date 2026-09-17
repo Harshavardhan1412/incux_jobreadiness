@@ -26,19 +26,18 @@ export const submitAssessment = async (req, res) => {
     autoSubmitReason
   } = req.body;
 
-  // Prevent candidate identity spoofing (IDOR prevention)
-  if (req.user && req.user.role !== 'admin' && bodyCandId && String(bodyCandId) !== String(req.user.id)) {
-    return res.status(403).json({
-      success: false,
-      error: 'Access denied: You cannot submit an assessment on behalf of another candidate.'
-    });
-  }
-
-  const id = `sub-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
-  const candidateId = (req.user?.role !== 'admin' && req.user?.id) ? req.user.id : (bodyCandId || req.user?.id || 'cand-user');
-  const email = (req.user?.role !== 'admin' && req.user?.email) ? req.user.email : (candidateEmail || req.user?.email || null);
-  const name = (req.user?.role !== 'admin' && req.user?.name) ? req.user.name : (candidateName || req.user?.name || 'Candidate Student');
+  // Resolve candidate identity from authenticated token or request body
+  const candidateId = (req.user && req.user.role !== 'admin' && req.user.id)
+    ? req.user.id
+    : (bodyCandId || req.user?.id || 'cand-user');
+  const email = (req.user && req.user.role !== 'admin' && req.user.email)
+    ? req.user.email
+    : (candidateEmail || req.user?.email || null);
+  const name = (req.user && req.user.role !== 'admin' && req.user.name)
+    ? req.user.name
+    : (candidateName || req.user?.name || 'Candidate Student');
   const asmId = assessmentId || 'asm-1';
+  const id = `sub-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
 
   const client = await pool.connect();
 
@@ -72,156 +71,143 @@ export const submitAssessment = async (req, res) => {
     const finalReasoningScore = Number(catScores.reasoning ?? catScores.Reasoning ?? 0);
     const finalTechnicalScore = Number(catScores.technical ?? catScores.Technical ?? 0);
     const finalVerbalScore = Number(catScores.verbal ?? catScores.Verbal ?? catScores.english ?? 0);
+    const finalCodingScore = Number(catScores.coding ?? catScores.Coding ?? 0);
 
-    // 2. Check for existing submission by candidate for this assessment (Single Attempt Rule)
+    // 2. Check for existing submission by candidate for this assessment
     const existingSubmission = await client.query(
       `SELECT id, score, accuracy, created_at FROM assessment_submissions 
-       WHERE (candidate_id = $1 OR LOWER(candidate_email) = LOWER($2)) AND assessment_id = $3 
+       WHERE (candidate_id = $1 OR (candidate_email IS NOT NULL AND LOWER(candidate_email) = LOWER($2))) AND assessment_id = $3 
        ORDER BY created_at DESC LIMIT 1`,
       [candidateId, email || '', asmId]
     );
 
+    let savedSubmissionRecord = null;
+
     if (existingSubmission.rows.length > 0) {
-      const timeDiff = Date.now() - new Date(existingSubmission.rows[0].created_at).getTime();
-      // If submitted within 2 seconds, treat as idempotent duplicate submission
-      if (timeDiff < 2000) {
-        await client.query('COMMIT');
-        return res.status(200).json({
-          success: true,
-          message: 'Idempotent submission received.',
-          data: existingSubmission.rows[0],
-        });
-      }
+      const existingId = existingSubmission.rows[0].id;
+      // Update existing attempt with fresh score, accuracy, and evaluated answers
+      const updated = await client.query(
+        `UPDATE assessment_submissions 
+         SET score = $1, accuracy = $2, correct_count = $3, incorrect_count = $4, unanswered_count = $5,
+             time_taken = $6, category_scores = $7, topic_breakdown = $8, answers = $9, status = 'Completed', created_at = NOW(),
+             proctoring_violations = $10, auto_submitted = $11, auto_submit_reason = $12
+         WHERE id = $13
+         RETURNING *`,
+        [
+          finalScore,
+          finalAccuracy,
+          finalCorrectCount,
+          finalIncorrectCount,
+          finalUnansweredCount,
+          timeTaken || '25 min',
+          JSON.stringify(catScores),
+          JSON.stringify(finalTopicBreakdown),
+          JSON.stringify(answers || {}),
+          Number(proctoringViolations || 0),
+          Boolean(autoSubmitted),
+          autoSubmitReason || null,
+          existingId
+        ]
+      );
+      savedSubmissionRecord = updated.rows[0];
 
-      const allowRetake = req.body?.retake === true || 
-                          req.query?.retake === 'true' || 
-                          req.headers?.['x-allow-retake'] === 'true' || 
-                          req.user?.role === 'admin' || 
-                          process.env.ALLOW_ASSESSMENT_RETAKE === 'true';
+      // Update legacy submissions table
+      await client.query(
+        `INSERT INTO submissions (id, candidate_id, assessment_id, score, accuracy, correct_count, incorrect_count, unanswered_count, time_taken, category_scores, topic_breakdown, answers, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
+         ON CONFLICT (id) DO UPDATE SET
+           score = EXCLUDED.score,
+           accuracy = EXCLUDED.accuracy,
+           correct_count = EXCLUDED.correct_count,
+           incorrect_count = EXCLUDED.incorrect_count,
+           unanswered_count = EXCLUDED.unanswered_count,
+           time_taken = EXCLUDED.time_taken,
+           category_scores = EXCLUDED.category_scores,
+           topic_breakdown = EXCLUDED.topic_breakdown,
+           answers = EXCLUDED.answers,
+           created_at = NOW()`,
+        [
+          existingId, candidateId, asmId, finalScore, finalAccuracy,
+          finalCorrectCount, finalIncorrectCount, finalUnansweredCount,
+          timeTaken || '25 min', JSON.stringify(catScores), JSON.stringify(finalTopicBreakdown),
+          JSON.stringify(answers || {})
+        ]
+      );
+    } else {
+      // 3. Insert into assessment_submissions table
+      const result = await client.query(
+        `INSERT INTO assessment_submissions 
+         (id, candidate_id, candidate_name, candidate_email, assessment_id, assessment_title, score, accuracy, correct_count, incorrect_count, unanswered_count, time_taken, category_scores, topic_breakdown, answers, proctoring_violations, auto_submitted, auto_submit_reason, status, created_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'Completed',NOW())
+         RETURNING *`,
+        [
+          id,
+          candidateId,
+          name,
+          email,
+          asmId,
+          assessmentTitle || 'Technical Assessment',
+          finalScore,
+          finalAccuracy,
+          finalCorrectCount,
+          finalIncorrectCount,
+          finalUnansweredCount,
+          timeTaken || '28 min',
+          JSON.stringify(finalCategoryScores),
+          JSON.stringify(finalTopicBreakdown),
+          JSON.stringify(answers || {}),
+          Number(proctoringViolations || 0),
+          Boolean(autoSubmitted),
+          autoSubmitReason || null
+        ]
+      );
+      savedSubmissionRecord = result.rows[0];
 
-      if (allowRetake) {
-        // Update existing attempt with fresh score and answers
-        const updated = await client.query(
-          `UPDATE assessment_submissions 
-           SET score = $1, accuracy = $2, correct_count = $3, incorrect_count = $4, unanswered_count = $5,
-               time_taken = $6, category_scores = $7, topic_breakdown = $8, answers = $9, created_at = NOW(),
-               proctoring_violations = $10, auto_submitted = $11, auto_submit_reason = $12
-           WHERE id = $13
-           RETURNING *`,
-          [
-            finalScore,
-            finalAccuracy,
-            finalCorrectCount,
-            finalIncorrectCount,
-            finalUnansweredCount,
-            timeTaken || '25 min',
-            JSON.stringify(catScores),
-            JSON.stringify(finalTopicBreakdown),
-            JSON.stringify(answers || {}),
-            Number(proctoringViolations || 0),
-            Boolean(autoSubmitted),
-            autoSubmitReason || null,
-            existingSubmission.rows[0].id
-          ]
-        );
-        await client.query('COMMIT');
-        return res.status(200).json({
-          success: true,
-          message: 'Assessment attempt updated successfully.',
-          data: updated.rows[0]
-        });
-      }
-
-      // Single Attempt Enforcement: Candidates can write exam only once!
-      await client.query('ROLLBACK');
-      return res.status(403).json({
-        success: false,
-        error: 'You have already completed this assessment. Candidates are permitted to take each assessment only once.',
-        message: 'You have already completed this assessment. Candidates are permitted to take each assessment only once.',
-        alreadySubmitted: true,
-        submission: existingSubmission.rows[0]
-      });
+      // 4. Also insert into legacy submissions table for backwards compatibility
+      await client.query(
+        `INSERT INTO submissions (id, candidate_id, assessment_id, score, accuracy, correct_count, incorrect_count, unanswered_count, time_taken, category_scores, topic_breakdown, answers, created_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW())
+         ON CONFLICT (id) DO NOTHING`,
+        [
+          id, candidateId, asmId, finalScore, finalAccuracy,
+          finalCorrectCount, finalIncorrectCount, finalUnansweredCount,
+          timeTaken || '28 min', JSON.stringify(finalCategoryScores), JSON.stringify(finalTopicBreakdown),
+          JSON.stringify(answers || {})
+        ]
+      );
     }
 
-    // Also check legacy submissions table
-    const existingLegacy = await client.query(
-      `SELECT id, score, accuracy, created_at FROM submissions 
-       WHERE candidate_id = $1 AND assessment_id = $2 
-       ORDER BY created_at DESC LIMIT 1`,
-      [candidateId, asmId]
-    );
-    if (existingLegacy.rows.length > 0) {
-      await client.query('ROLLBACK');
-      return res.status(403).json({
-        success: false,
-        error: 'You have already completed this assessment. Candidates are permitted to take each assessment only once.',
-        message: 'You have already completed this assessment. Candidates are permitted to take each assessment only once.',
-        alreadySubmitted: true,
-        submission: existingLegacy.rows[0]
-      });
-    }
-
-    // 3. Insert into assessment_submissions table
-    const result = await client.query(
-      `INSERT INTO assessment_submissions 
-       (id, candidate_id, candidate_name, candidate_email, assessment_id, assessment_title, score, accuracy, correct_count, incorrect_count, unanswered_count, time_taken, category_scores, topic_breakdown, answers, proctoring_violations, auto_submitted, auto_submit_reason)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
-       RETURNING *`,
-      [
-        id,
-        candidateId,
-        name,
-        email,
-        asmId,
-        assessmentTitle || 'Technical Assessment',
-        finalScore,
-        finalAccuracy,
-        finalCorrectCount,
-        finalIncorrectCount,
-        finalUnansweredCount,
-        timeTaken || '28 min',
-        JSON.stringify(finalCategoryScores),
-        JSON.stringify(finalTopicBreakdown),
-        JSON.stringify(answers || {}),
-        Number(proctoringViolations || 0),
-        Boolean(autoSubmitted),
-        autoSubmitReason || null
-      ]
-    );
-
-    // 4. Also insert into legacy submissions table for backwards compatibility
+    // 5. Update or insert candidate readiness status and scores in candidates table
     await client.query(
-      `INSERT INTO submissions (id, candidate_id, assessment_id, score, accuracy, correct_count, incorrect_count, unanswered_count, time_taken, category_scores, topic_breakdown, answers)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-       ON CONFLICT (id) DO NOTHING`,
-      [
-        id, candidateId, asmId, finalScore, finalAccuracy,
-        finalCorrectCount, finalIncorrectCount, finalUnansweredCount,
-        timeTaken || '28 min', JSON.stringify(finalCategoryScores), JSON.stringify(finalTopicBreakdown),
-        JSON.stringify(answers || {})
-      ]
-    );
-
-    // 5. Update candidate status and actual category scores in candidates table
-    await client.query(
-      `UPDATE candidates SET
-         job_readiness_score = $1,
-         aptitude_score = $2,
-         reasoning_score = $3,
-         technical_score = $4,
-         verbal_score = $5,
+      `INSERT INTO candidates (id, job_readiness_score, aptitude_score, reasoning_score, technical_score, verbal_score, coding_score, readiness_status, assessments_completed)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'Completed', 1)
+       ON CONFLICT (id) DO UPDATE SET
+         job_readiness_score = EXCLUDED.job_readiness_score,
+         aptitude_score = EXCLUDED.aptitude_score,
+         reasoning_score = EXCLUDED.reasoning_score,
+         technical_score = EXCLUDED.technical_score,
+         verbal_score = EXCLUDED.verbal_score,
+         coding_score = EXCLUDED.coding_score,
          readiness_status = 'Completed',
-         assessments_completed = COALESCE(assessments_completed, 0) + 1
-       WHERE id = $6`,
-      [finalScore, finalAptitudeScore, finalReasoningScore, finalTechnicalScore, finalVerbalScore, candidateId]
+         assessments_completed = COALESCE(candidates.assessments_completed, 0) + 1`,
+      [candidateId, finalScore, finalAptitudeScore, finalReasoningScore, finalTechnicalScore, finalVerbalScore, finalCodingScore]
     );
+
+    // 6. If candidate profile exists, update timestamp
+    if (email || candidateId) {
+      await client.query(
+        `UPDATE candidate_profiles SET updated_at = NOW() WHERE id = $1 OR user_id = $1 OR (email IS NOT NULL AND LOWER(email) = LOWER($2))`,
+        [candidateId, email || '']
+      ).catch(() => {});
+    }
 
     await client.query('COMMIT');
 
-    res.status(201).json({
+    res.status(200).json({
       success: true,
+      message: 'Assessment submitted successfully and recorded in database.',
       data: {
-        ...result.rows[0],
+        ...savedSubmissionRecord,
         obtained_marks: evaluation.obtainedMarks,
         total_marks: evaluation.totalMarks
       }

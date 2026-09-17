@@ -1,7 +1,15 @@
 // Client-side API service — connects React frontend to Express/PostgreSQL backend
 // Reads VITE_API_URL from frontend/.env (defaults to /api via Vite proxy in dev)
 
-const BASE = import.meta.env.VITE_API_URL || '/api';
+const resolveBase = () => {
+  const envUrl = import.meta.env.VITE_API_URL;
+  if (envUrl && !envUrl.startsWith('http://localhost') && !envUrl.startsWith('http://127.0.0.1')) {
+    return envUrl;
+  }
+  return '/api';
+};
+
+const BASE = resolveBase();
 
 // ─── Auth helpers ────────────────────────────────────────────────────────────
 const getToken = () => localStorage.getItem('rsj_token');

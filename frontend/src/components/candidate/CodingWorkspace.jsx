@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import Editor from '@monaco-editor/react';
 import {
   Play,
@@ -99,6 +99,7 @@ export const CodingWorkspace = ({
   question,
   savedAnswer,
   onSaveAnswer,
+  onSubmitAssessment,
   addToast
 }) => {
   const [selectedLanguage, setSelectedLanguage] = useState(
@@ -114,7 +115,29 @@ export const CodingWorkspace = ({
   const [isRunning, setIsRunning] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [runResults, setRunResults] = useState(null);
-  const [submissionHistory, setSubmissionHistory] = useState([]);
+  const [showPostSubmitModal, setShowPostSubmitModal] = useState(false);
+  const [submissionHistory, setSubmissionHistory] = useState(() => {
+    if (savedAnswer?.score !== undefined && savedAnswer?.code) {
+      return [{
+        id: 'initial-sub',
+        verdict: savedAnswer.verdict || (savedAnswer.score === 100 ? 'Accepted' : 'Evaluated'),
+        passed: savedAnswer.score === 100,
+        score: savedAnswer.score,
+        passedTests: savedAnswer.passedTests ?? 0,
+        totalTests: savedAnswer.totalTests ?? 0,
+        samplePassed: savedAnswer.samplePassed ?? 0,
+        sampleTotal: savedAnswer.sampleTotal ?? 0,
+        hiddenPassed: savedAnswer.hiddenPassed ?? 0,
+        hiddenTotal: savedAnswer.hiddenTotal ?? 0,
+        allHiddenPassed: (savedAnswer.hiddenTotal ?? 0) === 0 || (savedAnswer.hiddenPassed === savedAnswer.hiddenTotal),
+        timeMs: 45,
+        language: savedAnswer.language || 'python',
+        timestamp: 'Saved Submission',
+        codeSnippet: (savedAnswer.code || '').slice(0, 120) + '...'
+      }];
+    }
+    return [];
+  });
   const [copiedInputIdx, setCopiedInputIdx] = useState(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [autoSavePulse, setAutoSavePulse] = useState(false);
@@ -145,9 +168,16 @@ export const CodingWorkspace = ({
   });
 
   const currentCode = codeMap[selectedLanguage] || starterTemplates[selectedLanguage] || '';
+  const prevQuestionIdRef = useRef(question?.id);
 
   // Synchronize when question changes
   useEffect(() => {
+    // Only clear execution results if the candidate navigated to a different question
+    if (prevQuestionIdRef.current !== question?.id) {
+      prevQuestionIdRef.current = question?.id;
+      setRunResults(null);
+    }
+
     if (savedAnswer?.language && savedAnswer?.code) {
       setSelectedLanguage(savedAnswer.language);
       setCodeMap(prev => ({
@@ -163,8 +193,7 @@ export const CodingWorkspace = ({
         java: prev.java || starterTemplates.java
       }));
     }
-    setRunResults(null);
-  }, [question?.id, savedAnswer]);
+  }, [question?.id, savedAnswer?.language, savedAnswer?.code]);
 
   // Parse test cases from question
   const baseTestCases = useMemo(() => {
@@ -201,14 +230,19 @@ export const CodingWorkspace = ({
     setAutoSavePulse(true);
     setTimeout(() => setAutoSavePulse(false), 800);
 
-    // Auto-save answer to parent
+    // Auto-save answer to parent while preserving all submission test metrics
     if (onSaveAnswer) {
       onSaveAnswer({
         language: selectedLanguage,
         code: newCode,
-        score: runResults?.score ?? savedAnswer?.score ?? 0,
-        passedTests: runResults?.passedTests ?? savedAnswer?.passedTests ?? 0,
-        totalTests: baseTestCases.length
+        score: runResults?.evaluation?.score ?? savedAnswer?.score ?? 0,
+        passedTests: runResults?.evaluation?.passedTests ?? savedAnswer?.passedTests ?? 0,
+        totalTests: baseTestCases.length,
+        samplePassed: runResults?.summary?.samplePassed ?? savedAnswer?.samplePassed ?? 0,
+        sampleTotal: runResults?.summary?.sampleTotal ?? savedAnswer?.sampleTotal ?? 0,
+        hiddenPassed: runResults?.summary?.hiddenPassed ?? savedAnswer?.hiddenPassed ?? 0,
+        hiddenTotal: runResults?.summary?.hiddenTotal ?? savedAnswer?.hiddenTotal ?? 0,
+        verdict: runResults?.evaluation?.verdict ?? savedAnswer?.verdict
       });
     }
   };
@@ -375,6 +409,8 @@ export const CodingWorkspace = ({
             verdict: evalRes.verdict
           });
         }
+
+        setShowPostSubmitModal(true);
       } else {
         if (addToast) addToast(res.error || 'Submission failed', 'error');
       }
@@ -477,11 +513,23 @@ export const CodingWorkspace = ({
           {/* Fullscreen IDE Mode */}
           <button
             onClick={() => setIsFullscreen(prev => !prev)}
-            className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors"
+            className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors cursor-pointer"
             title={isFullscreen ? 'Exit Fullscreen IDE' : 'Expand Fullscreen IDE'}
           >
             {isFullscreen ? <Minimize2 className="w-4 h-4 text-emerald-400" /> : <Maximize2 className="w-4 h-4" />}
           </button>
+
+          {/* Finish & Submit Assessment Button (Always accessible, especially in Fullscreen) */}
+          {onSubmitAssessment && (
+            <button
+              onClick={onSubmitAssessment}
+              className="ml-2 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-bold rounded-lg flex items-center gap-1.5 transition-all text-xs shadow-md shadow-emerald-900/40 cursor-pointer"
+              title="Finish and submit the entire assessment"
+            >
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              <span>Finish Exam</span>
+            </button>
+          )}
         </div>
       </header>
 
@@ -898,7 +946,71 @@ export const CodingWorkspace = ({
                     </div>
                   )}
 
-                  {!isRunning && !isSubmitting && !runResults && (
+                  {!isRunning && !isSubmitting && !runResults && savedAnswer?.code && (
+                    <div className="p-4 bg-zinc-900/90 rounded-2xl border border-zinc-800 space-y-3">
+                      <div className="flex items-center justify-between pb-2 border-b border-zinc-800">
+                        <div className="flex items-center gap-2">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                          <span className="font-bold text-zinc-200">Previously Submitted Solution</span>
+                          <span className="text-zinc-500 font-mono text-[11px]">({savedAnswer.language || selectedLanguage})</span>
+                        </div>
+                        {savedAnswer.verdict && (
+                          <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${
+                            savedAnswer.verdict === 'Accepted'
+                              ? 'bg-emerald-950/80 text-emerald-400 border-emerald-800'
+                              : 'bg-amber-950/80 text-amber-400 border-amber-800'
+                          }`}>
+                            {savedAnswer.verdict} ({savedAnswer.score ?? 0}%)
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Saved Answer Metrics Cards */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                        <div className="p-3 bg-zinc-800/60 rounded-xl border border-zinc-700/50 flex items-center justify-between">
+                          <div>
+                            <span className="text-[10px] text-zinc-400 uppercase font-bold block mb-0.5 flex items-center gap-1">
+                              <Terminal className="w-3 h-3 text-indigo-400" /> Visible Sample Tests
+                            </span>
+                            <p className="text-[11px] text-zinc-500">Public debugging testcases</p>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-sm font-extrabold text-zinc-100">
+                              {savedAnswer.samplePassed ?? '-'} / {savedAnswer.sampleTotal ?? '-'} Passed
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="p-3 bg-amber-950/20 rounded-xl border border-amber-800/40 flex items-center justify-between">
+                          <div>
+                            <span className="text-[10px] text-amber-400 uppercase font-bold block mb-0.5 flex items-center gap-1">
+                              <Lock className="w-3 h-3 text-amber-400" /> Hidden Test Cases
+                            </span>
+                            <p className="text-[11px] text-amber-300/70">Authoritative evaluation</p>
+                          </div>
+                          <div className="text-right">
+                            <span className={`text-sm font-extrabold ${(savedAnswer.hiddenPassed ?? 0) === (savedAnswer.hiddenTotal ?? 0) && (savedAnswer.hiddenTotal ?? 0) > 0 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                              {savedAnswer.hiddenPassed ?? '-'} / {savedAnswer.hiddenTotal ?? '-'} Passed
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between pt-1">
+                        <p className="text-[11px] text-zinc-500">Your solution is saved. Click below to re-evaluate or edit code above.</p>
+                        <button
+                          onClick={handleSubmitCode}
+                          disabled={isSubmitting || isRunning}
+                          className="px-3.5 py-1.5 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 flex items-center gap-1.5 transition-all shadow-xs"
+                        >
+                          <Send className="w-3.5 h-3.5" />
+                          <span>Re-evaluate</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {!isRunning && !isSubmitting && !runResults && !savedAnswer?.code && (
                     <div className="py-8 text-center text-zinc-500 space-y-1">
                       <Terminal className="w-6 h-6 mx-auto text-zinc-600" />
                       <p>Run your code to see compilation and sample test outputs.</p>
@@ -920,18 +1032,6 @@ export const CodingWorkspace = ({
                           <span className="text-zinc-400 font-medium">
                             ({runResults.evaluation.passedTests} / {runResults.evaluation.totalTests} testcases passed)
                           </span>
-                          {runResults.isOfficialSubmission && runResults.summary && (
-                            <div className="flex items-center gap-2 text-[11px] bg-zinc-900/90 px-2.5 py-1 rounded-lg border border-zinc-800 ml-1">
-                              <span className="text-zinc-400">
-                                Sample: <strong className={runResults.summary.samplePassed === runResults.summary.sampleTotal ? 'text-emerald-400' : 'text-rose-400'}>{runResults.summary.samplePassed}/{runResults.summary.sampleTotal}</strong>
-                              </span>
-                              <span className="text-zinc-600">•</span>
-                              <span className="text-zinc-400 flex items-center gap-1">
-                                <Lock className="w-3 h-3 text-amber-400" />
-                                Hidden: <strong className={runResults.summary.hiddenPassed === runResults.summary.hiddenTotal ? 'text-emerald-400' : 'text-rose-400'}>{runResults.summary.hiddenPassed}/{runResults.summary.hiddenTotal}</strong>
-                              </span>
-                            </div>
-                          )}
                         </div>
 
                         <div className="flex items-center gap-3 text-zinc-400 font-mono text-[11px]">
@@ -941,6 +1041,73 @@ export const CodingWorkspace = ({
                               Score: {runResults.evaluation.score}% ({runResults.earnedMarks}/{runResults.maxMarks} Marks)
                             </span>
                           )}
+                        </div>
+                      </div>
+
+                      {/* PROMINENT SAMPLE VS HIDDEN TEST CASES SUMMARY PANEL */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-zinc-900/90 rounded-xl border border-zinc-800/90">
+                        {/* Visible / Sample Test Cases */}
+                        <div className="flex items-center justify-between p-3 bg-zinc-800/60 rounded-xl border border-zinc-700/50">
+                          <div>
+                            <div className="flex items-center gap-1.5 text-xs font-bold text-zinc-200">
+                              <Terminal className="w-3.5 h-3.5 text-indigo-400" />
+                              <span>Sample Test Cases</span>
+                            </div>
+                            <p className="text-[11px] text-zinc-400 mt-0.5">Visible debugging cases</p>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-sm font-extrabold text-zinc-100">
+                              <span className={(runResults.summary?.samplePassed ?? 0) === (runResults.summary?.sampleTotal ?? 0) && (runResults.summary?.sampleTotal ?? 0) > 0 ? 'text-emerald-400' : 'text-rose-400'}>
+                                {runResults.summary?.samplePassed ?? runResults.evaluation.testResults?.filter(t => !t.isHidden && t.passed).length ?? 0}
+                              </span>
+                              <span className="text-zinc-500 font-normal"> / {runResults.summary?.sampleTotal ?? runResults.evaluation.testResults?.filter(t => !t.isHidden).length ?? 0}</span>
+                            </div>
+                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded inline-block mt-0.5 ${
+                              (runResults.summary?.samplePassed ?? 0) === (runResults.summary?.sampleTotal ?? 0) && (runResults.summary?.sampleTotal ?? 0) > 0
+                                ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-800/60'
+                                : 'bg-rose-950/80 text-rose-400 border border-rose-800/60'
+                            }`}>
+                              {(runResults.summary?.samplePassed ?? 0) === (runResults.summary?.sampleTotal ?? 0) && (runResults.summary?.sampleTotal ?? 0) > 0
+                                ? 'All Sample Passed'
+                                : 'Sample Failing'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Hidden / Confidential Test Cases */}
+                        <div className="flex items-center justify-between p-3 bg-amber-950/20 rounded-xl border border-amber-800/40">
+                          <div>
+                            <div className="flex items-center gap-1.5 text-xs font-bold text-amber-300">
+                              <Lock className="w-3.5 h-3.5 text-amber-400" />
+                              <span>Hidden Test Cases</span>
+                            </div>
+                            <p className="text-[11px] text-amber-300/70 mt-0.5">
+                              {runResults.isOfficialSubmission ? 'Evaluated on submission' : 'Evaluated on Submit'}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            {runResults.isOfficialSubmission ? (
+                              <>
+                                <div className="text-sm font-extrabold text-zinc-100">
+                                  <span className={(runResults.summary?.hiddenPassed ?? 0) === (runResults.summary?.hiddenTotal ?? 0) ? 'text-emerald-400' : 'text-amber-400'}>
+                                    {runResults.summary?.hiddenPassed ?? 0}
+                                  </span>
+                                  <span className="text-zinc-500 font-normal"> / {runResults.summary?.hiddenTotal ?? 0} Passed</span>
+                                </div>
+                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded inline-block mt-0.5 ${
+                                  (runResults.summary?.hiddenTotal ?? 0) === 0 || (runResults.summary?.hiddenPassed ?? 0) === (runResults.summary?.hiddenTotal ?? 0)
+                                    ? 'bg-emerald-950/80 text-emerald-400 border border-emerald-800/60'
+                                    : 'bg-amber-950/80 text-amber-400 border border-amber-800/60'
+                                }`}>
+                                  {(runResults.summary?.hiddenTotal ?? 0) === 0 || (runResults.summary?.hiddenPassed ?? 0) === (runResults.summary?.hiddenTotal ?? 0)
+                                    ? 'All Hidden Passed'
+                                    : `${(runResults.summary?.hiddenTotal ?? 0) - (runResults.summary?.hiddenPassed ?? 0)} Hidden Failed`}
+                                </span>
+                              </>
+                            ) : (
+                              <span className="text-[11px] text-amber-400/80 font-semibold italic">Evaluated on Submit</span>
+                            )}
+                          </div>
                         </div>
                       </div>
 
@@ -1056,45 +1223,104 @@ export const CodingWorkspace = ({
               {isConsoleOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
             </button>
 
-            {/* Right: Run Code (Gray) and Submit (LeetCode Green) */}
+            {/* Right: Run Code (Gray), Submit Code (Indigo/Emerald) and Finish Assessment (Emerald) */}
             <div className="flex items-center gap-2">
               <span className="text-[11px] text-zinc-500 hidden md:inline pr-2">
-                Ctrl + ' to Run • Ctrl + Enter to Submit
+                Ctrl + ' to Run • Ctrl + Enter to Submit Code
               </span>
 
               {/* Run Code Button */}
               <button
                 onClick={handleRunCode}
                 disabled={isRunning || isSubmitting}
-                className="px-4 py-1.5 bg-zinc-700 hover:bg-zinc-600 active:scale-[0.98] text-zinc-100 rounded-lg font-bold flex items-center gap-1.5 transition-all border border-zinc-600 disabled:opacity-50 cursor-pointer"
+                className="px-3.5 py-1.5 bg-zinc-700 hover:bg-zinc-600 active:scale-[0.98] text-zinc-100 rounded-lg font-bold flex items-center gap-1.5 transition-all border border-zinc-600 disabled:opacity-50 cursor-pointer"
+                title="Run sample test cases"
               >
                 {isRunning ? (
                   <div className="w-3 h-3 border-2 border-zinc-100 border-t-transparent rounded-full animate-spin" />
                 ) : (
                   <Play className="w-3 h-3 fill-zinc-100" />
                 )}
-                <span>Run</span>
+                <span>Run Code</span>
               </button>
 
-              {/* Submit Code Button (LeetCode Green) */}
+              {/* Submit Code Button (Grades against sample + hidden tests) */}
               <button
                 onClick={handleSubmitCode}
                 disabled={isRunning || isSubmitting}
-                className="px-5 py-1.5 bg-[#2cbb5d] hover:bg-[#27a552] active:scale-[0.98] text-white rounded-lg font-bold flex items-center gap-1.5 transition-all shadow-md shadow-emerald-600/20 disabled:opacity-50 cursor-pointer"
+                className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 active:scale-[0.98] text-white rounded-lg font-bold flex items-center gap-1.5 transition-all shadow-md shadow-indigo-600/25 disabled:opacity-50 cursor-pointer"
+                title="Evaluate against all visible and hidden test cases"
               >
                 {isSubmitting ? (
                   <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
                 ) : (
                   <Send className="w-3 h-3" />
                 )}
-                <span>Submit</span>
+                <span>Submit Code</span>
               </button>
+
+              {/* Finish & Submit Assessment Button */}
+              {onSubmitAssessment && (
+                <button
+                  onClick={onSubmitAssessment}
+                  disabled={isRunning || isSubmitting}
+                  className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] text-white rounded-lg font-bold flex items-center gap-1.5 transition-all shadow-md shadow-emerald-600/25 cursor-pointer"
+                  title="Finish exam and view candidate AI scorecard"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>Finish Assessment</span>
+                </button>
+              )}
             </div>
           </footer>
 
         </div>
 
       </div>
+
+      {/* POST-EVALUATION CONFIRMATION POPUP */}
+      {showPostSubmitModal && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+          <div className="bg-[#222222] border border-zinc-700 text-zinc-100 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold flex-shrink-0">
+                <CheckCircle2 className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">Code Evaluated &amp; Saved!</h3>
+                <p className="text-xs text-zinc-400 mt-0.5">
+                  Score: <strong className="text-emerald-400">{runResults?.evaluation?.score ?? savedAnswer?.score ?? 0}%</strong> ({runResults?.evaluation?.passedTests ?? savedAnswer?.passedTests ?? 0}/{runResults?.evaluation?.totalTests ?? savedAnswer?.totalTests ?? 0} Testcases Passed)
+                </p>
+              </div>
+            </div>
+
+            <p className="text-xs text-zinc-300 leading-relaxed">
+              Your solution for this question has been graded and recorded. Would you like to finish and submit the assessment now, or continue reviewing and testing?
+            </p>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowPostSubmitModal(false)}
+                className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-bold rounded-xl transition-colors cursor-pointer"
+              >
+                Review Code
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPostSubmitModal(false);
+                  if (onSubmitAssessment) onSubmitAssessment();
+                }}
+                className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-emerald-600/30 flex items-center gap-1.5 transition-all cursor-pointer"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Finish &amp; Submit Exam</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

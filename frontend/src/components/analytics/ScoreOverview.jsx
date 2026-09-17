@@ -8,19 +8,23 @@ export default function ScoreOverview({ student }) {
   const latestAttempt = student.examAttempts[student.examAttempts.length - 1];
   const prevAttempt = student.examAttempts.length > 1 ? student.examAttempts[student.examAttempts.length - 2] : null;
 
-  const currentPercents = latestAttempt ? getCategoryPercents(latestAttempt) : { aptitude: 0, reasoning: 0, technical: 0, english: 0 };
+  const currentPercents = latestAttempt ? getCategoryPercents(latestAttempt) : { aptitude: 0, reasoning: 0, technical: 0, english: 0, verbal: 0, coding: 0 };
 
-  const scoreTrend = student.examAttempts.map((att) => ({
-    date: new Date(att.date).toLocaleDateString('en-US', { month: 'short' }),
-    score: Math.round(
-      Object.values(att.categories).reduce((sum, cat) => sum + (cat.score / cat.maxScore) * 100, 0) / 4
-    ),
-  }));
+  const scoreTrend = student.examAttempts.map((att) => {
+    const cats = Object.values(att.categories || {});
+    const count = cats.length || 1;
+    return {
+      date: new Date(att.date).toLocaleDateString('en-US', { month: 'short' }),
+      score: Math.round(
+        cats.reduce((sum, cat) => sum + (cat.maxScore > 0 ? (cat.score / cat.maxScore) * 100 : 0), 0) / count
+      ),
+    };
+  });
 
   const change = prevAttempt
     ? Math.round(
-      (Object.values(latestAttempt.categories).reduce((s, c) => s + (c.score / c.maxScore) * 100, 0) / 4) -
-      (Object.values(prevAttempt.categories).reduce((s, c) => s + (c.score / c.maxScore) * 100, 0) / 4)
+      (Object.values(latestAttempt.categories || {}).reduce((s, c) => s + (c.maxScore > 0 ? (c.score / c.maxScore) * 100 : 0), 0) / (Object.values(latestAttempt.categories || {}).length || 1)) -
+      (Object.values(prevAttempt.categories || {}).reduce((s, c) => s + (c.maxScore > 0 ? (c.score / c.maxScore) * 100 : 0), 0) / (Object.values(prevAttempt.categories || {}).length || 1))
     )
     : 0;
 
@@ -31,12 +35,13 @@ export default function ScoreOverview({ student }) {
   const bestCategoryName = bestCategoryEntry[0].charAt(0).toUpperCase() + bestCategoryEntry[0].slice(1);
   const bestCategoryScore = bestCategoryEntry[1];
 
-  const categoryLabels = ['Aptitude', 'Reasoning', 'Technical', 'Verbal'];
+  const categoryLabels = ['Aptitude', 'Reasoning', 'Technical', 'Verbal', 'Coding'];
   const categoryData = [
     currentPercents.aptitude ?? 0,
     currentPercents.reasoning ?? 0,
     currentPercents.technical ?? 0,
     currentPercents.verbal ?? currentPercents.english ?? 0,
+    currentPercents.coding ?? 0,
   ];
 
   return (
@@ -81,7 +86,7 @@ export default function ScoreOverview({ student }) {
             title="Category Distribution"
             labels={categoryLabels}
             data={categoryData}
-            colors={[COLORS.aptitude, COLORS.reasoning, COLORS.technical, COLORS.verbal || COLORS.english]}
+            colors={[COLORS.aptitude, COLORS.reasoning, COLORS.technical, COLORS.verbal || COLORS.english, COLORS.coding || '#6366F1']}
             centerValue={`${student.overallScore}%`}
             centerLabel="Overall"
           />
@@ -91,7 +96,7 @@ export default function ScoreOverview({ student }) {
             title="Category-wise Scores"
             labels={categoryLabels}
             data={categoryData}
-            colors={[COLORS.aptitude, COLORS.reasoning, COLORS.technical, COLORS.verbal || COLORS.english]}
+            colors={[COLORS.aptitude, COLORS.reasoning, COLORS.technical, COLORS.verbal || COLORS.english, COLORS.coding || '#6366F1']}
           />
         </div>
       </div>

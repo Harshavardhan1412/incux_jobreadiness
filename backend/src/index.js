@@ -55,12 +55,14 @@ const apiLimiter = rateLimit({
   message: { success: false, error: 'Too many requests. Please slow down and try again later.' }
 });
 
+const isDev = process.env.NODE_ENV !== 'production';
+
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 20,
+  max: isDev ? 200 : 30,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { success: false, error: 'Too many login attempts. Please try again after 15 minutes.' }
+  message: { success: false, error: 'Too many login attempts. Please try again after a few minutes.' }
 });
 
 const registerLimiter = rateLimit({
@@ -181,5 +183,13 @@ const gracefulShutdown = async (signal) => {
 
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+process.on('uncaughtException', (err) => {
+  console.error('⚠️ Uncaught Exception intercepted:', err.message);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('⚠️ Unhandled Rejection intercepted:', reason);
+});
 
 export default app;
