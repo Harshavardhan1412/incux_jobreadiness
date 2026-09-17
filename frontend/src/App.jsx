@@ -13,10 +13,13 @@ import { ExamInstructions } from './pages/candidate/ExamInstructions';
 import { ExamProctoring } from './pages/candidate/ExamProctoring';
 import { ResultsPage } from './pages/candidate/ResultsPage';
 
+<<<<<<< HEAD
 // Analytics Portal Pages
 import AnalyticsPage from './analytics/pages/AnalyticsPage';
 import CollegeManagementPage from './analytics/pages/CollegeManagementPage';
 
+=======
+>>>>>>> ec4de177af03bcaea75c04696298381e7c4f0b37
 import CandidateAnalyticsPage from './pages/candidate/CandidateAnalyticsPage';
 
 // Admin Pages
@@ -96,7 +99,12 @@ function AppContent() {
     ? currentView
     : (role === 'admin' ? 'admin-candidates' : (role === 'candidate' ? 'dashboard' : 'hero'));
 
-  // 1. PUBLIC GUEST AUTH & LANDING VIEWS (Only when NOT logged in)
+  // 1. LANDING PAGE & HERO VIEW (Always renders JobReadinessHero on root/hero/landing)
+  if (safeView === 'hero' || safeView === 'landing' || safeView === '/') {
+    return <><JobReadinessHero /><ToastContainer /></>;
+  }
+
+  // 2. PUBLIC GUEST AUTH VIEWS (Only when NOT logged in)
   if (role !== 'candidate' && role !== 'admin') {
     if (safeView === 'login' || safeView === '/login') return <><LoginPage /><ToastContainer /></>;
     if (safeView === 'admin' || safeView === '/admin' || safeView === 'admin-login' || safeView === '/admin-login') return <><AdminLoginPage /><ToastContainer /></>;
@@ -111,8 +119,11 @@ function AppContent() {
 
   // 3. ROLE-BASED AUTHENTICATED PORTAL RENDERER
   const renderMainContent = () => {
-    // Admin Portal Module Routes
-    if (role === 'admin') {
+    // Admin View Guard
+    if (safeView.startsWith('admin-')) {
+      if (role !== 'admin') {
+        return <AccessDenied message="Administrator privileges required to access recruiter and admin controls." requiredRole="admin" />;
+      }
       switch (safeView) {
 >>>>>>> 91e3ed14ab7ce4d3431d3f09dbe89f040f565b89
         case 'admin-questions':
@@ -131,6 +142,7 @@ function AppContent() {
     };
 
 <<<<<<< HEAD
+<<<<<<< HEAD
     return (
       <div className="min-h-screen bg-[#F8FAFC] flex flex-col font-sans">
         <Header onToggleSidebar={() => setSidebarOpen(!sidebarOpen)} />
@@ -139,10 +151,18 @@ function AppContent() {
           <Sidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 =======
     // Candidate / Student Portal Module Routes
+=======
+    // Candidate / Student Portal Views
+    if (role !== 'candidate' && role !== 'admin') {
+      return <AccessDenied message="Please sign in with a candidate account to access assessments and dashboard." requiredRole="candidate" />;
+    }
+
+>>>>>>> ec4de177af03bcaea75c04696298381e7c4f0b37
     switch (safeView) {
       case 'assessments':
         return <AssessmentsListPage />;
       case 'candidate-analytics':
+      case 'results':
         return <CandidateAnalyticsPage />;
       case 'dashboard':
       default:

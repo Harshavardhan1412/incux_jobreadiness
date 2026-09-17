@@ -25,20 +25,40 @@
 }
 
 /* Print specific styles for Final Report */
+@page {
+  size: A4 portrait;
+  margin: 0;
+}
+
 @media print {
-  body {
-    background: white !important;
-    color: black !important;
+  html, body {
+    background: #ffffff !important;
+    color: #0f172a !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
-  .no-print {
+
+  /* Hide everything outside of print */
+  .no-print,
+  .print\\:hidden,
+  header,
+  nav,
+  aside,
+  #root > div > header,
+  #root > div > aside {
     display: none !important;
   }
+
   .print-only {
     display: block !important;
   }
+
   .print-page-break {
     page-break-before: always;
   }
+<<<<<<< HEAD
   #college-report {
     border: none !important;
     box-shadow: none !important;
@@ -46,5 +66,25 @@
   }
   #college-report .print\:hidden {
     display: none !important;
+=======
+
+  /* Strict A4 page isolation */
+  .pdf-page {
+    width: 210mm !important;
+    min-height: 297mm !important;
+    max-height: 297mm !important;
+    page-break-after: always !important;
+    break-after: page !important;
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+    margin: 0 auto !important;
+    padding: 10mm 12mm !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+    background: #ffffff !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+>>>>>>> ec4de177af03bcaea75c04696298381e7c4f0b37
   }
 }

@@ -21,7 +21,9 @@ import {
   Filter,
   Upload,
   Download,
-  Trash2
+  Trash2,
+  Code2,
+  Terminal
 } from 'lucide-react';
 
 export const AdminAssessmentsPage = () => {
@@ -118,7 +120,10 @@ export const AdminAssessmentsPage = () => {
     if (isAllMix) {
       available = cleanBank;
     } else {
-      available = cleanBank.filter(q => q.category && q.category.trim().toLowerCase() === category.toLowerCase());
+      available = cleanBank.filter(q =>
+        (q.category && q.category.trim().toLowerCase() === category.toLowerCase()) ||
+        (category.toLowerCase() === 'coding' && q.type === 'Coding')
+      );
     }
 
     if (available.length === 0) {
@@ -129,8 +134,8 @@ export const AdminAssessmentsPage = () => {
     let selectedIds = [];
 
     if (isAllMix) {
-      // Balanced mix across categories (Aptitude, Reasoning, Technical, Verbal)
-      const categories = ['Aptitude', 'Reasoning', 'Technical', 'Verbal'];
+      // Balanced mix across categories (Coding, Aptitude, Reasoning, Technical, Verbal)
+      const categories = ['Coding', 'Aptitude', 'Reasoning', 'Technical', 'Verbal'];
       const perCat = Math.max(1, Math.floor(targetCount / categories.length));
       const mixPool = [];
 
@@ -204,17 +209,21 @@ export const AdminAssessmentsPage = () => {
       return;
     }
 
+    const actualTotalQuestions = (newAssessment.selectedQuestionIds && newAssessment.selectedQuestionIds.length > 0)
+      ? newAssessment.selectedQuestionIds.length
+      : (Number(newAssessment.totalQuestions) || 5);
+
     if (editingAsmId) {
       updateAssessment({
         ...newAssessment,
         id: editingAsmId,
-        totalQuestions: Math.max(newAssessment.selectedQuestionIds.length, 10),
+        totalQuestions: actualTotalQuestions,
         estimatedTimeMin: newAssessment.durationMinutes
       });
     } else {
       addAssessment({
         ...newAssessment,
-        totalQuestions: Math.max(newAssessment.selectedQuestionIds.length, 15),
+        totalQuestions: actualTotalQuestions,
         estimatedTimeMin: newAssessment.durationMinutes
       });
     }
@@ -249,28 +258,54 @@ export const AdminAssessmentsPage = () => {
           </p>
         </div>
 
-        <button
-          onClick={() => {
-            setEditingAsmId(null);
-            setNewAssessment({
-              title: '',
-              category: 'Technical',
-              description: '',
-              difficulty: 'Medium',
-              durationMinutes: 30,
-              passingScore: 65,
-              selectedQuestionIds: ['q-101', 'q-102'],
-              totalQuestions: 20,
-              tags: ['DSA', 'Algorithms']
-            });
-            setWizardStep(1);
-            setIsWizardOpen(true);
-          }}
-          className="px-4 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold shadow-md shadow-brand-600/20 transition-all flex items-center gap-2 self-start sm:self-auto"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Create Assessment Wizard</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            onClick={() => {
+              setEditingAsmId(null);
+              const codingQuestions = questionBank.filter(q => (q.category || '').toLowerCase() === 'coding' || q.type === 'Coding');
+              setNewAssessment({
+                title: 'Coding Assessment',
+                category: 'Coding',
+                description: 'Hands-on programming and algorithmic challenges in Java, Python, C++, and JavaScript with automated test runner evaluation.',
+                difficulty: 'Medium',
+                durationMinutes: 60,
+                passingScore: 60,
+                selectedQuestionIds: codingQuestions.map(q => q.id),
+                totalQuestions: codingQuestions.length || 3,
+                tags: ['Algorithms', 'Data Structures', 'Coding']
+              });
+              setWizardStep(1);
+              setIsWizardOpen(true);
+            }}
+            className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-600/20 transition-all flex items-center gap-2"
+          >
+            <Code2 className="w-4 h-4" />
+            <span>Create Coding Assessment</span>
+          </button>
+
+          <button
+            onClick={() => {
+              setEditingAsmId(null);
+              setNewAssessment({
+                title: '',
+                category: 'Technical',
+                description: '',
+                difficulty: 'Medium',
+                durationMinutes: 30,
+                passingScore: 65,
+                selectedQuestionIds: ['q-101', 'q-102'],
+                totalQuestions: 20,
+                tags: ['DSA', 'Algorithms']
+              });
+              setWizardStep(1);
+              setIsWizardOpen(true);
+            }}
+            className="px-4 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold shadow-md shadow-brand-600/20 transition-all flex items-center gap-2 self-start sm:self-auto"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Create Assessment Wizard</span>
+          </button>
+        </div>
       </div>
 
       {/* ASSESSMENT CATALOG CARDS */}
@@ -278,11 +313,18 @@ export const AdminAssessmentsPage = () => {
         {assessments.map((asm) => (
           <div
             key={asm.id}
-            className="bg-white rounded-2xl border border-slate-200/90 shadow-card p-6 flex flex-col justify-between space-y-4 hover:border-brand-300 transition-all"
+            className={`bg-white rounded-2xl border shadow-card p-6 flex flex-col justify-between space-y-4 hover:border-brand-300 transition-all ${
+              asm.category === 'Coding' ? 'border-indigo-200/90 hover:border-indigo-400' : 'border-slate-200/90'
+            }`}
           >
             <div>
               <div className="flex items-center justify-between mb-3">
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-600 uppercase">
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase flex items-center gap-1 ${
+                  asm.category === 'Coding'
+                    ? 'bg-indigo-100 text-indigo-700 border border-indigo-200'
+                    : 'bg-slate-100 text-slate-600'
+                }`}>
+                  {asm.category === 'Coding' && <Code2 className="w-3 h-3" />}
                   {asm.category}
                 </span>
                 <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
@@ -409,14 +451,22 @@ export const AdminAssessmentsPage = () => {
                   <label className="block font-bold text-slate-700 mb-1">Category *</label>
                   <select
                     value={newAssessment.category}
-                    onChange={(e) => setNewAssessment({ ...newAssessment, category: e.target.value })}
+                    onChange={(e) => {
+                      const cat = e.target.value;
+                      setNewAssessment(prev => ({
+                        ...prev,
+                        category: cat,
+                        tags: cat === 'Coding' ? ['Coding', 'Algorithms', 'Data Structures'] : prev.tags
+                      }));
+                    }}
                     className="w-full px-3.5 py-2.5 bg-slate-50 rounded-xl border border-slate-200 outline-none font-bold"
                   >
+                    <option value="Coding">Coding Only (Programming Challenges)</option>
+                    <option value="Technical">Technical Only</option>
                     <option value="Aptitude">Aptitude Only</option>
                     <option value="Reasoning">Reasoning Only</option>
-                    <option value="Technical">Technical Only</option>
                     <option value="Verbal">Verbal Only</option>
-                    <option value="All Mix">All Mix (Aptitude + Reasoning + Technical + Verbal)</option>
+                    <option value="All Mix">All Mix (Aptitude + Reasoning + Technical + Verbal + Coding)</option>
                   </select>
                 </div>
 
@@ -462,16 +512,29 @@ export const AdminAssessmentsPage = () => {
           {/* STEP 2: SELECT QUESTION BANK */}
           {wizardStep === 2 && (() => {
             const activeCategory = newAssessment.category || 'Technical';
-            const catQuestionsInDb = activeCategory === 'All' || activeCategory === 'Full Length'
+            const isAllMix = activeCategory === 'All' || activeCategory === 'Full Length' || activeCategory === 'All Mix';
+            const catQuestionsInDb = isAllMix
               ? questionBank
-              : questionBank.filter(q => q.category.toLowerCase() === activeCategory.toLowerCase());
+              : questionBank.filter(q =>
+                  (q.category || '').toLowerCase() === activeCategory.toLowerCase() ||
+                  (activeCategory.toLowerCase() === 'coding' && q.type === 'Coding')
+                );
+
+            // Display matching questions first, followed by others
+            const sortedBank = [...questionBank].sort((a, b) => {
+              const aMatch = (a.category || '').toLowerCase() === activeCategory.toLowerCase() || (activeCategory.toLowerCase() === 'coding' && a.type === 'Coding');
+              const bMatch = (b.category || '').toLowerCase() === activeCategory.toLowerCase() || (activeCategory.toLowerCase() === 'coding' && b.type === 'Coding');
+              if (aMatch && !bMatch) return -1;
+              if (!aMatch && bMatch) return 1;
+              return 0;
+            });
 
             return (
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-bold text-slate-900">2. Questions Assignment</h3>
                   <span className="font-bold text-brand-600 text-xs bg-brand-50 px-2.5 py-1 rounded-md border border-brand-200">
-                    {newAssessment.selectedQuestionIds.length > 0 ? `${newAssessment.selectedQuestionIds.length} Questions Sampled` : 'Automatic Random Mode Active'}
+                    {newAssessment.selectedQuestionIds.length > 0 ? `${newAssessment.selectedQuestionIds.length} Questions Selected` : 'Automatic Random Mode Active'}
                   </span>
                 </div>
 
@@ -484,7 +547,7 @@ export const AdminAssessmentsPage = () => {
                         <span className="ml-2 font-normal text-slate-600">({catQuestionsInDb.length} questions available in DB)</span>
                       </div>
                       <div className="text-[11px] text-slate-600 mt-0.5">
-                        Test will give <strong>{newAssessment.totalQuestions} questions</strong> randomly from <strong>{activeCategory}</strong> in the database.
+                        Test will give <strong>{newAssessment.totalQuestions} questions</strong> {activeCategory === 'Coding' ? 'of algorithmic programming challenges' : `from ${activeCategory}`} in the database.
                       </div>
                     </div>
 
@@ -494,7 +557,7 @@ export const AdminAssessmentsPage = () => {
                       className="px-3.5 py-2 bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold rounded-xl shadow-xs transition-all flex items-center gap-1.5"
                     >
                       <Sparkles className="w-4 h-4" />
-                      <span>Auto-Pick {newAssessment.totalQuestions} Random Questions</span>
+                      <span>Auto-Pick {newAssessment.totalQuestions} Questions</span>
                     </button>
                   </div>
                 </div>
@@ -522,32 +585,55 @@ export const AdminAssessmentsPage = () => {
                   </div>
                 </div>
 
-                <div className="max-h-60 overflow-y-auto space-y-2 divide-y divide-slate-100 pr-1">
-                  {questionBank.map((q) => {
+                <div className="max-h-64 overflow-y-auto space-y-2 divide-y divide-slate-100 pr-1">
+                  {sortedBank.map((q) => {
                     const isSelected = newAssessment.selectedQuestionIds.includes(q.id);
+                    const isCoding = q.category === 'Coding' || q.type === 'Coding';
                     return (
                       <div
                         key={q.id}
                         onClick={() => handleToggleQuestionSelection(q.id)}
                         className={`p-3 rounded-xl border cursor-pointer flex items-center justify-between transition-all ${
                           isSelected
-                            ? 'bg-brand-50/80 border-brand-400'
+                            ? isCoding ? 'bg-indigo-50/80 border-indigo-400' : 'bg-brand-50/80 border-brand-400'
                             : 'bg-slate-50 border-slate-200 hover:bg-slate-100'
                         }`}
                       >
                         <div className="space-y-0.5">
-                          <span className="font-bold text-slate-900 line-clamp-1">{q.question}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-slate-900 line-clamp-1">{q.question}</span>
+                            {isCoding && (
+                              <span className="px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 font-bold text-[10px] flex items-center gap-1 flex-shrink-0">
+                                <Code2 className="w-3 h-3" />
+                                Coding
+                              </span>
+                            )}
+                          </div>
                           <div className="flex items-center gap-2 text-[10px] text-slate-500">
                             <span className="font-semibold text-brand-600">{q.category}</span>
                             <span>•</span>
                             <span>{q.topic}</span>
                             <span>•</span>
                             <span>{q.difficulty}</span>
+                            {q.marks && (
+                              <>
+                                <span>•</span>
+                                <span>{q.marks} Marks</span>
+                              </>
+                            )}
+                            {q.testCases?.length > 0 && (
+                              <>
+                                <span>•</span>
+                                <span className="text-emerald-600 font-semibold">{q.testCases.length} Test Cases</span>
+                              </>
+                            )}
                           </div>
                         </div>
 
                         <div className={`w-5 h-5 rounded-md flex items-center justify-center font-bold text-xs ${
-                          isSelected ? 'bg-brand-600 text-white' : 'border border-slate-300 bg-white'
+                          isSelected
+                            ? isCoding ? 'bg-indigo-600 text-white' : 'bg-brand-600 text-white'
+                            : 'border border-slate-300 bg-white'
                         }`}>
                           {isSelected ? '✓' : ''}
                         </div>

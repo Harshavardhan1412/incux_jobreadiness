@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { DeviceCheckModal } from '../../components/candidate/DeviceCheckModal';
+import { AcademicMarksModal } from '../../components/candidate/AcademicMarksModal';
 import {
   ClipboardCheck,
   Clock,
@@ -11,17 +12,32 @@ import {
   Filter,
   Sparkles,
   ChevronRight,
-  BookOpen
+  BookOpen,
+  BarChart2,
+  CheckCircle2
 } from 'lucide-react';
 
 export const AssessmentsListPage = () => {
-  const { assessments, startAssessment, setMediaStream, navigateTo } = useApp();
+  const { assessments, startAssessment, setMediaStream, navigateTo, addToast, isAssessmentCompleted, candidateSubmissions } = useApp();
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [targetAsm, setTargetAsm] = useState(null);
+  const [isAcademicModalOpen, setIsAcademicModalOpen] = useState(false);
   const [isDeviceModalOpen, setIsDeviceModalOpen] = useState(false);
 
-  const handleOpenDeviceCheck = (asm) => {
+  const handleStartAttempt = (asm) => {
+    const userSub = (candidateSubmissions || []).find(s => String(s.assessment_id || s.assessmentId || '').trim().toLowerCase() === String(asm.id).trim().toLowerCase());
+    const isCompleted = !!userSub || isAssessmentCompleted?.(asm.id) || asm.status === 'Completed';
+    if (isCompleted) {
+      addToast('You have already completed this assessment. Candidates are permitted to take each assessment only once.', 'warning');
+      navigateTo('candidate-analytics');
+      return;
+    }
     setTargetAsm(asm);
+    setIsAcademicModalOpen(true);
+  };
+
+  const handleAcademicMarksVerified = () => {
+    setIsAcademicModalOpen(false);
     setIsDeviceModalOpen(true);
   };
 
@@ -29,6 +45,13 @@ export const AssessmentsListPage = () => {
     setMediaStream(stream);
     setIsDeviceModalOpen(false);
     if (targetAsm) {
+      const userSub = (candidateSubmissions || []).find(s => String(s.assessment_id || s.assessmentId || '').trim().toLowerCase() === String(targetAsm.id).trim().toLowerCase());
+      const isCompleted = !!userSub || isAssessmentCompleted?.(targetAsm.id) || targetAsm.status === 'Completed';
+      if (isCompleted) {
+        addToast('You have already completed this assessment. Candidates are permitted to take each assessment only once.', 'warning');
+        navigateTo('candidate-analytics');
+        return;
+      }
       startAssessment(targetAsm.id);
     }
   };
@@ -57,7 +80,7 @@ export const AssessmentsListPage = () => {
 
         {/* Category Filter Tabs */}
         <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-bold">
-          {['All', 'Technical', 'Aptitude', 'Reasoning'].map((cat) => (
+          {['All', 'Coding', 'Technical', 'Aptitude', 'Reasoning'].map((cat) => (
             <button
               key={cat}
               onClick={() => setSelectedCategory(cat)}
@@ -87,8 +110,10 @@ export const AssessmentsListPage = () => {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredAssessments.map((asm) => {
-          const isCompleted = asm.status === 'Completed';
-          const isInProgress = asm.status === 'In Progress';
+          const userSub = (candidateSubmissions || []).find(s => String(s.assessment_id || s.assessmentId || '').trim().toLowerCase() === String(asm.id).trim().toLowerCase());
+          const isCompleted = !!userSub || isAssessmentCompleted?.(asm.id) || asm.status === 'Completed';
+          const isInProgress = !isCompleted && asm.status === 'In Progress';
+          const displayScore = userSub?.score ?? asm.lastScore ?? asm.score ?? 0;
 
           return (
             <div
@@ -107,7 +132,7 @@ export const AssessmentsListPage = () => {
                       ? 'bg-amber-50 text-amber-700 border border-amber-200'
                       : 'bg-brand-50 text-brand-700 border border-brand-200'
                   }`}>
-                    {isCompleted ? `Score: ${asm.lastScore}%` : asm.status}
+                    {isCompleted ? `Completed • ${displayScore}%` : isInProgress ? 'In Progress' : 'Available'}
                   </span>
                 </div>
 
@@ -149,19 +174,25 @@ export const AssessmentsListPage = () => {
 
               <div>
                 {isCompleted ? (
-                  <div className="flex gap-2">
-
+                  <div className="flex items-center gap-2">
                     <button
-                      onClick={() => handleOpenDeviceCheck(asm)}
-                      className="py-2.5 px-3 bg-brand-50 hover:bg-brand-100 text-brand-700 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1"
-                      title="Retake test"
+                      onClick={() => navigateTo('candidate-analytics')}
+                      className="flex-1 py-2.5 px-3 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-xs"
                     >
-                      <RotateCcw className="w-3.5 h-3.5" />
+                      <BarChart2 className="w-3.5 h-3.5" />
+                      <span>View Analysis</span>
                     </button>
+                    <div
+                      className="py-2.5 px-3 bg-slate-100 text-slate-500 rounded-xl text-xs font-semibold flex items-center gap-1.5 border border-slate-200 cursor-not-allowed select-none"
+                      title="Single Attempt Policy: This exam has already been submitted and cannot be retaken."
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                      <span className="hidden sm:inline">Completed</span>
+                    </div>
                   </div>
                 ) : isInProgress ? (
                   <button
-                    onClick={() => handleOpenDeviceCheck(asm)}
+                    onClick={() => handleStartAttempt(asm)}
                     className="w-full py-2.5 px-3 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-md shadow-brand-600/20"
                   >
                     <Play className="w-3.5 h-3.5 fill-white" />
@@ -169,7 +200,7 @@ export const AssessmentsListPage = () => {
                   </button>
                 ) : (
                   <button
-                    onClick={() => handleOpenDeviceCheck(asm)}
+                    onClick={() => handleStartAttempt(asm)}
                     className="w-full py-2.5 px-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-xs"
                   >
                     <Play className="w-3.5 h-3.5 fill-white" />
@@ -182,6 +213,14 @@ export const AssessmentsListPage = () => {
         })}
         </div>
       )}
+
+      {/* Academic Marks Verification Modal */}
+      <AcademicMarksModal
+        isOpen={isAcademicModalOpen}
+        onClose={() => setIsAcademicModalOpen(false)}
+        onProceed={handleAcademicMarksVerified}
+        assessmentTitle={targetAsm?.title}
+      />
 
       {/* Hardware Device Check Modal */}
       <DeviceCheckModal

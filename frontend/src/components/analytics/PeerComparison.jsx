@@ -120,7 +120,7 @@ export default function PeerComparison({ student }) {
         title="Your Score Distribution"
         labels={data.map((d) => d.category)}
         data={data.map((d) => d.studentScore)}
-        colors={[COLORS.aptitude, COLORS.reasoning, COLORS.technical, COLORS.english]}
+        colors={[COLORS.aptitude, COLORS.reasoning, COLORS.technical, COLORS.verbal || COLORS.english]}
       />
     </section>
   );

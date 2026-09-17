@@ -17,11 +17,18 @@ export default function ImprovementRoadmap({ student }) {
   const mediumPriority = improvements.filter((a) => a.priority === 'medium');
   const totalHours = improvements.reduce((sum, a) => sum + a.estimatedHours, 0);
 
-  const categoryKeys = ['aptitude', 'reasoning', 'technical', 'english'];
-  const currentPercents = categoryKeys.map((k) =>
-    Math.round((latestAttempt.categories[k].score / latestAttempt.categories[k].maxScore) * 100)
-  );
-  const targetPercents = categoryKeys.map((k) => lowestDream?.categories[k] ?? 80);
+  const categoryKeys = [
+    { key: 'aptitude', label: 'Aptitude' },
+    { key: 'reasoning', label: 'Reasoning' },
+    { key: 'technical', label: 'Technical' },
+    { key: 'verbal', fallbackKey: 'english', label: 'Verbal' },
+  ];
+  const currentPercents = categoryKeys.map((c) => {
+    const cat = latestAttempt.categories?.[c.key] || (c.fallbackKey ? latestAttempt.categories?.[c.fallbackKey] : null);
+    const max = Number(cat?.maxScore) > 0 ? Number(cat.maxScore) : 1;
+    return Math.min(100, Math.max(0, Math.round((Number(cat?.score || 0) / max) * 100)));
+  });
+  const targetPercents = categoryKeys.map((c) => lowestDream?.categories[c.key] ?? lowestDream?.categories[c.fallbackKey] ?? 80);
 
   return (
     <section id="roadmap" className="space-y-6">
@@ -50,7 +57,7 @@ export default function ImprovementRoadmap({ student }) {
       {lowestDream && (
         <GroupedBarChart
           title={`Current Score vs ${lowestDream.name} Requirement`}
-          labels={['Aptitude', 'Reasoning', 'Technical', 'English']}
+          labels={categoryKeys.map(c => c.label)}
           datasets={[
             { label: 'Your Score', data: currentPercents, color: COLORS.aptitude },
             { label: `${lowestDream.name} Cutoff`, data: targetPercents, color: '#EF4444' },

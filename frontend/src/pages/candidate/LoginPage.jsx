@@ -18,19 +18,30 @@ export const LoginPage = () => {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!email) {
-      setError('Please enter your email address');
+    if (!email || !password) {
+      setError('Please enter both email address and password');
       return;
     }
+    setError('');
     setIsLoading(true);
-    setTimeout(() => {
-      setIsLoading(false);
-      loginCandidate(email);
-    }, 600);
+    const res = await loginCandidate(email, password);
+    setIsLoading(false);
+    if (!res.success) {
+      setError(res.error || 'Authentication failed. Please check your credentials.');
+    }
   };
 
+<<<<<<< HEAD
+=======
+  const handleQuickLogin = (sampleEmail) => {
+    setEmail(sampleEmail);
+    setPassword('Password@123');
+    loginCandidate(sampleEmail, 'Password@123');
+  };
+
+>>>>>>> ec4de177af03bcaea75c04696298381e7c4f0b37
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">

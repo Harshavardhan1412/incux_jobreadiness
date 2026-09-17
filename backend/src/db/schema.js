@@ -1,4 +1,5 @@
 import { pool } from './pool.js';
+import bcrypt from 'bcryptjs';
 
 const schemaSQL = `
     -- 1. users: Stores authentication and user roles
@@ -13,13 +14,13 @@ const schemaSQL = `
       updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );
 
-    -- 2. candidate_profiles: Stores candidate information
+    -- 2. candidate_profiles: Stores candidate profile information
     CREATE TABLE IF NOT EXISTS candidate_profiles (
       id VARCHAR(64) PRIMARY KEY,
       user_id VARCHAR(64) REFERENCES users(id) ON DELETE CASCADE,
       name VARCHAR(255) NOT NULL,
       email VARCHAR(255) UNIQUE,
-      mobile VARCHAR(20),
+      mobile VARCHAR(32),
       college VARCHAR(255),
       degree VARCHAR(128),
       branch VARCHAR(128),
@@ -29,37 +30,33 @@ const schemaSQL = `
       city VARCHAR(128),
       graduation_year INT,
       experience_level VARCHAR(64),
-      resume_url TEXT,
+      tenth_marks NUMERIC(5,2),
+      twelfth_diploma_marks NUMERIC(5,2),
+      graduation_percentage NUMERIC(5,2),
+      backlogs INT DEFAULT 0,
       created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );
 
-    -- Legacy candidates alias view or compatibility table if needed
+    -- 3. candidates: Candidate readiness metrics & assessment performance
     CREATE TABLE IF NOT EXISTS candidates (
       id VARCHAR(64) PRIMARY KEY,
-      name VARCHAR(255) NOT NULL,
-      email VARCHAR(255) UNIQUE NOT NULL,
-      mobile VARCHAR(32),
-      college VARCHAR(255),
-      degree VARCHAR(128),
-      branch VARCHAR(128),
-      specialization VARCHAR(128),
-      country VARCHAR(128) DEFAULT 'India',
-      state VARCHAR(128),
-      city VARCHAR(128),
-      graduation_year VARCHAR(16),
       experience_level VARCHAR(64) DEFAULT 'Fresher',
-      job_readiness_score INT DEFAULT 0,
-      readiness_level VARCHAR(128) DEFAULT 'In Progress',
       readiness_status VARCHAR(64) DEFAULT 'In Progress',
+      job_readiness_score INT DEFAULT 0,
       aptitude_score INT DEFAULT 0,
       reasoning_score INT DEFAULT 0,
       technical_score INT DEFAULT 0,
+      verbal_score INT DEFAULT 0,
       assessments_completed INT DEFAULT 0,
+      tenth_marks NUMERIC(5,2),
+      twelfth_diploma_marks NUMERIC(5,2),
+      graduation_percentage NUMERIC(5,2),
+      backlogs INT DEFAULT 0,
       created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );
 
-    -- 3. assessments: Stores assessments created by admin
+    -- 4. assessments: Assessment definitions created by administrators
     CREATE TABLE IF NOT EXISTS assessments (
       id VARCHAR(64) PRIMARY KEY,
       title VARCHAR(255) NOT NULL,
@@ -76,42 +73,10 @@ const schemaSQL = `
       updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );
 
-    -- 4. assessment_sections: Stores sections inside an assessment
-    CREATE TABLE IF NOT EXISTS assessment_sections (
-      id VARCHAR(64) PRIMARY KEY,
-      assessment_id VARCHAR(64) REFERENCES assessments(id) ON DELETE CASCADE,
-      name VARCHAR(128) NOT NULL,
-      description TEXT,
-      question_count INT NOT NULL,
-      marks_per_question INT DEFAULT 1,
-      display_order INT NOT NULL,
-      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-    );
-
-    -- 5. topics: Stores question topics
-    CREATE TABLE IF NOT EXISTS topics (
-      id VARCHAR(64) PRIMARY KEY,
-      name VARCHAR(128) UNIQUE NOT NULL,
-      category VARCHAR(64) NOT NULL,
-      description TEXT,
-      status VARCHAR(32) DEFAULT 'active',
-      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-    );
-
-    -- 6. skills: Stores skills evaluated by the platform
-    CREATE TABLE IF NOT EXISTS skills (
-      id VARCHAR(64) PRIMARY KEY,
-      name VARCHAR(128) UNIQUE NOT NULL,
-      category VARCHAR(64) NOT NULL,
-      description TEXT,
-      status VARCHAR(32) DEFAULT 'active',
-      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-    );
-
-    -- 7. questions: Main Question Bank
+    -- 5. questions: Main Question Bank with JSONB options & answer keys
     CREATE TABLE IF NOT EXISTS questions (
       id VARCHAR(64) PRIMARY KEY,
-      topic_id VARCHAR(64) REFERENCES topics(id) ON DELETE SET NULL,
+      topic_id VARCHAR(64),
       topic VARCHAR(255) DEFAULT 'General',
       category VARCHAR(64) NOT NULL,
       difficulty VARCHAR(32) NOT NULL,
@@ -132,147 +97,7 @@ const schemaSQL = `
       updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );
 
-    -- 8. questions table handles options via JSONB array (question_options removed to avoid redundancy)
-
-    -- 9. question_skills: Maps questions to skills
-    CREATE TABLE IF NOT EXISTS question_skills (
-      id VARCHAR(64) PRIMARY KEY,
-      question_id VARCHAR(64) REFERENCES questions(id) ON DELETE CASCADE,
-      skill_id VARCHAR(64) REFERENCES skills(id) ON DELETE CASCADE,
-      weight DECIMAL DEFAULT 1.0,
-      UNIQUE(question_id, skill_id)
-    );
-
-    -- 10. assessment_questions: Connects assessments with questions
-    CREATE TABLE IF NOT EXISTS assessment_questions (
-      id VARCHAR(64) PRIMARY KEY,
-      assessment_id VARCHAR(64) REFERENCES assessments(id) ON DELETE CASCADE,
-      section_id VARCHAR(64) REFERENCES assessment_sections(id) ON DELETE SET NULL,
-      question_id VARCHAR(64) REFERENCES questions(id) ON DELETE CASCADE,
-      question_order INT NOT NULL,
-      marks INT NOT NULL,
-      UNIQUE(assessment_id, question_id)
-    );
-
-    -- 11. test_attempts: Stores every candidate's attempt
-    CREATE TABLE IF NOT EXISTS test_attempts (
-      id VARCHAR(64) PRIMARY KEY,
-      candidate_id VARCHAR(64) REFERENCES candidate_profiles(id) ON DELETE CASCADE,
-      assessment_id VARCHAR(64) REFERENCES assessments(id) ON DELETE CASCADE,
-      attempt_number INT NOT NULL,
-      status VARCHAR(32) DEFAULT 'InProgress',
-      started_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      submitted_at TIMESTAMPTZ,
-      time_taken_seconds INT,
-      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-    );
-
-    -- 12. candidate_answers: Stores individual answers
-    CREATE TABLE IF NOT EXISTS candidate_answers (
-      id VARCHAR(64) PRIMARY KEY,
-      attempt_id VARCHAR(64) REFERENCES test_attempts(id) ON DELETE CASCADE,
-      question_id VARCHAR(64) REFERENCES questions(id) ON DELETE CASCADE,
-      selected_option VARCHAR(8),
-      is_correct BOOLEAN,
-      marks_obtained DECIMAL DEFAULT 0,
-      time_taken_seconds INT,
-      answered_at TIMESTAMPTZ
-    );
-
-    -- 13. performance_analysis: Stores overall test analysis
-    CREATE TABLE IF NOT EXISTS performance_analysis (
-      id VARCHAR(64) PRIMARY KEY,
-      attempt_id VARCHAR(64) REFERENCES test_attempts(id) ON DELETE CASCADE UNIQUE,
-      overall_score DECIMAL NOT NULL,
-      accuracy DECIMAL NOT NULL,
-      speed_score DECIMAL NOT NULL,
-      aptitude_score DECIMAL,
-      reasoning_score DECIMAL,
-      technical_score DECIMAL,
-      strengths JSONB,
-      weaknesses JSONB,
-      ai_summary TEXT,
-      recommendations JSONB,
-      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-    );
-
-    -- 14. skill_performance: Stores detailed skill-level performance
-    CREATE TABLE IF NOT EXISTS skill_performance (
-      id VARCHAR(64) PRIMARY KEY,
-      attempt_id VARCHAR(64) REFERENCES test_attempts(id) ON DELETE CASCADE,
-      candidate_id VARCHAR(64) REFERENCES candidate_profiles(id) ON DELETE CASCADE,
-      skill_id VARCHAR(64) REFERENCES skills(id) ON DELETE CASCADE,
-      score DECIMAL NOT NULL,
-      proficiency VARCHAR(32),
-      questions_attempted INT DEFAULT 0,
-      correct_answers INT DEFAULT 0,
-      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-    );
-
-    -- 15. companies: Stores companies used for readiness analysis
-    CREATE TABLE IF NOT EXISTS companies (
-      id VARCHAR(64) PRIMARY KEY,
-      name VARCHAR(128) UNIQUE NOT NULL,
-      industry VARCHAR(128),
-      description TEXT,
-      website TEXT,
-      status VARCHAR(32) DEFAULT 'Active',
-      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-    );
-
-    -- 16. company_roles: Stores roles offered/targeted for each company
-    CREATE TABLE IF NOT EXISTS company_roles (
-      id VARCHAR(64) PRIMARY KEY,
-      company_id VARCHAR(64) REFERENCES companies(id) ON DELETE CASCADE,
-      role_name VARCHAR(128) NOT NULL,
-      description TEXT,
-      experience_level VARCHAR(64),
-      status VARCHAR(32) DEFAULT 'Active',
-      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-    );
-
-    -- 17. role_skill_requirements: Defines what skills are required for each company role
-    CREATE TABLE IF NOT EXISTS role_skill_requirements (
-      id VARCHAR(64) PRIMARY KEY,
-      role_id VARCHAR(64) REFERENCES company_roles(id) ON DELETE CASCADE,
-      skill_id VARCHAR(64) REFERENCES skills(id) ON DELETE CASCADE,
-      required_score DECIMAL,
-      weight DECIMAL DEFAULT 1.0,
-      importance VARCHAR(32) DEFAULT 'Required',
-      UNIQUE(role_id, skill_id)
-    );
-
-    -- 18. company_readiness: Stores candidate's company/role suitability result
-    CREATE TABLE IF NOT EXISTS company_readiness (
-      id VARCHAR(64) PRIMARY KEY,
-      candidate_id VARCHAR(64) REFERENCES candidate_profiles(id) ON DELETE CASCADE,
-      attempt_id VARCHAR(64) REFERENCES test_attempts(id) ON DELETE SET NULL,
-      company_id VARCHAR(64) REFERENCES companies(id) ON DELETE CASCADE,
-      role_id VARCHAR(64) REFERENCES company_roles(id) ON DELETE CASCADE,
-      readiness_score DECIMAL NOT NULL,
-      readiness_level VARCHAR(32),
-      matched_skills JSONB,
-      skill_gaps JSONB,
-      ai_analysis TEXT,
-      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-    );
-
-    -- 19. reports: Stores the final generated candidate report
-    CREATE TABLE IF NOT EXISTS reports (
-      id VARCHAR(64) PRIMARY KEY,
-      candidate_id VARCHAR(64) REFERENCES candidate_profiles(id) ON DELETE CASCADE,
-      attempt_id VARCHAR(64) REFERENCES test_attempts(id) ON DELETE SET NULL,
-      report_type VARCHAR(64),
-      overall_score DECIMAL,
-      summary TEXT,
-      strengths JSONB,
-      weaknesses JSONB,
-      recommendations JSONB,
-      report_url TEXT,
-      generated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-    );
-
-    -- Legacy submissions table
+    -- 6. submissions: Legacy submissions compatibility table
     CREATE TABLE IF NOT EXISTS submissions (
       id VARCHAR(64) PRIMARY KEY,
       candidate_id VARCHAR(64),
@@ -289,7 +114,7 @@ const schemaSQL = `
       created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );
 
-    -- 20. assessment_submissions: Stores submitted assessment attempts & candidate scores
+    -- 7. assessment_submissions: Official submitted assessment attempts & candidate scores
     CREATE TABLE IF NOT EXISTS assessment_submissions (
       id VARCHAR(64) PRIMARY KEY,
       candidate_id VARCHAR(64),
@@ -309,7 +134,43 @@ const schemaSQL = `
       status VARCHAR(32) DEFAULT 'Completed',
       created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     );
-  `;
+
+    -- 8. assessment_questions: Questions associated with an assessment with full question details
+    CREATE TABLE IF NOT EXISTS assessment_questions (
+      id VARCHAR(64) PRIMARY KEY,
+      assessment_id VARCHAR(64) NOT NULL REFERENCES assessments(id) ON DELETE CASCADE,
+      question_id VARCHAR(64) NOT NULL REFERENCES questions(id) ON DELETE CASCADE,
+      category VARCHAR(64),
+      topic VARCHAR(255),
+      question TEXT,
+      difficulty VARCHAR(32),
+      options JSONB,
+      correct_answer VARCHAR(16),
+      marks INT DEFAULT 1,
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT uq_assessment_question UNIQUE (assessment_id, question_id)
+    );
+
+    -- 9. company_eligibility_criteria: Standardized company eligibility criteria and cutoffs
+    CREATE TABLE IF NOT EXISTS company_eligibility_criteria (
+      id VARCHAR(64) PRIMARY KEY,
+      company VARCHAR(128) NOT NULL,
+      role VARCHAR(128) NOT NULL,
+      tenth_percentage NUMERIC(5,2) DEFAULT 60.00,
+      twelfth_diploma_percentage NUMERIC(5,2) DEFAULT 60.00,
+      graduation_percentage NUMERIC(5,2) DEFAULT 60.00,
+      max_backlogs INT DEFAULT 0,
+      aptitude_cutoff INT DEFAULT 60,
+      reasoning_cutoff INT DEFAULT 60,
+      verbal_cutoff INT DEFAULT 60,
+      technical_cutoff INT DEFAULT 60,
+      coding_cutoff INT DEFAULT 50,
+      overall_readiness_cutoff INT DEFAULT 60,
+      created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT uq_company_role UNIQUE (company, role)
+    );
+`;
 
 export const initSchema = async () => {
   const LOCK_KEY = 74639201;
@@ -320,10 +181,48 @@ export const initSchema = async () => {
     // Acquire session-level advisory lock so only 1 replica runs migrations at a time
     await client.query('SELECT pg_advisory_lock($1)', [LOCK_KEY]);
 
-    await client.query(schemaSQL);
-    console.log('✅ All 19 Database Tables synchronized successfully.');
+    // 1. Permanently Drop Unused / Deprecated Tables
+    await client.query(`
+      DROP TABLE IF EXISTS admin_sessions CASCADE;
+      DROP TABLE IF EXISTS assessment_sections CASCADE;
+      DROP TABLE IF EXISTS comapanies CASCADE;
+      DROP TABLE IF EXISTS companies CASCADE;
+      DROP TABLE IF EXISTS company_readiness CASCADE;
+      DROP TABLE IF EXISTS company_roles CASCADE;
+      DROP TABLE IF EXISTS question_skills CASCADE;
+      DROP TABLE IF EXISTS role_skill_requirements CASCADE;
+      DROP TABLE IF EXISTS topics CASCADE;
+      DROP TABLE IF EXISTS test_attempts CASCADE;
+      DROP TABLE IF EXISTS skills CASCADE;
+      DROP TABLE IF EXISTS skill_performance CASCADE;
+      DROP TABLE IF EXISTS candidate_answers CASCADE;
+      DROP TABLE IF EXISTS performance_analysis CASCADE;
+      DROP TABLE IF EXISTS reports CASCADE;
+      DROP TABLE IF EXISTS question_options CASCADE;
+    `);
 
-    // Safe column migrations for existing tables
+    // 2. Synchronize Production Core Schema (including candidate_profiles)
+    await client.query(schemaSQL);
+    console.log('✅ Production Database Tables synchronized successfully.');
+
+    // 3. Backfill candidate_profiles from users table if missing
+    await client.query(`
+      INSERT INTO candidate_profiles (
+        id, user_id, name, email, created_at
+      )
+      SELECT 
+        u.id,
+        u.id,
+        u.name,
+        u.email,
+        u.created_at
+      FROM users u
+      WHERE u.role = 'candidate'
+      ON CONFLICT (id) DO NOTHING;
+    `);
+    console.log('✅ candidate_profiles table verified.');
+
+    // 4. Safe column migrations for active tables
     await client.query(`
       ALTER TABLE users ADD COLUMN IF NOT EXISTS status VARCHAR(32) DEFAULT 'active';
       ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP;
@@ -333,12 +232,37 @@ export const initSchema = async () => {
       ALTER TABLE candidate_profiles ADD COLUMN IF NOT EXISTS state VARCHAR(128);
       ALTER TABLE candidate_profiles ADD COLUMN IF NOT EXISTS city VARCHAR(128);
       ALTER TABLE candidate_profiles ADD COLUMN IF NOT EXISTS resume_url TEXT;
+      ALTER TABLE candidate_profiles ADD COLUMN IF NOT EXISTS tenth_marks NUMERIC(5,2);
+      ALTER TABLE candidate_profiles ADD COLUMN IF NOT EXISTS twelfth_diploma_marks NUMERIC(5,2);
+      ALTER TABLE candidate_profiles ADD COLUMN IF NOT EXISTS graduation_percentage NUMERIC(5,2);
+      ALTER TABLE candidate_profiles ADD COLUMN IF NOT EXISTS backlogs INT DEFAULT 0;
       ALTER TABLE candidate_profiles ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP;
 
-      ALTER TABLE candidates ADD COLUMN IF NOT EXISTS specialization VARCHAR(128);
-      ALTER TABLE candidates ADD COLUMN IF NOT EXISTS country VARCHAR(128) DEFAULT 'India';
-      ALTER TABLE candidates ADD COLUMN IF NOT EXISTS state VARCHAR(128);
-      ALTER TABLE candidates ADD COLUMN IF NOT EXISTS city VARCHAR(128);
+      ALTER TABLE candidates ADD COLUMN IF NOT EXISTS job_readiness_score INT DEFAULT 0;
+      ALTER TABLE candidates ADD COLUMN IF NOT EXISTS aptitude_score INT DEFAULT 0;
+      ALTER TABLE candidates ADD COLUMN IF NOT EXISTS reasoning_score INT DEFAULT 0;
+      ALTER TABLE candidates ADD COLUMN IF NOT EXISTS technical_score INT DEFAULT 0;
+      ALTER TABLE candidates ADD COLUMN IF NOT EXISTS verbal_score INT DEFAULT 0;
+      ALTER TABLE candidates ADD COLUMN IF NOT EXISTS tenth_marks NUMERIC(5,2);
+      ALTER TABLE candidates ADD COLUMN IF NOT EXISTS twelfth_diploma_marks NUMERIC(5,2);
+      ALTER TABLE candidates ADD COLUMN IF NOT EXISTS graduation_percentage NUMERIC(5,2);
+      ALTER TABLE candidates ADD COLUMN IF NOT EXISTS backlogs INT DEFAULT 0;
+      ALTER TABLE candidates DROP COLUMN IF EXISTS readiness_level;
+      ALTER TABLE candidates DROP COLUMN IF EXISTS country;
+      ALTER TABLE candidates DROP COLUMN IF EXISTS state;
+      ALTER TABLE candidates DROP COLUMN IF EXISTS city;
+      ALTER TABLE candidates DROP COLUMN IF EXISTS primary_skill;
+      ALTER TABLE candidates DROP COLUMN IF EXISTS name;
+      ALTER TABLE candidates DROP COLUMN IF EXISTS email;
+      ALTER TABLE candidates DROP COLUMN IF EXISTS mobile;
+      ALTER TABLE candidates DROP COLUMN IF EXISTS college;
+      ALTER TABLE candidates DROP COLUMN IF EXISTS degree;
+      ALTER TABLE candidates DROP COLUMN IF EXISTS branch;
+      ALTER TABLE candidates DROP COLUMN IF EXISTS graduation_year;
+      ALTER TABLE candidates DROP COLUMN IF EXISTS specialization;
+      ALTER TABLE candidates DROP COLUMN IF EXISTS tenth_certificate;
+      ALTER TABLE candidates DROP COLUMN IF EXISTS twelfth_certificate;
+      ALTER TABLE candidates DROP COLUMN IF EXISTS resume_file;
 
       ALTER TABLE assessments ADD COLUMN IF NOT EXISTS total_marks INT DEFAULT 100;
       ALTER TABLE assessments ADD COLUMN IF NOT EXISTS passing_score INT DEFAULT 65;
@@ -361,13 +285,145 @@ export const initSchema = async () => {
       ALTER TABLE questions ADD COLUMN IF NOT EXISTS tags TEXT[];
       ALTER TABLE questions ADD COLUMN IF NOT EXISTS status VARCHAR(32) DEFAULT 'Active';
       ALTER TABLE questions ADD COLUMN IF NOT EXISTS source VARCHAR(32) DEFAULT 'Manual';
+      ALTER TABLE questions ADD COLUMN IF NOT EXISTS test_cases JSONB;
+      ALTER TABLE questions ADD COLUMN IF NOT EXISTS starter_templates JSONB;
+      ALTER TABLE questions ADD COLUMN IF NOT EXISTS constraints TEXT;
       ALTER TABLE questions ADD COLUMN IF NOT EXISTS created_by VARCHAR(64);
       ALTER TABLE questions ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP;
 
-      -- Drop redundant options table if it exists (options are stored directly in questions.options JSONB)
-      DROP TABLE IF EXISTS question_options CASCADE;
+      ALTER TABLE assessment_questions ADD COLUMN IF NOT EXISTS test_cases JSONB;
+      ALTER TABLE assessment_questions ADD COLUMN IF NOT EXISTS starter_templates JSONB;
+      ALTER TABLE assessment_questions ADD COLUMN IF NOT EXISTS constraints TEXT;
+
+      ALTER TABLE assessment_questions ADD COLUMN IF NOT EXISTS category VARCHAR(64);
+      ALTER TABLE assessment_questions ADD COLUMN IF NOT EXISTS topic VARCHAR(255);
+      ALTER TABLE assessment_questions ADD COLUMN IF NOT EXISTS question TEXT;
+      ALTER TABLE assessment_questions ADD COLUMN IF NOT EXISTS difficulty VARCHAR(32);
+      ALTER TABLE assessment_questions ADD COLUMN IF NOT EXISTS options JSONB;
+      ALTER TABLE assessment_questions ADD COLUMN IF NOT EXISTS correct_answer VARCHAR(16);
+      ALTER TABLE assessment_questions ADD COLUMN IF NOT EXISTS marks INT DEFAULT 1;
     `);
     console.log('✅ Safe column alterations applied.');
+
+    // 4b. Sync latest assessment scores to candidates table (job readiness, aptitude, reasoning, technical, verbal)
+    await client.query(`
+      UPDATE candidates c
+      SET 
+        job_readiness_score = COALESCE(sub.latest_score, c.job_readiness_score, 0),
+        aptitude_score = COALESCE(
+          NULLIF((sub.category_scores->>'aptitude'), '')::int,
+          NULLIF((sub.category_scores->>'Aptitude'), '')::int,
+          c.aptitude_score,
+          0
+        ),
+        reasoning_score = COALESCE(
+          NULLIF((sub.category_scores->>'reasoning'), '')::int,
+          NULLIF((sub.category_scores->>'Reasoning'), '')::int,
+          c.reasoning_score,
+          0
+        ),
+        technical_score = COALESCE(
+          NULLIF((sub.category_scores->>'technical'), '')::int,
+          NULLIF((sub.category_scores->>'Technical'), '')::int,
+          c.technical_score,
+          0
+        ),
+        verbal_score = COALESCE(
+          NULLIF((sub.category_scores->>'verbal'), '')::int,
+          NULLIF((sub.category_scores->>'Verbal'), '')::int,
+          NULLIF((sub.category_scores->>'english'), '')::int,
+          0
+        )
+      FROM (
+        SELECT DISTINCT ON (candidate_id) candidate_id, score AS latest_score, category_scores
+        FROM assessment_submissions
+        WHERE candidate_id IS NOT NULL AND category_scores IS NOT NULL AND category_scores::text != '{}'
+        ORDER BY candidate_id, created_at DESC
+      ) sub
+      WHERE c.id = sub.candidate_id;
+    `);
+
+    // 5. Performance Indexes for Scalability & High-Concurrency Load
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+      CREATE INDEX IF NOT EXISTS idx_candidate_profiles_user_id ON candidate_profiles(user_id);
+      CREATE INDEX IF NOT EXISTS idx_candidate_profiles_email ON candidate_profiles(email);
+      DROP INDEX IF EXISTS idx_candidates_email;
+      CREATE INDEX IF NOT EXISTS idx_questions_category_diff ON questions(category, difficulty);
+      CREATE INDEX IF NOT EXISTS idx_submissions_candidate_id ON assessment_submissions(candidate_id);
+      CREATE INDEX IF NOT EXISTS idx_submissions_cand_asm ON assessment_submissions(candidate_id, assessment_id);
+      CREATE INDEX IF NOT EXISTS idx_assessment_questions_assessment_id ON assessment_questions(assessment_id);
+      CREATE INDEX IF NOT EXISTS idx_assessment_questions_question_id ON assessment_questions(question_id);
+
+      -- Deduplicate legacy rows in assessment_submissions if present before applying unique index
+      DELETE FROM assessment_submissions a
+      USING assessment_submissions b
+      WHERE a.ctid < b.ctid
+        AND a.candidate_id IS NOT NULL
+        AND a.assessment_id IS NOT NULL
+        AND a.candidate_id = b.candidate_id
+        AND a.assessment_id = b.assessment_id;
+
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_submissions_cand_asm_unique 
+      ON assessment_submissions(candidate_id, assessment_id);
+    `);
+    console.log('✅ Performance indexes and duplicate submission prevention constraint applied.');
+
+    // 6. Ensure permanent single admin account exists
+    const adminHash = await bcrypt.hash('Admin@2026', 10);
+    await client.query(`
+      INSERT INTO users (id, email, password_hash, role, name, status)
+      VALUES ('admin-1', 'admin@readysetjob.com', $1, 'admin', 'HR Administrator', 'active')
+      ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash, role = 'admin', status = 'active';
+    `, [adminHash]);
+    console.log('✅ Permanent single admin credential verified (admin@readysetjob.com).');
+
+    // 7. Seed standard company eligibility criteria
+    const criteria = [
+      ['cec_1', 'TCS', 'Ninja', 60, 60, 60, 0, 60, 60, 60, 55, 50, 60],
+      ['cec_2', 'TCS', 'Digital', 60, 60, 60, 0, 70, 70, 65, 70, 70, 70],
+      ['cec_3', 'TCS', 'Prime', 60, 60, 60, 0, 75, 75, 70, 80, 80, 75],
+      ['cec_4', 'Infosys', 'SE', 60, 60, 60, 0, 60, 60, 60, 60, 60, 60],
+      ['cec_5', 'Infosys', 'DSE', 60, 60, 60, 0, 65, 65, 60, 70, 70, 68],
+      ['cec_6', 'Infosys', 'Specialist Programmer', 60, 60, 60, 0, 70, 70, 60, 75, 80, 75],
+      ['cec_7', 'Capgemini', 'Analyst', 60, 60, 60, 0, 60, 60, 60, 60, 55, 60],
+      ['cec_8', 'Capgemini', 'Software Engineer', 60, 60, 60, 0, 65, 65, 60, 65, 65, 65],
+      ['cec_9', 'Accenture', 'ASE', 60, 60, 60, 0, 60, 60, 60, 65, 60, 65],
+      ['cec_10', 'Accenture', 'Advanced ASE', 60, 60, 60, 0, 65, 65, 60, 70, 70, 68],
+      ['cec_11', 'Wipro', 'Project Engineer', 60, 60, 60, 0, 60, 60, 60, 60, 55, 60],
+      ['cec_12', 'Wipro', 'Turbo', 60, 60, 60, 0, 65, 65, 60, 70, 70, 68],
+      ['cec_13', 'Cognizant', 'GenC', 60, 60, 60, 0, 60, 60, 60, 60, 60, 60],
+      ['cec_14', 'Cognizant', 'GenC Pro', 60, 60, 60, 0, 65, 65, 60, 70, 70, 68],
+      ['cec_15', 'Cognizant', 'GenC Next', 60, 60, 60, 0, 70, 70, 65, 75, 75, 72],
+      ['cec_16', 'HCLTech', 'Graduate Engineer', 60, 60, 60, 0, 60, 60, 60, 65, 60, 62],
+      ['cec_17', 'Tech Mahindra', 'Entry Level', 60, 60, 60, 0, 60, 60, 60, 60, 55, 60],
+      ['cec_18', 'LTIMindtree', 'Entry Level', 60, 60, 60, 0, 60, 60, 60, 65, 60, 62],
+      ['cec_19', 'IBM', 'Associate Developer', 65, 65, 65, 0, 65, 65, 65, 70, 65, 68],
+      ['cec_20', 'Deloitte', 'Analyst', 60, 60, 60, 0, 65, 65, 65, 65, 60, 65]
+    ];
+
+    for (const c of criteria) {
+      await client.query(`
+        INSERT INTO company_eligibility_criteria (
+          id, company, role, tenth_percentage, twelfth_diploma_percentage, graduation_percentage,
+          max_backlogs, aptitude_cutoff, reasoning_cutoff, verbal_cutoff, technical_cutoff,
+          coding_cutoff, overall_readiness_cutoff
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        ON CONFLICT (company, role) DO UPDATE SET
+          tenth_percentage = EXCLUDED.tenth_percentage,
+          twelfth_diploma_percentage = EXCLUDED.twelfth_diploma_percentage,
+          graduation_percentage = EXCLUDED.graduation_percentage,
+          max_backlogs = EXCLUDED.max_backlogs,
+          aptitude_cutoff = EXCLUDED.aptitude_cutoff,
+          reasoning_cutoff = EXCLUDED.reasoning_cutoff,
+          verbal_cutoff = EXCLUDED.verbal_cutoff,
+          technical_cutoff = EXCLUDED.technical_cutoff,
+          coding_cutoff = EXCLUDED.coding_cutoff,
+          overall_readiness_cutoff = EXCLUDED.overall_readiness_cutoff,
+          updated_at = CURRENT_TIMESTAMP;
+      `, c);
+    }
+    console.log('✅ Company eligibility criteria synchronized successfully.');
   } catch (err) {
     console.error('❌ Schema initialization error:', err.message);
     throw err;

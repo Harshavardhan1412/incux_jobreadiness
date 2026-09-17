@@ -15,18 +15,31 @@ import {
 export const AdminLoginPage = () => {
   const { loginAdmin, navigateTo } = useApp();
   const [email, setEmail] = useState('admin@readysetjob.com');
-  const [password, setPassword] = useState('AdminPass@2026');
+  const [password, setPassword] = useState('Admin@2026');
   const [rememberMe, setRememberMe] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleLogin = (e) => {
+  const fillAdminCredentials = () => {
+    setEmail('');
+    setPassword('');
+    setError('');
+  };
+
+  const handleLogin = async (e) => {
     e.preventDefault();
+    if (!email || !password) {
+      setError('Please enter admin email and password.');
+      return;
+    }
+    setError('');
     setIsLoading(true);
-    setTimeout(() => {
-      setIsLoading(false);
-      loginAdmin();
-    }, 600);
+    const res = await loginAdmin(email, password);
+    setIsLoading(false);
+    if (!res.success) {
+      setError(res.error || 'Admin login failed. Please check credentials.');
+    }
   };
 
   return (
@@ -66,6 +79,13 @@ export const AdminLoginPage = () => {
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
         <div className="bg-slate-850 py-8 px-6 sm:px-10 rounded-2xl border border-slate-800 shadow-2xl space-y-6">
+
+
+          {error && (
+            <div className="p-3 bg-rose-950/80 border border-rose-800/80 rounded-xl text-xs text-rose-300 font-medium">
+              {error}
+            </div>
+          )}
 
           <form onSubmit={handleLogin} className="space-y-4">
             <div>

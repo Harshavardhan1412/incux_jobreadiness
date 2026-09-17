@@ -1,6 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { ScoreRing } from '../../components/common/ScoreRing';
+import { AcademicMarksModal } from '../../components/candidate/AcademicMarksModal';
+import { AssessmentReportModal } from '../../components/candidate/AssessmentReportModal';
 import {
   Sparkles,
   ArrowRight,
@@ -16,7 +18,10 @@ import {
   ChevronRight,
   BrainCircuit,
   Target,
-  FileText
+  FileText,
+  ClipboardCheck,
+  BarChart2,
+  Download
 } from 'lucide-react';
 import {
   Chart as ChartJS,
@@ -48,8 +53,42 @@ export const CandidateDashboard = () => {
     assessments,
     startAssessment,
     navigateTo,
-    recommendations
+    addToast,
+    recommendations,
+    isAssessmentCompleted,
+    candidateSubmissions,
+    latestResult
   } = useApp();
+
+  const [targetAsm, setTargetAsm] = useState(null);
+  const [isAcademicModalOpen, setIsAcademicModalOpen] = useState(false);
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+
+  const handleStartAttempt = (asm) => {
+    const userSub = (candidateSubmissions || []).find(s => String(s.assessment_id || s.assessmentId || '').trim().toLowerCase() === String(asm.id).trim().toLowerCase());
+    const isCompleted = !!userSub || isAssessmentCompleted?.(asm.id) || asm.status === 'Completed';
+    if (isCompleted) {
+      addToast('You have already completed this assessment. Candidates are permitted to take each assessment only once.', 'warning');
+      navigateTo('candidate-analytics');
+      return;
+    }
+    setTargetAsm(asm);
+    setIsAcademicModalOpen(true);
+  };
+
+  const handleProceedAssessment = () => {
+    setIsAcademicModalOpen(false);
+    if (targetAsm) {
+      const userSub = (candidateSubmissions || []).find(s => String(s.assessment_id || s.assessmentId || '').trim().toLowerCase() === String(targetAsm.id).trim().toLowerCase());
+      const isCompleted = !!userSub || isAssessmentCompleted?.(targetAsm.id) || targetAsm.status === 'Completed';
+      if (isCompleted) {
+        addToast('You have already completed this assessment. Candidates are permitted to take each assessment only once.', 'warning');
+        navigateTo('candidate-analytics');
+        return;
+      }
+      startAssessment(targetAsm.id);
+    }
+  };
 
   // Performance Trend Line Chart Data
   const trendData = {
@@ -133,11 +172,25 @@ export const CandidateDashboard = () => {
 
           <div className="flex flex-wrap items-center gap-3">
             <button
-              onClick={() => navigateTo('assessments')}
+              onClick={() => setIsReportModalOpen(true)}
               className="px-4 py-2.5 bg-brand-500 hover:bg-brand-400 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-brand-500/30 flex items-center gap-2"
             >
+              <Download className="w-4 h-4" />
+              <span>Download Official Report</span>
+            </button>
+            <button
+              onClick={() => navigateTo('candidate-analytics')}
+              className="px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white border border-white/20 rounded-xl text-xs font-bold transition-all flex items-center gap-2"
+            >
+              <Award className="w-4 h-4 text-brand-300" />
+              <span>View Analytics</span>
+            </button>
+            <button
+              onClick={() => navigateTo('assessments')}
+              className="px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white border border-white/20 rounded-xl text-xs font-bold transition-all flex items-center gap-2"
+            >
               <ClipboardCheck className="w-4 h-4" />
-              <span>Assessments & Tests</span>
+              <span>Assessments</span>
             </button>
           </div>
         </div>
@@ -163,28 +216,36 @@ export const CandidateDashboard = () => {
           </div>
 
           {/* Subscore Breakdown */}
-          <div className="grid grid-cols-3 gap-3 pt-4 border-t border-slate-100 text-center">
-            <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-100">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-4 border-t border-slate-100 text-center">
+            <div className="p-2 bg-slate-50 rounded-xl border border-slate-100">
               <span className="text-[10px] font-semibold text-slate-600 block uppercase">Aptitude</span>
-              <span className="text-lg font-extrabold text-slate-900">{currentUser?.aptitudeScore || 82}%</span>
+              <span className="text-base font-extrabold text-slate-900">{currentUser?.aptitudeScore ?? 0}%</span>
               <div className="w-full bg-slate-200 h-1 rounded-full mt-1.5 overflow-hidden">
-                <div className="bg-brand-500 h-full rounded-full" style={{ width: `${currentUser?.aptitudeScore || 82}%` }} />
+                <div className="bg-brand-500 h-full rounded-full" style={{ width: `${currentUser?.aptitudeScore ?? 0}%` }} />
               </div>
             </div>
 
-            <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-100">
+            <div className="p-2 bg-slate-50 rounded-xl border border-slate-100">
               <span className="text-[10px] font-semibold text-slate-600 block uppercase">Reasoning</span>
-              <span className="text-lg font-extrabold text-slate-900">{currentUser?.reasoningScore || 74}%</span>
+              <span className="text-base font-extrabold text-slate-900">{currentUser?.reasoningScore ?? 0}%</span>
               <div className="w-full bg-slate-200 h-1 rounded-full mt-1.5 overflow-hidden">
-                <div className="bg-purple-500 h-full rounded-full" style={{ width: `${currentUser?.reasoningScore || 74}%` }} />
+                <div className="bg-purple-500 h-full rounded-full" style={{ width: `${currentUser?.reasoningScore ?? 0}%` }} />
               </div>
             </div>
 
-            <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-100">
+            <div className="p-2 bg-slate-50 rounded-xl border border-slate-100">
               <span className="text-[10px] font-semibold text-slate-600 block uppercase">Technical</span>
-              <span className="text-lg font-extrabold text-slate-900">{currentUser?.technicalScore || 78}%</span>
+              <span className="text-base font-extrabold text-slate-900">{currentUser?.technicalScore ?? 0}%</span>
               <div className="w-full bg-slate-200 h-1 rounded-full mt-1.5 overflow-hidden">
-                <div className="bg-emerald-500 h-full rounded-full" style={{ width: `${currentUser?.technicalScore || 78}%` }} />
+                <div className="bg-emerald-500 h-full rounded-full" style={{ width: `${currentUser?.technicalScore ?? 0}%` }} />
+              </div>
+            </div>
+
+            <div className="p-2 bg-slate-50 rounded-xl border border-slate-100">
+              <span className="text-[10px] font-semibold text-slate-600 block uppercase">Verbal</span>
+              <span className="text-base font-extrabold text-slate-900">{currentUser?.verbalScore ?? 0}%</span>
+              <div className="w-full bg-slate-200 h-1 rounded-full mt-1.5 overflow-hidden">
+                <div className="bg-amber-500 h-full rounded-full" style={{ width: `${currentUser?.verbalScore ?? 0}%` }} />
               </div>
             </div>
           </div>
@@ -215,7 +276,7 @@ export const CandidateDashboard = () => {
                 </div>
 
                 <button
-                  onClick={() => startAssessment(inProgressAssessment.id)}
+                  onClick={() => handleStartAttempt(inProgressAssessment)}
                   className="self-start sm:self-center px-5 py-2.5 bg-white text-brand-700 hover:bg-brand-50 rounded-xl text-xs font-extrabold shadow-sm transition-all flex items-center gap-2 group flex-shrink-0"
                 >
                   <span>Continue Assessment</span>
@@ -281,8 +342,10 @@ export const CandidateDashboard = () => {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
             {assessments.slice(0, 3).map((asm) => {
-              const isCompleted = asm.status === 'Completed';
-              const isInProgress = asm.status === 'In Progress';
+              const userSub = (candidateSubmissions || []).find(s => String(s.assessment_id || s.assessmentId || '').trim().toLowerCase() === String(asm.id).trim().toLowerCase());
+              const isCompleted = !!userSub || isAssessmentCompleted?.(asm.id) || asm.status === 'Completed';
+              const isInProgress = !isCompleted && asm.status === 'In Progress';
+              const displayScore = userSub?.score ?? asm.lastScore ?? asm.score ?? 0;
 
               return (
                 <div
@@ -301,7 +364,7 @@ export const CandidateDashboard = () => {
                           ? 'bg-amber-50 text-amber-700 border border-amber-200'
                           : 'bg-brand-50 text-brand-700 border border-brand-200'
                       }`}>
-                        {isCompleted ? `Score: ${asm.lastScore}%` : asm.status}
+                        {isCompleted ? `Completed • ${displayScore}%` : isInProgress ? 'In Progress' : 'Available'}
                       </span>
                     </div>
 
@@ -330,18 +393,24 @@ export const CandidateDashboard = () => {
 
                   <div>
                     {isCompleted ? (
-                      <div className="flex gap-2">
+                      <div className="flex items-center gap-2">
                         <button
-                          onClick={() => startAssessment(asm.id)}
-                          className="py-2 px-3 bg-brand-50 hover:bg-brand-100 text-brand-700 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1"
-                          title="Retake test"
+                          onClick={() => navigateTo('candidate-analytics')}
+                          className="flex-1 py-2 px-3 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1 shadow-xs"
                         >
-                          <RotateCcw className="w-3.5 h-3.5" />
+                          <BarChart2 className="w-3.5 h-3.5" />
+                          <span>View Result</span>
                         </button>
+                        <div
+                          className="py-2 px-2.5 bg-slate-100 text-slate-500 rounded-xl text-xs font-semibold flex items-center gap-1 border border-slate-200 cursor-not-allowed select-none"
+                          title="Assessment completed (1 attempt limit)"
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                        </div>
                       </div>
                     ) : isInProgress ? (
                       <button
-                        onClick={() => startAssessment(asm.id)}
+                        onClick={() => handleStartAttempt(asm)}
                         className="w-full py-2 px-3 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-xs"
                       >
                         <Play className="w-3.5 h-3.5 fill-white" />
@@ -349,7 +418,7 @@ export const CandidateDashboard = () => {
                       </button>
                     ) : (
                       <button
-                        onClick={() => startAssessment(asm.id)}
+                        onClick={() => handleStartAttempt(asm)}
                         className="w-full py-2 px-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5"
                       >
                         <Play className="w-3.5 h-3.5 fill-white" />
@@ -364,7 +433,38 @@ export const CandidateDashboard = () => {
         )}
       </div>
 
+      {/* Academic Marks Modal */}
+      <AcademicMarksModal
+        isOpen={isAcademicModalOpen}
+        onClose={() => setIsAcademicModalOpen(false)}
+        onProceed={handleProceedAssessment}
+        assessmentTitle={targetAsm?.title}
+      />
 
+      {/* Official Assessment & Job Readiness Report Modal */}
+      <AssessmentReportModal
+        isOpen={isReportModalOpen}
+        onClose={() => setIsReportModalOpen(false)}
+        candidate={currentUser}
+        result={latestResult || {
+          score: currentUser?.jobReadinessScore || 78,
+          accuracy: currentUser?.jobReadinessScore || 78,
+          correctCount: Math.round(((currentUser?.jobReadinessScore || 78) / 100) * 20),
+          incorrectCount: 20 - Math.round(((currentUser?.jobReadinessScore || 78) / 100) * 20),
+          unansweredCount: 0,
+          totalQuestions: 20,
+          timeTaken: '28 min',
+          completedAt: new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+          assessmentName: 'Job Readiness Assessment',
+          categoryScores: {
+            aptitude: currentUser?.aptitudeScore ?? 82,
+            reasoning: currentUser?.reasoningScore ?? 74,
+            technical: currentUser?.technicalScore ?? 78,
+            verbal: currentUser?.verbalScore ?? 78
+          }
+        }}
+        addToast={addToast}
+      />
 
     </div>
   );

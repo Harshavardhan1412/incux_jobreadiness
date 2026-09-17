@@ -11,24 +11,45 @@ const authHeaders = () => ({
 });
 
 async function request(method, path, body) {
+  const cleanPath = path.startsWith('/api/') ? path.slice(4) : (path.startsWith('/') ? path : `/${path}`);
   try {
-    const res = await fetch(`${BASE}${path}`, {
+    const res = await fetch(`${BASE}${cleanPath}`, {
       method,
       headers: authHeaders(),
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-    return { ok: true, data };
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const err = new Error(data.error || data.message || `HTTP ${res.status}`);
+      err.status = res.status;
+      err.data = data;
+      throw err;
+    }
+    if (typeof data === 'object' && data !== null && !Array.isArray(data)) {
+      return { ok: true, ...data, data, status: res.status };
+    }
+    return { ok: true, data, status: res.status };
   } catch (err) {
     console.warn(`[API] ${method} ${path} failed:`, err.message);
-    return { ok: false, error: err.message };
+    return { ok: false, success: false, error: err.message, status: err.status || 500, data: err.data };
   }
 }
 
 // ─── API client ──────────────────────────────────────────────────────────────
 export const api = {
   health: () => request('GET', '/health'),
+
+  // Generic HTTP convenience helpers
+  get: (path) => request('GET', path),
+  post: (path, body) => request('POST', path, body),
+  put: (path, body) => request('PUT', path, body),
+  delete: (path) => request('DELETE', path),
+
+  code: {
+    run: (body) => request('POST', '/code/run', body),
+    submit: (body) => request('POST', '/code/submit', body),
+    getLanguages: () => request('GET', '/code/languages'),
+  },
 
   auth: {
     register: (body) => request('POST', '/auth/register', body),
@@ -41,8 +62,11 @@ export const api = {
     getAll: () => request('GET', '/candidates'),
     getById: (id) => request('GET', `/candidates/${id}`),
     update: (id, body) => request('PUT', `/candidates/${id}`, body),
+    updateAcademicMarks: (id, body) => request('PUT', `/candidates/${id}/academic-marks`, body),
+    getCompanyEligibilityCriteria: () => request('GET', '/candidates/company-eligibility/criteria'),
     delete: (id) => request('DELETE', `/candidates/${id}`),
     submissions: (id) => request('GET', `/candidates/${id}/submissions`),
+    resetAttempt: (id, assessmentId) => request('POST', `/candidates/${id}/reset-attempt`, { assessmentId }),
   },
 
   assessments: {
@@ -51,6 +75,9 @@ export const api = {
     create: (body) => request('POST', '/assessments', body),
     update: (id, body) => request('PUT', `/assessments/${id}`, body),
     delete: (id) => request('DELETE', `/assessments/${id}`),
+    getQuestions: (id) => request('GET', `/assessments/${id}/questions`),
+    addQuestions: (id, body) => request('POST', `/assessments/${id}/questions`, body),
+    removeQuestion: (id, questionId) => request('DELETE', `/assessments/${id}/questions/${questionId}`),
   },
 
   questions: {
@@ -70,7 +97,10 @@ export const api = {
 
   admin: {
     stats: () => request('GET', '/admin/stats'),
-    analytics: () => request('GET', '/admin/analytics'),
+    analytics: (params = {}) => {
+      const qs = new URLSearchParams(params).toString();
+      return request('GET', `/admin/analytics${qs ? '?' + qs : ''}`);
+    },
     reports: () => request('GET', '/admin/reports'),
   },
 
@@ -78,3 +108,5 @@ export const api = {
   saveToken: (token) => localStorage.setItem('rsj_token', token),
   clearToken: () => localStorage.removeItem('rsj_token'),
 };
+
+export default api;
