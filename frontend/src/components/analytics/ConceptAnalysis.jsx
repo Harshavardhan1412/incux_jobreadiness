@@ -11,6 +11,7 @@ export default function ConceptAnalysis({ student }) {
     { key: 'reasoning', label: 'Reasoning', color: COLORS.reasoning },
     { key: 'technical', label: 'Technical', color: COLORS.technical },
     { key: 'verbal', fallbackKey: 'english', label: 'Verbal', color: COLORS.verbal || COLORS.english },
+    { key: 'coding', label: 'Coding', color: COLORS.coding || '#6366F1' },
   ];
 
   const allTopics = [];
@@ -58,7 +59,7 @@ export default function ConceptAnalysis({ student }) {
             },
             {
               label: 'Target (80%)',
-              data: [80, 80, 80, 80],
+              data: categories.map(() => 80),
               color: '#EF4444',
               filled: false,
             },

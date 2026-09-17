@@ -22,6 +22,7 @@ export default function ImprovementRoadmap({ student }) {
     { key: 'reasoning', label: 'Reasoning' },
     { key: 'technical', label: 'Technical' },
     { key: 'verbal', fallbackKey: 'english', label: 'Verbal' },
+    { key: 'coding', label: 'Coding' },
   ];
   const currentPercents = categoryKeys.map((c) => {
     const cat = latestAttempt.categories?.[c.key] || (c.fallbackKey ? latestAttempt.categories?.[c.fallbackKey] : null);

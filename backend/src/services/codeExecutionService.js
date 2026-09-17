@@ -85,19 +85,76 @@ export const normalizeLanguage = (lang) => {
   return l;
 };
 
-export const isLanguageSupported = (lang) => {
-  const normalized = normalizeLanguage(lang);
-  return Boolean(LANGUAGE_CONFIG[normalized]);
+let detectedPythonCmd = null;
+let detectedCppCmd = null;
+
+export const getPythonCommand = async () => {
+  if (detectedPythonCmd) return detectedPythonCmd;
+
+  const candidates = process.platform === 'win32'
+    ? ['python', 'py', 'python3']
+    : ['python3', 'python', 'py'];
+
+  for (const cmd of candidates) {
+    const works = await new Promise((resolve) => {
+      try {
+        const p = spawn(cmd, ['--version'], { windowsHide: true });
+        let out = '';
+        let errOut = '';
+        p.stdout?.on('data', d => out += d);
+        p.stderr?.on('data', d => errOut += d);
+        p.on('error', () => resolve(false));
+        p.on('close', code => {
+          const combined = (out + ' ' + errOut).toLowerCase();
+          // Filter out Microsoft Store alias dummy executables
+          if (code === 0 && !combined.includes('not found') && !combined.includes('microsoft store')) {
+            resolve(true);
+          } else {
+            resolve(false);
+          }
+        });
+      } catch (e) {
+        resolve(false);
+      }
+    });
+
+    if (works) {
+      detectedPythonCmd = cmd;
+      console.log(`[CodeExecution] Detected Python command: '${cmd}'`);
+      return cmd;
+    }
+  }
+
+  return process.platform === 'win32' ? 'python' : 'python3';
 };
 
-/**
- * Caps output length to prevent runaway prints from crashing the browser or network
- */
-const truncateOutput = (str) => {
-  if (typeof str !== 'string') return '';
-  if (str.length <= MAX_OUTPUT_LENGTH) return str;
-  return str.slice(0, MAX_OUTPUT_LENGTH) + '\n... [Output truncated to 10,000 characters]';
+export const getCppCommand = async () => {
+  if (detectedCppCmd) return detectedCppCmd;
+  const candidates = ['g++', 'clang++'];
+  for (const cmd of candidates) {
+    const works = await new Promise((resolve) => {
+      try {
+        const p = spawn(cmd, ['--version'], { windowsHide: true });
+        p.on('error', () => resolve(false));
+        p.on('close', code => resolve(code === 0));
+      } catch (e) {
+        resolve(false);
+      }
+    });
+    if (works) {
+      detectedCppCmd = cmd;
+      return cmd;
+    }
+  }
+  return 'g++';
 };
+
+const spawnProcess = (cmd, args, stdin = '', cwd, timeoutMs = 4000) => {
+  return new Promise((resolve) => {
+    const startTime = Date.now();
+    let stdout = '';
+    let stderr = '';
+    let timedOut = false;
 
 /**
  * Normalizes Java source code so it conforms to standard Main class expectations
@@ -214,81 +271,71 @@ const executeViaJudge0 = async ({ langConfig, sourceCode, stdin, timeoutMs }) =>
 const executeViaPiston = async ({ langConfig, sourceCode, stdin, timeoutMs }) => {
   const pistonBaseUrl = process.env.PISTON_URL || 'http://localhost:2000';
 
-  const controller = new AbortController();
-  const abortTimer = setTimeout(() => controller.abort(), timeoutMs + 3000);
+    proc.on('close', (code, signal) => {
+      clearTimeout(timer);
+      const executionTimeMs = Date.now() - startTime;
+      const combined = (stdout + ' ' + stderr).toLowerCase();
 
-  const finalSource = langConfig.id === 'java' ? normalizeJavaCode(sourceCode) : sourceCode;
+      // Check for Windows App Execution Alias "Python was not found"
+      if (combined.includes('python was not found') || combined.includes('microsoft store')) {
+        resolve({
+          status: 'Compiler / Runtime Missing',
+          exitCode: 1,
+          stdout: '',
+          stderr: 'Python is not installed or not in system PATH on this machine.\nFix: Install Python from https://www.python.org/downloads/ (check "Add python.exe to PATH"), or disable Windows Store aliases in Settings > Manage App Execution Aliases.',
+          timeMs: executionTimeMs
+        });
+        return;
+      }
 
-  try {
-    const response = await fetch(`${pistonBaseUrl}/api/v2/execute`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        language: langConfig.pistonLang,
-        version: langConfig.pistonVersion,
-        files: [{ name: langConfig.fileName, content: finalSource }],
-        stdin: stdin || '',
-        run_timeout: timeoutMs,
-        compile_timeout: 10000
-      }),
-      signal: controller.signal
+      if (timedOut || signal === 'SIGTERM' || signal === 'SIGKILL' || code === 124) {
+        resolve({
+          status: 'Time Limit Exceeded',
+          exitCode: 124,
+          stdout: stdout.trim(),
+          stderr: 'Time Limit Exceeded (Execution exceeded ' + (timeoutMs / 1000) + 's)',
+          timeMs: executionTimeMs
+        });
+      } else if (code === 0) {
+        resolve({
+          status: 'Success',
+          exitCode: 0,
+          stdout: stdout.trim(),
+          stderr: stderr.trim(),
+          timeMs: executionTimeMs
+        });
+      } else {
+        resolve({
+          status: 'Runtime Error',
+          exitCode: code,
+          stdout: stdout.trim(),
+          stderr: stderr.trim() || `Process exited with error code ${code}`,
+          timeMs: executionTimeMs
+        });
+      }
     });
 
-    clearTimeout(abortTimer);
-
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => '');
-      throw new Error(`Piston HTTP ${response.status}: ${errorText || response.statusText}`);
-    }
-
-    const data = await response.json();
-    const run = data.run || {};
-    const compile = data.compile || {};
-
-    if (compile.code && compile.code !== 0) {
-      return {
-        status: 'Compilation Error',
-        exitCode: compile.code,
+    proc.on('error', (err) => {
+      clearTimeout(timer);
+      let errMsg = err.message;
+      if (err.code === 'ENOENT') {
+        if (cmd.includes('python') || cmd === 'py') {
+          errMsg = `Python is not installed or not found in system PATH on this machine.\nFix:\n• Windows: Install Python from https://www.python.org/downloads/ (ensure "Add python.exe to PATH" is checked).\n• Linux (Ubuntu/Debian): Run 'sudo apt update && sudo apt install -y python3'.\n• macOS: Run 'brew install python3'.`;
+        } else if (cmd.includes('g++') || cmd.includes('clang++')) {
+          errMsg = `C++ compiler (g++) is not installed or not in system PATH on this machine.\nFix:\n• Windows: Install MinGW-w64 or MSYS2.\n• Linux: Run 'sudo apt install -y g++ build-essential'.\n• macOS: Run 'xcode-select --install'.`;
+        } else if (cmd.includes('javac') || cmd.includes('java')) {
+          errMsg = `Java Development Kit (JDK) is not installed or not in system PATH on this machine.\nFix:\n• Windows: Install OpenJDK (Eclipse Temurin 21).\n• Linux: Run 'sudo apt install -y default-jdk'.\n• macOS: Run 'brew install openjdk'.`;
+        }
+      }
+      resolve({
+        status: 'Compiler / Runtime Missing',
+        exitCode: 1,
         stdout: '',
-        stderr: truncateOutput(compile.stderr || compile.output || 'Compilation Error'),
-        executionTimeMs: 0,
-        timeMs: 0,
-        timedOut: false
-      };
-    }
-
-    const timedOut = run.signal === 'SIGKILL' || run.signal === 'SIGTERM';
-    let status = 'Success';
-    if (timedOut) {
-      status = 'Time Limit Exceeded';
-    } else if (run.code !== 0) {
-      status = 'Runtime Error';
-    }
-
-    return {
-      status,
-      exitCode: run.code || (timedOut ? 124 : 0),
-      stdout: truncateOutput(run.stdout || run.output || ''),
-      stderr: truncateOutput(run.stderr || (timedOut ? 'Time Limit Exceeded' : '')),
-      executionTimeMs: run.time || 0,
-      timeMs: run.time || 0,
-      timedOut
-    };
-  } catch (err) {
-    clearTimeout(abortTimer);
-    if (err.name === 'AbortError') {
-      return {
-        status: 'Time Limit Exceeded',
-        exitCode: 124,
-        stdout: '',
-        stderr: `Time Limit Exceeded (Execution timed out after ${timeoutMs / 1000}s)`,
-        executionTimeMs: timeoutMs,
-        timeMs: timeoutMs,
-        timedOut: true
-      };
-    }
-    throw err;
-  }
+        stderr: errMsg,
+        timeMs: Date.now() - startTime
+      });
+    });
+  });
 };
 
 /**
@@ -321,8 +368,17 @@ export const executeSingleCode = async ({
   const usePiston = executor === 'piston' || Boolean(process.env.PISTON_URL);
 
   try {
-    if (usePiston) {
-      return await executeViaPiston({ langConfig, sourceCode, stdin, timeoutMs });
+    if (lang === 'python') {
+      const pythonCmd = await getPythonCommand();
+      const filePath = path.join(tmpDir, 'solution.py');
+      await fs.writeFile(filePath, sourceCode, 'utf-8');
+      return await spawnProcess(pythonCmd, [filePath], stdin, tmpDir, timeoutMs);
+    }
+
+    if (lang === 'javascript') {
+      const filePath = path.join(tmpDir, 'solution.js');
+      await fs.writeFile(filePath, sourceCode, 'utf-8');
+      return await spawnProcess('node', [filePath], stdin, tmpDir, timeoutMs);
     }
     return await executeViaJudge0({ langConfig, sourceCode, stdin, timeoutMs });
   } catch (err) {

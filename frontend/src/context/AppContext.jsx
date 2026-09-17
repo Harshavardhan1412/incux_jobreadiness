@@ -8,6 +8,7 @@ import {
   INITIAL_ADMIN_KPIS,
   INITIAL_RECOMMENDATIONS
 } from '../data/mockData';
+import { isCodingQuestion } from '../utils/questionUtils';
 
 const AppContext = createContext();
 
@@ -653,22 +654,36 @@ export const AppProvider = ({ children }) => {
     // Get questions matching assessment category
     const cat = (asm.category || 'Technical').trim();
     const isAllMix = ['All', 'Full Length', 'All Mix (Combined)', 'All Mix'].some(m => m.toLowerCase() === cat.toLowerCase());
+    const isCodingCat = cat.toLowerCase() === 'coding';
 
     let availableQuestions = [];
-    if (isAllMix) {
-      availableQuestions = cleanQuestionBank;
+    if (isCodingCat) {
+      availableQuestions = cleanQuestionBank.filter(isCodingQuestion);
+    } else if (isAllMix) {
+      // All Mix: strictly non-coding objective MCQs across all 4 pillars
+      availableQuestions = cleanQuestionBank.filter(q => !isCodingQuestion(q));
     } else {
-      availableQuestions = cleanQuestionBank.filter(q => q.category && q.category.trim().toLowerCase() === cat.toLowerCase());
+      // Sectional MCQ assessment: strictly only questions matching this category and NOT coding
+      availableQuestions = cleanQuestionBank.filter(q => q.category && q.category.trim().toLowerCase() === cat.toLowerCase() && !isCodingQuestion(q));
     }
 
     if (availableQuestions.length === 0) {
-      availableQuestions = cleanQuestionBank;
+      availableQuestions = isCodingCat
+        ? cleanQuestionBank.filter(isCodingQuestion)
+        : cleanQuestionBank.filter(q => !isCodingQuestion(q));
     }
 
     let selectedQList = [];
     if (asm.selectedQuestionIds && asm.selectedQuestionIds.length > 0) {
       const idSet = new Set(asm.selectedQuestionIds);
       selectedQList = cleanQuestionBank.filter(q => idSet.has(q.id));
+      // Strictly enforce track isolation on pre-selected question IDs
+      if (isCodingCat) {
+        selectedQList = selectedQList.filter(isCodingQuestion);
+      } else {
+        // Both Sectional and All Mix strictly exclude coding questions
+        selectedQList = selectedQList.filter(q => !isCodingQuestion(q));
+      }
     }
 
     if (selectedQList.length === 0 && availableQuestions.length > 0) {
@@ -683,12 +698,12 @@ export const AppProvider = ({ children }) => {
         const perCat = Math.max(1, Math.floor(targetCount / categories.length));
         const mixPool = [];
         categories.forEach(c => {
-          const list = cleanQuestionBank.filter(q => q.category && q.category.trim().toLowerCase() === c.toLowerCase());
+          const list = cleanQuestionBank.filter(q => q.category && q.category.trim().toLowerCase() === c.toLowerCase() && !isCodingQuestion(q));
           const shuffled = [...list].sort(() => 0.5 - Math.random());
           mixPool.push(...shuffled.slice(0, perCat));
         });
         if (mixPool.length < targetCount) {
-          const rem = cleanQuestionBank.filter(q => !mixPool.some(m => m.id === q.id));
+          const rem = cleanQuestionBank.filter(q => !mixPool.some(m => m.id === q.id) && !isCodingQuestion(q));
           const shuffledRem = [...rem].sort(() => 0.5 - Math.random());
           mixPool.push(...shuffledRem.slice(0, targetCount - mixPool.length));
         }
@@ -940,14 +955,19 @@ export const AppProvider = ({ children }) => {
         assessment_id: targetAsmId,
         assessmentId: targetAsmId,
         status: 'Completed',
-        score: submissionRes.data?.submission?.score ?? 0,
+        score: submissionRes.data?.submission?.score ?? calculatedScore ?? 0,
         created_at: new Date().toISOString()
       };
       setCandidateSubmissions(prev => [
         existingSub,
         ...prev.filter(s => String(s.assessment_id || s.assessmentId || '').trim().toLowerCase() !== String(targetAsmId).trim().toLowerCase())
       ]);
-      addToast(submissionRes.error || 'You have already completed this assessment. Candidates can write each exam only once.', 'warning');
+      setActiveAssessment(null);
+      setAssessmentAnswers({});
+      setCurrentQuestionIndex(0);
+      setMarkedForReview([]);
+      stopMediaStream();
+      addToast(submissionRes.error || 'This assessment has already been submitted and recorded.', 'info');
       navigateTo('candidate-analytics');
       return;
     }
@@ -1031,6 +1051,7 @@ export const AppProvider = ({ children }) => {
         reasoningScore: categoryScores.reasoning ?? prev.reasoningScore ?? 0,
         technicalScore: categoryScores.technical ?? prev.technicalScore ?? calculatedScore,
         verbalScore: categoryScores.verbal ?? prev.verbalScore ?? 0,
+        codingScore: categoryScores.coding ?? prev.codingScore ?? 0,
         assessmentStatus: 'Completed',
         assessmentsCompleted: (prev.assessmentsCompleted || 0) + 1
       };
@@ -1089,6 +1110,7 @@ export const AppProvider = ({ children }) => {
     });
 
     // Mark assessment completed
+    const currentAsmId = activeAssessment?.id || 'asm-1';
     if (activeAssessment) {
       setAssessments(prev => {
         const updated = prev.map(a => a.id === activeAssessment.id ? {
@@ -1103,6 +1125,24 @@ export const AppProvider = ({ children }) => {
       });
     }
 
+    // Ensure candidateSubmissions has this assessment marked Completed
+    setCandidateSubmissions(prev => {
+      const exists = prev.some(s => String(s.assessment_id || s.assessmentId || '').trim().toLowerCase() === String(currentAsmId).trim().toLowerCase());
+      if (!exists) {
+        return [
+          {
+            assessment_id: currentAsmId,
+            assessmentId: currentAsmId,
+            status: 'Completed',
+            score: calculatedScore,
+            created_at: new Date().toISOString()
+          },
+          ...prev
+        ];
+      }
+      return prev.map(s => String(s.assessment_id || s.assessmentId || '').trim().toLowerCase() === String(currentAsmId).trim().toLowerCase() ? { ...s, status: 'Completed', score: calculatedScore } : s);
+    });
+
     if (typeof document !== 'undefined' && (document.fullscreenElement || document.webkitFullscreenElement)) {
       try {
         if (document.exitFullscreen) {
@@ -1113,7 +1153,13 @@ export const AppProvider = ({ children }) => {
       } catch (e) {}
     }
 
+    // CLOSE EXAM SESSION COMPLETELY
+    setActiveAssessment(null);
+    setAssessmentAnswers({});
+    setCurrentQuestionIndex(0);
+    setMarkedForReview([]);
     stopMediaStream();
+
     addToast('Assessment submitted successfully! Score calculated.', 'success');
     setCurrentView('candidate-analytics');
     try {
@@ -1311,6 +1357,7 @@ export const AppProvider = ({ children }) => {
           reasoningScore: Number(c.reasoning_score ?? 0),
           technicalScore: Number(c.technical_score ?? 0),
           verbalScore: Number(c.verbal_score ?? 0),
+          codingScore: Number(c.coding_score ?? 0),
           assessmentsCompleted: Number(c.assessments_completed ?? 0)
         }));
 
@@ -1458,6 +1505,7 @@ export const AppProvider = ({ children }) => {
               reasoningScore: Number(c.reasoning_score ?? 0),
               technicalScore: Number(c.technical_score ?? 0),
               verbalScore: Number(c.verbal_score ?? 0),
+              codingScore: Number(c.coding_score ?? 0),
               assessmentsCompleted: Number(c.assessments_completed ?? 0)
             }));
             setCandidatesList(dbCandidates);

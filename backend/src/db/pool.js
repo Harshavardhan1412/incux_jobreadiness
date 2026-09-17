@@ -25,8 +25,15 @@ export const pool = new Pool({
 });
 
 if (pool) {
-  pool.on('error', (err) => {
-    console.error('PostgreSQL pool error:', err.message);
+  pool.on('error', (err, client) => {
+    console.error('PostgreSQL idle client error (handled):', err.message);
+  });
+
+  // Attach error listener to every newly created client to intercept unexpected socket termination
+  pool.on('connect', (client) => {
+    client.on('error', (err) => {
+      console.error('PostgreSQL client connection error (handled):', err.message);
+    });
   });
 } else {
   console.warn('⚠️  DATABASE_URL is not set in backend/.env. Database features will run in mock mode.');

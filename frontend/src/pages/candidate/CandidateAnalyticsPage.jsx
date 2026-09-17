@@ -20,7 +20,8 @@ import {
   TrendingUp,
   Layers,
   BookOpen,
-  Download
+  Download,
+  Code2
 } from 'lucide-react';
 
 export default function CandidateAnalyticsPage() {
@@ -70,6 +71,7 @@ export default function CandidateAnalyticsPage() {
           reasoning: Number(currentUser?.reasoningScore ?? 0),
           technical: Number(currentUser?.technicalScore ?? 0),
           verbal: Number(currentUser?.verbalScore ?? 0),
+          coding: Number(currentUser?.codingScore ?? 0),
         },
       };
     }
@@ -93,6 +95,7 @@ export default function CandidateAnalyticsPage() {
       technical: [],
       verbal: [],
       english: [],
+      coding: [],
     };
 
     topics.forEach((t) => {
@@ -106,7 +109,9 @@ export default function CandidateAnalyticsPage() {
         totalQuestions: t.totalQuestions ?? 0,
       };
 
-      if (catKey.includes('apt') || catKey.includes('quant') || catKey.includes('math')) {
+      if (catKey.includes('code') || catKey.includes('prog')) {
+        categorizedTopics.coding.push(topicItem);
+      } else if (catKey.includes('apt') || catKey.includes('quant') || catKey.includes('math')) {
         categorizedTopics.aptitude.push(topicItem);
       } else if (catKey.includes('reason') || catKey.includes('logic')) {
         categorizedTopics.reasoning.push(topicItem);
@@ -158,6 +163,7 @@ export default function CandidateAnalyticsPage() {
       technical: buildCategory('technical', fallbackAttempts.technical || { score: 0, maxScore: 25, topics: [] }),
       english: buildCategory('english', fallbackAttempts.english || { score: 0, maxScore: 25, topics: [] }),
       verbal: buildCategory('verbal', fallbackAttempts.english || { score: 0, maxScore: 25, topics: [] }),
+      coding: buildCategory('coding', fallbackAttempts.coding || { score: 0, maxScore: 25, topics: [] }),
     };
 
     const currentAttempt = {
@@ -185,6 +191,7 @@ export default function CandidateAnalyticsPage() {
         reasoning: Number(catScores.reasoning ?? currentUser?.reasoningScore ?? 0),
         technical: Number(catScores.technical ?? currentUser?.technicalScore ?? 0),
         verbal: Number(catScores.verbal ?? catScores.english ?? currentUser?.verbalScore ?? 0),
+        coding: Number(catScores.coding ?? currentUser?.codingScore ?? 0),
       },
       percentile,
       rank,
@@ -414,6 +421,20 @@ export default function CandidateAnalyticsPage() {
                     </div>
                     <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
                       <div className="bg-purple-500 h-full rounded-full transition-all duration-500" style={{ width: `${latestResult.categoryScores?.verbal ?? latestResult.categoryScores?.english ?? 0}%` }} />
+                    </div>
+                  </div>
+
+                  {/* Coding */}
+                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 space-y-1">
+                    <div className="flex items-center justify-between text-xs font-bold">
+                      <span className="text-slate-800 flex items-center gap-1.5">
+                        <Code2 className="w-3.5 h-3.5 text-indigo-500" />
+                        <span>Coding</span>
+                      </span>
+                      <span className="text-indigo-600">{latestResult.categoryScores?.coding ?? currentUser?.codingScore ?? 0}%</span>
+                    </div>
+                    <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
+                      <div className="bg-indigo-500 h-full rounded-full transition-all duration-500" style={{ width: `${latestResult.categoryScores?.coding ?? currentUser?.codingScore ?? 0}%` }} />
                     </div>
                   </div>
                 </div>

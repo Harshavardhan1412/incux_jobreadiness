@@ -3,8 +3,8 @@ import { FilesetResolver, FaceLandmarker } from '@mediapipe/tasks-vision';
 // Configurable proctoring thresholds
 export const YAW_THRESHOLD = 25;    // Max degrees turn left/right before 'looking_away'
 export const PITCH_THRESHOLD = 20;  // Max degrees tilt up/down before 'looking_away'
-export const GRACE_PERIOD_MS = 3000; // Continuous violation duration before firing strike (3 seconds)
-export const DETECTION_INTERVAL_MS = 1200; // Interval between frames (1.2 seconds)
+export const GRACE_PERIOD_MS = 1000; // Continuous violation duration before firing strike (1 second)
+export const DETECTION_INTERVAL_MS = 500; // Interval between frames (0.5 seconds for responsive 1s grace evaluation)
 export const MAX_ALLOWED_STRIKES = 3; // 3 warnings before auto-submission
 
 // Eye gaze diversion thresholds (normalized 0.0 - 1.0 blendshape scores)

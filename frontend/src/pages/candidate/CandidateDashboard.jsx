@@ -216,7 +216,7 @@ export const CandidateDashboard = () => {
           </div>
 
           {/* Subscore Breakdown */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-4 border-t border-slate-100 text-center">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 pt-4 border-t border-slate-100 text-center">
             <div className="p-2 bg-slate-50 rounded-xl border border-slate-100">
               <span className="text-[10px] font-semibold text-slate-600 block uppercase">Aptitude</span>
               <span className="text-base font-extrabold text-slate-900">{currentUser?.aptitudeScore ?? 0}%</span>
@@ -246,6 +246,14 @@ export const CandidateDashboard = () => {
               <span className="text-base font-extrabold text-slate-900">{currentUser?.verbalScore ?? 0}%</span>
               <div className="w-full bg-slate-200 h-1 rounded-full mt-1.5 overflow-hidden">
                 <div className="bg-amber-500 h-full rounded-full" style={{ width: `${currentUser?.verbalScore ?? 0}%` }} />
+              </div>
+            </div>
+
+            <div className="p-2 bg-slate-50 rounded-xl border border-slate-100 col-span-2 sm:col-span-1">
+              <span className="text-[10px] font-semibold text-slate-600 block uppercase">Coding</span>
+              <span className="text-base font-extrabold text-slate-900">{currentUser?.codingScore ?? 0}%</span>
+              <div className="w-full bg-slate-200 h-1 rounded-full mt-1.5 overflow-hidden">
+                <div className="bg-indigo-500 h-full rounded-full" style={{ width: `${currentUser?.codingScore ?? 0}%` }} />
               </div>
             </div>
           </div>
@@ -460,7 +468,8 @@ export const CandidateDashboard = () => {
             aptitude: currentUser?.aptitudeScore ?? 82,
             reasoning: currentUser?.reasoningScore ?? 74,
             technical: currentUser?.technicalScore ?? 78,
-            verbal: currentUser?.verbalScore ?? 78
+            verbal: currentUser?.verbalScore ?? 78,
+            coding: currentUser?.codingScore ?? 78
           }
         }}
         addToast={addToast}

@@ -33,7 +33,8 @@ import {
   UserX,
   Users,
   RefreshCw,
-  AlertTriangle
+  AlertTriangle,
+  Lock
 } from 'lucide-react';
 
 export const AssessmentPage = () => {
@@ -94,6 +95,11 @@ export const AssessmentPage = () => {
 
   // Single attempt guard on active assessment
   useEffect(() => {
+    if (!activeAssessment) {
+      exitExamFullscreenAndStopMedia();
+      navigateTo('candidate-analytics');
+      return;
+    }
     if (activeAssessment?.id) {
       const userSub = (candidateSubmissions || []).find(s => String(s.assessment_id || s.assessmentId || '').trim().toLowerCase() === String(activeAssessment.id).trim().toLowerCase());
       if (userSub || isAssessmentCompleted?.(activeAssessment.id)) {
@@ -102,7 +108,7 @@ export const AssessmentPage = () => {
         navigateTo('candidate-analytics');
       }
     }
-  }, [activeAssessment?.id, isAssessmentCompleted, candidateSubmissions]);
+  }, [activeAssessment, isAssessmentCompleted, candidateSubmissions]);
 
   // Fullscreen Request Helper
   const requestExamFullscreen = () => {
@@ -163,6 +169,51 @@ export const AssessmentPage = () => {
     requestCamera();
   }, []);
 
+  // Helper to ensure any written coding solutions are authoritatively graded before submission
+  const evaluatePendingCodingAnswers = async (currentAnswers) => {
+    const questionsList = (activeAssessment?.questions && activeAssessment.questions.length > 0)
+      ? activeAssessment.questions
+      : questionBank;
+    let finalAnswers = { ...currentAnswers };
+    const codingQuestions = (questionsList || []).filter(q => q.type === 'Coding');
+
+    for (const cq of codingQuestions) {
+      const userAns = finalAnswers[cq.id];
+      if (userAns && userAns.code && (userAns.score === undefined || userAns.score === null || userAns.passedTests === undefined)) {
+        try {
+          let baseTestCases = [];
+          if (cq.test_cases) {
+            baseTestCases = typeof cq.test_cases === 'string' ? JSON.parse(cq.test_cases) : cq.test_cases;
+          }
+          const evalRes = await api.post('/api/code/submit', {
+            questionId: cq.id,
+            question_id: cq.question_id,
+            assessmentQuestionId: cq.id,
+            language: userAns.language || cq.language || 'python',
+            sourceCode: userAns.code,
+            testCases: baseTestCases
+          });
+          if (evalRes && evalRes.success && evalRes.evaluation) {
+            finalAnswers[cq.id] = {
+              ...userAns,
+              score: evalRes.evaluation.score,
+              passedTests: evalRes.evaluation.passedTests,
+              totalTests: evalRes.evaluation.totalTests,
+              samplePassed: evalRes.summary?.samplePassed ?? evalRes.evaluation.testResults?.filter(t => !t.isHidden && t.passed).length ?? 0,
+              sampleTotal: evalRes.summary?.sampleTotal ?? evalRes.evaluation.testResults?.filter(t => !t.isHidden).length ?? 0,
+              hiddenPassed: evalRes.summary?.hiddenPassed ?? evalRes.evaluation.testResults?.filter(t => t.isHidden && t.passed).length ?? 0,
+              hiddenTotal: evalRes.summary?.hiddenTotal ?? evalRes.evaluation.testResults?.filter(t => t.isHidden).length ?? 0,
+              verdict: evalRes.evaluation.verdict
+            };
+          }
+        } catch (err) {
+          console.warn('Auto-evaluation of coding question skipped/failed:', err);
+        }
+      }
+    }
+    return finalAnswers;
+  };
+
   const handleAutoSubmit = async (reason) => {
     if (isSubmittedRef.current || isSubmitting) return;
     isSubmittedRef.current = true;
@@ -179,9 +230,10 @@ export const AssessmentPage = () => {
     exitExamFullscreenAndStopMedia();
 
     try {
+      const finalAnswers = await evaluatePendingCodingAnswers(assessmentAnswers);
       const durationSec = (activeAssessment?.durationMinutes * 60 || 1800) - timeRemainingSeconds;
       const timeSpentMin = Math.max(1, Math.round(durationSec / 60));
-      const res = await submitAssessment(assessmentAnswers, timeSpentMin, {
+      const res = await submitAssessment(finalAnswers, timeSpentMin, {
         proctoringViolations: violationCountRef.current,
         autoSubmitted: true,
         autoSubmitReason: reason || 'proctoring_violations'
@@ -214,9 +266,10 @@ export const AssessmentPage = () => {
     }
 
     try {
+      const finalAnswers = await evaluatePendingCodingAnswers(assessmentAnswers);
       const durationSec = (activeAssessment?.durationMinutes * 60 || 1800) - timeRemainingSeconds;
       const timeSpentMin = Math.max(1, Math.round(durationSec / 60));
-      const res = await submitAssessment(assessmentAnswers, timeSpentMin, {
+      const res = await submitAssessment(finalAnswers, timeSpentMin, {
         proctoringViolations: violationCountRef.current,
         autoSubmitted: false,
         autoSubmitReason: null
@@ -566,6 +619,7 @@ export const AssessmentPage = () => {
                 question={currentQuestion}
                 savedAnswer={assessmentAnswers[currentQuestion?.id]}
                 onSaveAnswer={(ans) => setAssessmentAnswers(prev => ({ ...prev, [currentQuestion?.id]: ans }))}
+                onSubmitAssessment={() => setShowSubmitModal(true)}
                 addToast={addToast}
               />
             ) : (
@@ -680,9 +734,30 @@ export const AssessmentPage = () => {
                   Clear Selection
                 </button>
               ) : (
-                <span className="text-xs font-semibold text-slate-400">
-                  {assessmentAnswers[currentQuestion?.id]?.code ? 'Code Solution Saved' : 'Write & Test Code'}
-                </span>
+                (() => {
+                  const ans = assessmentAnswers[currentQuestion?.id];
+                  if (!ans?.code) {
+                    return <span className="text-xs font-semibold text-slate-400">Write &amp; Test Code</span>;
+                  }
+                  return (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                        <span>Submitted ({ans.passedTests ?? 0}/{ans.totalTests ?? 0} Total)</span>
+                      </span>
+                      {ans.hiddenTotal !== undefined && (
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-bold ${
+                          (ans.hiddenPassed ?? 0) === (ans.hiddenTotal ?? 0)
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            : 'bg-amber-50 text-amber-700 border-amber-200'
+                        }`}>
+                          <Lock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                          <span>Hidden: {ans.hiddenPassed ?? 0}/{ans.hiddenTotal ?? 0} Passed</span>
+                        </span>
+                      )}
+                    </div>
+                  );
+                })()
               )}
 
               <button
