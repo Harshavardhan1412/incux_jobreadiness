@@ -53,16 +53,20 @@ app.use(cors({
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// ─── Security: Defensive Rate Limiting (DoS & Brute-Force Protection) ───────
+const isDev = process.env.NODE_ENV !== 'production';
+
+// ─── Security: Defensive Rate Limiting (Campus NAT & DoS Protection) ────────
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 600,
+  max: isDev ? 20000 : 5000, // Supports 150-500 students sharing the same college NAT IP
   standardHeaders: true,
   legacyHeaders: false,
-  message: { success: false, error: 'Too many requests. Please slow down and try again later.' }
+  message: { success: false, error: 'Too many requests. Please slow down and try again later.' },
+  keyGenerator: (req) => {
+    // Key by candidate / user token when available, falling back to IP
+    return req.headers['authorization'] || req.headers['x-candidate-id'] || req.body?.candidateId || req.ip;
+  }
 });
-
-const isDev = process.env.NODE_ENV !== 'production';
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,

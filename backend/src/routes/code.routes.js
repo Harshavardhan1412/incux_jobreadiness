@@ -107,7 +107,7 @@ const lastExecutionTimes = new Map();
 const executionAuditLogs = []; // In-memory telemetry log for run attempts
 
 const getClientKey = (req) => {
-  const candId = req.user?.id || req.body?.candidateId || req.body?.attemptId;
+  const candId = req.user?.id || req.body?.candidateId || req.body?.attemptId || req.body?.clientKey;
   if (candId) return String(candId);
   return req.ip || req.headers['x-forwarded-for'] || 'anonymous';
 };
