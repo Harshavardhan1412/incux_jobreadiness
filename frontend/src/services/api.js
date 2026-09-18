@@ -1,17 +1,17 @@
-// Client-side API service — connects React frontend to Express/PostgreSQL backend
+// Client-side API service â€” connects React frontend to Express/PostgreSQL backend
 // Reads VITE_API_URL from frontend/.env (defaults to /api via Vite proxy in dev)
 
 const resolveBase = () => {
   const envUrl = import.meta.env.VITE_API_URL;
-  if (envUrl && !envUrl.startsWith("http://localhost") && !envUrl.startsWith("http://127.0.0.1")) {
-    return envUrl;
+  if (envUrl && !envUrl.startsWith('http://localhost') && !envUrl.startsWith('http://127.0.0.1')) {
+    return envUrl.replace(/\/+$/, '');
   }
   return "/api";
 };
 
 const BASE = resolveBase();
 
-// -- Token storage (in-memory only — survives page lifecycle, not tab re-open) --
+// -- Token storage (in-memory only â€” survives page lifecycle, not tab re-open) --
 // NOTE: memory storage is XSS-safe (no JS access from other scripts).
 // The refresh token lives in an HttpOnly cookie and is sent automatically.
 let _memoryToken = localStorage.getItem("rsj_token"); // seed from localStorage on load
@@ -25,33 +25,14 @@ const authHeaders = () => ({
   ...(getToken() ? { Authorization: "Bearer " + getToken() } : {}),
 });
 
-// -- Silent token refresh --
-let _refreshPromise = null;
-
-const tryRefresh = async () => {
-  if (_refreshPromise) return _refreshPromise;
-  _refreshPromise = fetch(BASE + "/auth/refresh", {
-    method: "POST",
-    credentials: "include", // sends HttpOnly refresh cookie
-  })
-    .then((r) => r.json())
-    .then((data) => {
-      if (data.success && data.token) {
-        saveMemToken(data.token);
-        localStorage.setItem("rsj_token", data.token);
-        return data.token;
-      }
-      throw new Error("Refresh failed");
-    })
-    .finally(() => { _refreshPromise = null; });
-  return _refreshPromise;
-};
-
-// -- Core request function with automatic token refresh on 401 --
-async function request(method, path, body, _retry = false) {
-  const cleanPath = path.startsWith("/api/") ? path.slice(4) : (path.startsWith("/") ? path : "/" + path);
+async function request(method, path, body) {
+  let cleanPath = path.startsWith('/') ? path : `/${path}`;
+  if (BASE.endsWith('/api') && cleanPath.startsWith('/api/')) {
+    cleanPath = cleanPath.slice(4);
+  }
+  const url = `${BASE}${cleanPath}`;
   try {
-    const res = await fetch(BASE + cleanPath, {
+    const res = await fetch(url, {
       method,
       headers: authHeaders(),
       credentials: "include", // always include cookies for refresh token
@@ -64,7 +45,7 @@ async function request(method, path, body, _retry = false) {
         await tryRefresh();
         return request(method, path, body, true);
       } catch {
-        // Refresh failed — clear everything and let caller handle 401
+        // Refresh failed â€” clear everything and let caller handle 401
         api.clearToken();
       }
     }
@@ -96,9 +77,102 @@ export const api = {
   delete: (path)       => request("DELETE", path),
 
   code: {
-    run:          (body) => request("POST", "/code/run",       body),
-    submit:       (body) => request("POST", "/code/submit",    body),
-    getLanguages: ()     => request("GET",  "/code/languages"),
+    run: (body) => request('POST', '/code/run', body),
+    submit: async (body, onProgress) => {
+      const initRes = await request('POST', '/code/submit', body);
+      if (!initRes.ok) return initRes;
+      if (!initRes.queued || !initRes.jobId) return initRes; // Synchronous backward-compat fallback
+
+      const jobId = initRes.jobId;
+      return new Promise((resolve) => {
+        let eventSource = null;
+        let pollInterval = null;
+        let isResolved = false;
+
+        const cleanup = () => {
+          if (eventSource) {
+            eventSource.close();
+            eventSource = null;
+          }
+          if (pollInterval) {
+            clearInterval(pollInterval);
+            pollInterval = null;
+          }
+        };
+
+        const finish = (result) => {
+          if (isResolved) return;
+          isResolved = true;
+          cleanup();
+          resolve(result);
+        };
+
+        // Fallback poller
+        const startPolling = () => {
+          if (pollInterval || isResolved) return;
+          pollInterval = setInterval(async () => {
+            try {
+              const statusRes = await request('GET', `/code/submissions/${jobId}/status`);
+              if (statusRes.ok && statusRes.data) {
+                const job = statusRes.data;
+                if (onProgress && job.progress !== undefined) {
+                  onProgress({ status: job.status, progress: job.progress });
+                }
+                if (job.status === 'completed' && job.result) {
+                  finish({ ok: true, success: true, ...job.result, data: job.result });
+                } else if (job.status === 'failed') {
+                  finish({ ok: false, success: false, error: job.error || 'Evaluation failed' });
+                }
+              }
+            } catch (e) {}
+          }, 500);
+        };
+
+        // Try Server-Sent Events (SSE) stream
+        if (typeof EventSource !== 'undefined') {
+          try {
+            const streamUrl = `${BASE}/code/submissions/${jobId}/stream`;
+            eventSource = new EventSource(streamUrl);
+
+            eventSource.onmessage = (event) => {
+              try {
+                const data = JSON.parse(event.data);
+                if (onProgress && (data.progress !== undefined || data.status)) {
+                  onProgress(data);
+                }
+                if (data.status === 'completed' && data.result) {
+                  finish({ ok: true, success: true, ...data.result, data: data.result });
+                } else if (data.status === 'failed') {
+                  finish({ ok: false, success: false, error: data.error || 'Evaluation failed' });
+                }
+              } catch (err) {}
+            };
+
+            eventSource.onerror = () => {
+              // Switch to polling fallback if SSE connection encounters an issue
+              cleanup();
+              startPolling();
+            };
+          } catch (err) {
+            startPolling();
+          }
+        } else {
+          startPolling();
+        }
+
+        // Safety timeout (35 seconds)
+        setTimeout(() => {
+          if (!isResolved) {
+            finish({
+              ok: false,
+              success: false,
+              error: 'Submission evaluation timed out on client wait.'
+            });
+          }
+        }, 35000);
+      });
+    },
+    getLanguages: () => request('GET', '/code/languages'),
   },
 
   auth: {
