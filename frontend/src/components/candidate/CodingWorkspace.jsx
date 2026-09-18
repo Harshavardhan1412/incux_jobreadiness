@@ -137,6 +137,7 @@ export const CodingWorkspace = ({
   const [customTestCases, setCustomTestCases] = useState([]);
   const [isRunning, setIsRunning] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submissionProgress, setSubmissionProgress] = useState(null);
   const [runResults, setRunResults] = useState(null);
   const [showPostSubmitModal, setShowPostSubmitModal] = useState(false);
   const [submissionHistory, setSubmissionHistory] = useState(() => {
@@ -405,7 +406,11 @@ export const CodingWorkspace = ({
         testCases: baseTestCases
       };
 
-      const res = await api.code.submit(payload);
+      setSubmissionProgress({ step: 'queued', progress: 10, message: 'Submission queued for evaluation...' });
+
+      const res = await api.code.submit(payload, (prog) => {
+        setSubmissionProgress(prog);
+      });
 
       if (res.status === 429) {
         if (addToast) addToast(res.error || 'A submission or execution is already in progress. Please wait a moment.', 'warning');
@@ -490,6 +495,7 @@ export const CodingWorkspace = ({
       if (addToast) addToast(errMsg, err.status === 429 ? 'warning' : 'error');
     } finally {
       setIsSubmitting(false);
+      setSubmissionProgress(null);
     }
   };
 
@@ -1014,9 +1020,28 @@ export const CodingWorkspace = ({
               {consoleTab === 'results' && (
                 <div className="p-3.5 overflow-y-auto flex-1 space-y-3 text-xs">
                   {(isRunning || isSubmitting) && (
-                    <div className="py-8 text-center text-zinc-400 space-y-2">
+                    <div className="py-8 text-center text-zinc-400 space-y-3">
                       <div className="w-5 h-5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto" />
-                      <p>{isSubmitting ? 'Evaluating against authoritative test suite...' : 'Running solution on sandboxed compiler...'}</p>
+                      <p className="font-medium text-zinc-300">
+                        {isSubmitting
+                          ? (submissionProgress?.message || 'Evaluating against authoritative test suite...')
+                          : 'Running solution on sandboxed compiler...'}
+                      </p>
+                      {isSubmitting && submissionProgress && (
+                        <div className="max-w-xs mx-auto space-y-1.5">
+                          <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-emerald-500 rounded-full transition-all duration-300"
+                              style={{ width: `${Math.max(10, Math.min(100, submissionProgress.progress || 10))}%` }}
+                            />
+                          </div>
+                          {submissionProgress.totalTests > 0 && (
+                            <p className="text-[11px] text-zinc-500">
+                              Completed {submissionProgress.completedTests || 0} of {submissionProgress.totalTests} tests
+                            </p>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
 

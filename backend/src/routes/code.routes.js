@@ -6,6 +6,11 @@ import {
   isLanguageSupported,
   LANGUAGE_CONFIG
 } from '../services/codeExecutionService.js';
+import {
+  addSubmissionJob,
+  getSubmissionJob,
+  subscribeJobEvents
+} from '../queues/submissionQueue.js';
 import { pool } from '../db/pool.js';
 import { optionalAuthToken } from '../middleware/auth.js';
 
@@ -281,7 +286,7 @@ router.post('/run', optionalAuthToken, async (req, res) => {
   }
 });
 
-// POST /api/code/submit & POST /code/submit (Authoritative evaluation against question's test cases)
+// POST /api/code/submit & POST /code/submit (Asynchronous submission via BullMQ / Queue)
 router.post('/submit', optionalAuthToken, async (req, res) => {
   const clientKey = getClientKey(req);
 
@@ -308,108 +313,114 @@ router.post('/submit', optionalAuthToken, async (req, res) => {
     const secondaryId = question_id || questionId || assessmentQuestionId;
 
     if (!primaryId || !language || typeof sourceCode !== 'string') {
+      inFlightExecutions.delete(clientKey);
       return res.status(400).json({
         success: false,
         error: 'questionId, language, and sourceCode are required.'
       });
     }
 
-    // 1. Fetch authoritative test cases from questions table
-    let qRes = await pool.query(
-      `SELECT id, type, question, options, test_cases, marks, time_limit_sec
-       FROM questions
-       WHERE id = $1 OR id = $2`,
-      [primaryId, secondaryId]
-    );
-
-    let question = qRes.rows[0];
-
-    // 2. If not found directly, check assessment_questions table
-    if (!question) {
-      const aqRes = await pool.query(
-        `SELECT aq.id, aq.question_id, q.type, q.question, aq.options,
-                COALESCE(aq.test_cases, q.test_cases) as test_cases,
-                aq.marks, q.time_limit_sec
-         FROM assessment_questions aq
-         LEFT JOIN questions q ON aq.question_id = q.id
-         WHERE aq.id = $1 OR aq.question_id = $1 OR aq.id = $2 OR aq.question_id = $2`,
-        [primaryId, secondaryId]
-      );
-      if (aqRes.rows.length > 0) {
-        question = aqRes.rows[0];
-      }
-    }
-
-    let testCases = [];
-    let marksPerQuestion = 10;
-
-    if (question) {
-      marksPerQuestion = Number(question.marks) > 0 ? Number(question.marks) : 10;
-      if (Array.isArray(question.test_cases)) {
-        testCases = question.test_cases;
-      } else if (typeof question.test_cases === 'string') {
-        try { testCases = JSON.parse(question.test_cases); } catch (e) {}
-      } else if (Array.isArray(question.options) && question.type === 'Coding') {
-        testCases = question.options;
-      }
-    }
-
-    // 3. Fallback to client-provided test cases if database query yielded no test cases
-    if ((!testCases || testCases.length === 0) && Array.isArray(clientTestCases) && clientTestCases.length > 0) {
-      testCases = clientTestCases;
-    }
-
-    if (!testCases || testCases.length === 0) {
-      return res.status(400).json({
-        success: false,
-        error: 'No test cases configured for this coding challenge.'
-      });
-    }
-
-    // Execute solution code against all test cases in remote sandbox
-    const evaluation = await evaluateCodeAgainstTestCases({
+    // Enqueue submission job asynchronously (Stage 3 Scaling)
+    const job = await addSubmissionJob({
+      questionId: primaryId,
+      question_id: secondaryId,
+      assessmentQuestionId: req.body.assessmentQuestionId,
       language,
       sourceCode,
-      testCases,
-      includeHiddenDetails: false,
-      timeoutMs: 8000
+      testCases: clientTestCases,
+      clientKey
     });
 
-    const marks = marksPerQuestion;
-    const earnedMarks = Math.round((evaluation.score / 100) * marks);
-
-    const sampleTests = evaluation.testResults.filter(t => !t.isHidden);
-    const hiddenTests = evaluation.testResults.filter(t => t.isHidden);
-    const samplePassed = sampleTests.filter(t => t.passed).length;
-    const hiddenPassed = hiddenTests.filter(t => t.passed).length;
-
-    return res.json({
+    // Respond immediately with HTTP 202 Accepted to keep gateway threads completely free
+    return res.status(202).json({
       success: true,
-      questionId: primaryId,
-      language,
-      earnedMarks,
-      maxMarks: marks,
-      summary: {
-        totalTests: testCases.length,
-        passedTests: evaluation.passedTests,
-        sampleTotal: sampleTests.length,
-        samplePassed,
-        hiddenTotal: hiddenTests.length,
-        hiddenPassed,
-        allHiddenPassed: hiddenTests.length === 0 || hiddenPassed === hiddenTests.length
-      },
-      evaluation
+      queued: true,
+      jobId: job.id,
+      status: 'queued',
+      streamUrl: `/api/code/submissions/${job.id}/stream`,
+      statusUrl: `/api/code/submissions/${job.id}/status`,
+      message: 'Submission enqueued for asynchronous evaluation.'
     });
   } catch (err) {
-    console.error('Error submitting code:', err);
+    console.error('Error submitting code to queue:', err);
     return res.status(500).json({
       success: false,
-      error: 'Code execution service is temporarily unavailable — you can still write and submit your code, it will be evaluated shortly.'
+      error: 'Code execution queue is temporarily unavailable. Please retry.'
     });
   } finally {
     inFlightExecutions.delete(clientKey);
     lastExecutionTimes.set(clientKey, Date.now());
   }
+});
+
+// GET /api/code/submissions/:jobId/stream (Real-time SSE status streaming)
+router.get('/submissions/:jobId/stream', async (req, res) => {
+  const { jobId } = req.params;
+  const job = await getSubmissionJob(jobId);
+  if (!job) {
+    return res.status(404).json({ success: false, error: 'Submission job not found.' });
+  }
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  if (typeof res.flushHeaders === 'function') res.flushHeaders();
+
+  // If already finished, emit terminal event immediately
+  if (job.status === 'completed') {
+    res.write(`data: ${JSON.stringify({ status: 'completed', progress: 100, result: job.result })}\n\n`);
+    return res.end();
+  }
+  if (job.status === 'failed') {
+    res.write(`data: ${JSON.stringify({ status: 'failed', error: job.error })}\n\n`);
+    return res.end();
+  }
+
+  // Initial state notification
+  res.write(`data: ${JSON.stringify({ status: job.status, progress: job.progress || 0 })}\n\n`);
+
+  const unsubscribe = subscribeJobEvents(jobId, {
+    onProgress: (prog) => {
+      if (!res.writableEnded) {
+        res.write(`data: ${JSON.stringify({ status: 'evaluating', ...prog })}\n\n`);
+      }
+    },
+    onCompleted: (result) => {
+      if (!res.writableEnded) {
+        res.write(`data: ${JSON.stringify({ status: 'completed', progress: 100, result })}\n\n`);
+        res.end();
+      }
+    },
+    onFailed: (error) => {
+      if (!res.writableEnded) {
+        res.write(`data: ${JSON.stringify({ status: 'failed', error })}\n\n`);
+        res.end();
+      }
+    }
+  });
+
+  req.on('close', () => {
+    unsubscribe();
+  });
+});
+
+// GET /api/code/submissions/:jobId/status (REST polling fallback endpoint)
+router.get('/submissions/:jobId/status', async (req, res) => {
+  const { jobId } = req.params;
+  const job = await getSubmissionJob(jobId);
+  if (!job) {
+    return res.status(404).json({ success: false, error: 'Submission job not found.' });
+  }
+
+  res.json({
+    success: true,
+    jobId: job.id,
+    status: job.status,
+    progress: job.progress,
+    result: job.result,
+    error: job.error
+  });
 });
 
 export default router;

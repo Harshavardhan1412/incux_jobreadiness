@@ -59,7 +59,100 @@ export const api = {
 
   code: {
     run: (body) => request('POST', '/code/run', body),
-    submit: (body) => request('POST', '/code/submit', body),
+    submit: async (body, onProgress) => {
+      const initRes = await request('POST', '/code/submit', body);
+      if (!initRes.ok) return initRes;
+      if (!initRes.queued || !initRes.jobId) return initRes; // Synchronous backward-compat fallback
+
+      const jobId = initRes.jobId;
+      return new Promise((resolve) => {
+        let eventSource = null;
+        let pollInterval = null;
+        let isResolved = false;
+
+        const cleanup = () => {
+          if (eventSource) {
+            eventSource.close();
+            eventSource = null;
+          }
+          if (pollInterval) {
+            clearInterval(pollInterval);
+            pollInterval = null;
+          }
+        };
+
+        const finish = (result) => {
+          if (isResolved) return;
+          isResolved = true;
+          cleanup();
+          resolve(result);
+        };
+
+        // Fallback poller
+        const startPolling = () => {
+          if (pollInterval || isResolved) return;
+          pollInterval = setInterval(async () => {
+            try {
+              const statusRes = await request('GET', `/code/submissions/${jobId}/status`);
+              if (statusRes.ok && statusRes.data) {
+                const job = statusRes.data;
+                if (onProgress && job.progress !== undefined) {
+                  onProgress({ status: job.status, progress: job.progress });
+                }
+                if (job.status === 'completed' && job.result) {
+                  finish({ ok: true, success: true, ...job.result, data: job.result });
+                } else if (job.status === 'failed') {
+                  finish({ ok: false, success: false, error: job.error || 'Evaluation failed' });
+                }
+              }
+            } catch (e) {}
+          }, 500);
+        };
+
+        // Try Server-Sent Events (SSE) stream
+        if (typeof EventSource !== 'undefined') {
+          try {
+            const streamUrl = `${BASE}/code/submissions/${jobId}/stream`;
+            eventSource = new EventSource(streamUrl);
+
+            eventSource.onmessage = (event) => {
+              try {
+                const data = JSON.parse(event.data);
+                if (onProgress && (data.progress !== undefined || data.status)) {
+                  onProgress(data);
+                }
+                if (data.status === 'completed' && data.result) {
+                  finish({ ok: true, success: true, ...data.result, data: data.result });
+                } else if (data.status === 'failed') {
+                  finish({ ok: false, success: false, error: data.error || 'Evaluation failed' });
+                }
+              } catch (err) {}
+            };
+
+            eventSource.onerror = () => {
+              // Switch to polling fallback if SSE connection encounters an issue
+              cleanup();
+              startPolling();
+            };
+          } catch (err) {
+            startPolling();
+          }
+        } else {
+          startPolling();
+        }
+
+        // Safety timeout (35 seconds)
+        setTimeout(() => {
+          if (!isResolved) {
+            finish({
+              ok: false,
+              success: false,
+              error: 'Submission evaluation timed out on client wait.'
+            });
+          }
+        }, 35000);
+      });
+    },
     getLanguages: () => request('GET', '/code/languages'),
   },
 
