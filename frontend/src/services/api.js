@@ -4,7 +4,7 @@
 const resolveBase = () => {
   const envUrl = import.meta.env.VITE_API_URL;
   if (envUrl && !envUrl.startsWith('http://localhost') && !envUrl.startsWith('http://127.0.0.1')) {
-    return envUrl;
+    return envUrl.replace(/\/+$/, '');
   }
   return '/api';
 };
@@ -19,9 +19,13 @@ const authHeaders = () => ({
 });
 
 async function request(method, path, body) {
-  const cleanPath = path.startsWith('/api/') ? path.slice(4) : (path.startsWith('/') ? path : `/${path}`);
+  let cleanPath = path.startsWith('/') ? path : `/${path}`;
+  if (BASE.endsWith('/api') && cleanPath.startsWith('/api/')) {
+    cleanPath = cleanPath.slice(4);
+  }
+  const url = `${BASE}${cleanPath}`;
   try {
-    const res = await fetch(`${BASE}${cleanPath}`, {
+    const res = await fetch(url, {
       method,
       headers: authHeaders(),
       ...(body ? { body: JSON.stringify(body) } : {}),

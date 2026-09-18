@@ -5,7 +5,14 @@ import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
 dotenv.config();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const distPath = path.resolve(__dirname, '../../frontend/dist');
 
 import { testConnection, closePool } from './db/pool.js';
 import { initSchema } from './db/schema.js';
@@ -81,11 +88,11 @@ const submissionLimiter = rateLimit({
   message: { success: false, error: 'Submission rate limit reached. Please wait before submitting another test attempt.' }
 });
 
-app.use('/api', apiLimiter);
-app.use('/api/auth/login', authLimiter);
-app.use('/api/auth/admin/login', authLimiter);
-app.use('/api/auth/register', registerLimiter);
-app.use('/api/submissions', submissionLimiter);
+app.use(['/api', '/api/*'], apiLimiter);
+app.use(['/api/auth/login', '/auth/login'], authLimiter);
+app.use(['/api/auth/admin/login', '/auth/admin/login'], authLimiter);
+app.use(['/api/auth/register', '/auth/register'], registerLimiter);
+app.use(['/api/submissions', '/submissions'], submissionLimiter);
 
 // ─── Performance: Request Duration Logger & Timeout Protection ───────────────
 const REQUEST_TIMEOUT_MS = parseInt(process.env.REQUEST_TIMEOUT_MS || '25000', 10);
@@ -112,7 +119,7 @@ app.use((req, res, next) => {
 });
 
 // ─── Health Check ─────────────────────────────────────────────────────────────
-app.get('/api/health', async (_req, res) => {
+const healthHandler = async (_req, res) => {
   const dbOk = await testConnection().catch(() => false);
   res.json({
     status: 'online',
@@ -122,17 +129,35 @@ app.get('/api/health', async (_req, res) => {
     timestamp: new Date().toISOString(),
     pid: process.pid,
   });
-});
+};
+app.get('/api/health', healthHandler);
+app.get('/health', healthHandler);
 
-// ─── API Routes ───────────────────────────────────────────────────────────────
-app.use('/api/auth', authRoutes);
-app.use('/api/candidates', candidatesRoutes);
-app.use('/api/assessments', assessmentsRoutes);
-app.use('/api/questions', questionsRoutes);
-app.use('/api/submissions', submissionsRoutes);
-app.use('/api/admin', adminRoutes);
-app.use('/api/code', codeRoutes);
-app.use('/code', codeRoutes);
+// ─── API Routes (Dual-mounted with and without /api prefix) ───────────────────
+app.use(['/api/auth', '/auth'], authRoutes);
+app.use(['/api/candidates', '/candidates'], candidatesRoutes);
+app.use(['/api/assessments', '/assessments'], assessmentsRoutes);
+app.use(['/api/questions', '/questions'], questionsRoutes);
+app.use(['/api/submissions', '/submissions'], submissionsRoutes);
+app.use(['/api/admin', '/admin'], adminRoutes);
+app.use(['/api/code', '/code'], codeRoutes);
+
+// ─── Static Files & SPA Fallback ─────────────────────────────────────────────
+if (fs.existsSync(distPath)) {
+  app.use(express.static(distPath));
+  app.get('*', (req, res, next) => {
+    // If request accepts HTML (browser navigation), serve React index.html
+    if (req.accepts('html')) {
+      return res.sendFile(path.join(distPath, 'index.html'));
+    }
+    next();
+  });
+} else if (process.env.NODE_ENV !== 'production') {
+  // In development, if browser visits localhost:5000/login or / directly, redirect to Vite dev server
+  app.get(['/', '/login', '/admin', '/signup', '/dashboard', '/assessments'], (req, res) => {
+    res.redirect(`http://localhost:5173${req.url}`);
+  });
+}
 
 // ─── 404 & Global Error Handler ──────────────────────────────────────────────
 app.use((_req, res) => res.status(404).json({ error: 'API endpoint not found.' }));
