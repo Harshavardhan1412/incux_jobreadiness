@@ -2,10 +2,18 @@ import { createClient } from 'redis';
 import dotenv from 'dotenv';
 dotenv.config();
 
-const REDIS_URL = process.env.REDIS_URL || 'redis://default:qeTZunBQpbbGqpqXmnFZoKLNzzqnNCdo@redis.railway.internal:6379';
+const REDIS_URL = process.env.REDIS_URL;
+
+if (!REDIS_URL) {
+  console.warn(
+    '⚠️ [Redis] REDIS_URL environment variable is not set. ' +
+    'Execution result caching and distributed rate-limiting will be disabled. ' +
+    'Set REDIS_URL in your .env file to enable these features.'
+  );
+}
 
 export const redisClient = createClient({
-  url: REDIS_URL,
+  url: REDIS_URL || 'redis://localhost:6379',
   socket: {
     connectTimeout: 4000,
     reconnectStrategy: (retries) => {
@@ -26,7 +34,7 @@ redisClient.on('connect', () => {
 
 redisClient.on('ready', () => {
   isRedisReady = true;
-  console.log('✅ [Redis] Client ready for execution caching.');
+  console.log('✅ [Redis] Client ready for execution caching and distributed locking.');
 });
 
 redisClient.on('error', (err) => {
@@ -43,8 +51,9 @@ redisClient.on('end', () => {
   isRedisReady = false;
 });
 
-// Non-blocking asynchronous initial connection
+// Non-blocking asynchronous initial connection — only attempt if URL is configured
 (async () => {
+  if (!REDIS_URL) return;
   try {
     await redisClient.connect();
   } catch (err) {

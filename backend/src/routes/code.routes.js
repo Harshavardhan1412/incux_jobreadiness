@@ -8,6 +8,7 @@ import {
 } from '../services/codeExecutionService.js';
 import { pool } from '../db/pool.js';
 import { optionalAuthToken } from '../middleware/auth.js';
+import { redisClient, isRedisAvailable } from '../db/redis.js';
 
 const router = express.Router();
 
@@ -96,7 +97,13 @@ solve();
 `
 };
 
-// ── In-Flight Execution Rate Limiting & Cooldown Protection ───────────────
+
+// ── Rate Limiting & Concurrency Config ────────────────────────────────────
+const EXEC_LOCK_TTL_SEC = 35;    // Max lock lifetime: slightly above worst-case 8s exec + network
+const COOLDOWN_MS = 1000;        // Minimum ms between executions per client
+const GLOBAL_EXEC_CAP = parseInt(process.env.GLOBAL_EXEC_CONCURRENCY || '50', 10);
+
+// In-memory fallback state (used when Redis is unavailable — single-instance only)
 const inFlightExecutions = new Set();
 const lastExecutionTimes = new Map();
 const executionAuditLogs = []; // In-memory telemetry log for run attempts
@@ -106,6 +113,85 @@ const getClientKey = (req) => {
   if (candId) return String(candId);
   return req.ip || req.headers['x-forwarded-for'] || 'anonymous';
 };
+
+/**
+ * Acquire a per-client execution lock (max 1 active run per user).
+ * Uses Redis SET NX EX for distributed, multi-instance safety.
+ * Falls back to an in-memory Set when Redis is unavailable.
+ * Returns { acquired: bool, release: async fn }
+ */
+const acquireClientLock = async (clientKey) => {
+  if (isRedisAvailable()) {
+    const lockKey = `exec_lock:${clientKey}`;
+    const result = await redisClient.set(lockKey, '1', { NX: true, EX: EXEC_LOCK_TTL_SEC });
+    const acquired = result === 'OK';
+    return {
+      acquired,
+      release: async () => { try { await redisClient.del(lockKey); } catch {} }
+    };
+  }
+  // In-memory fallback
+  if (inFlightExecutions.has(clientKey)) {
+    return { acquired: false, release: async () => {} };
+  }
+  inFlightExecutions.add(clientKey);
+  return { acquired: true, release: async () => inFlightExecutions.delete(clientKey) };
+};
+
+/**
+ * Check whether a client is within their 1-second cooldown window.
+ * Returns true if the client is allowed to proceed (not throttled).
+ */
+const checkCooldown = async (clientKey) => {
+  if (isRedisAvailable()) {
+    const cooldownKey = `exec_cooldown:${clientKey}`;
+    const exists = await redisClient.exists(cooldownKey);
+    return exists === 0; // 0 = key absent = not throttled
+  }
+  const now = Date.now();
+  const lastTime = lastExecutionTimes.get(clientKey) || 0;
+  return (now - lastTime) >= COOLDOWN_MS;
+};
+
+/**
+ * Set (or refresh) the per-client cooldown after execution completes.
+ * Redis key auto-expires; in-memory value is cleaned up passively.
+ */
+const setCooldown = async (clientKey) => {
+  if (isRedisAvailable()) {
+    try {
+      await redisClient.set(`exec_cooldown:${clientKey}`, '1', { PX: COOLDOWN_MS });
+    } catch {}
+  } else {
+    lastExecutionTimes.set(clientKey, Date.now());
+  }
+};
+
+/**
+ * Acquire one slot from the global execution pool.
+ * Prevents exam-burst scenarios from exhausting the Judge0/Piston rate limit.
+ * Uses an atomic INCR counter with a safety TTL. No-ops when Redis is unavailable.
+ * Returns { allowed: bool, release: async fn }
+ */
+const acquireGlobalSlot = async () => {
+  if (!isRedisAvailable()) return { allowed: true, release: async () => {} };
+  const countKey = 'global_exec_count';
+  try {
+    const count = await redisClient.incr(countKey);
+    await redisClient.expire(countKey, 60); // Safety TTL in case of crash/leak
+    if (count > GLOBAL_EXEC_CAP) {
+      await redisClient.decr(countKey);
+      return { allowed: false, release: async () => {} };
+    }
+    return {
+      allowed: true,
+      release: async () => { try { await redisClient.decr(countKey); } catch {} }
+    };
+  } catch {
+    return { allowed: true, release: async () => {} };
+  }
+};
+
 
 // GET /api/code/languages & GET /code/languages
 router.get('/languages', (_req, res) => {
@@ -138,19 +224,19 @@ router.get('/runs/logs', optionalAuthToken, (req, res) => {
 router.post('/run', optionalAuthToken, async (req, res) => {
   const clientKey = getClientKey(req);
 
-  // 1. Check in-flight lock: Max 1 active run per candidate at a time
-  if (inFlightExecutions.has(clientKey)) {
-    return res.status(429).json({
+  // 1. Global concurrency cap — protect Judge0/Piston from exam-burst saturation
+  const globalSlot = await acquireGlobalSlot();
+  if (!globalSlot.allowed) {
+    return res.status(503).json({
       success: false,
-      error: 'An execution is already in progress. Please wait for it to complete.',
-      status: 'Busy'
+      error: 'Code execution service is at capacity. Please try again in a moment.',
+      status: 'Capacity Exceeded'
     });
   }
 
-  // 2. Cooldown check: 1-second cooldown between requests
-  const now = Date.now();
-  const lastTime = lastExecutionTimes.get(clientKey) || 0;
-  if (now - lastTime < 1000) {
+  // 2. Per-client cooldown check (distributed via Redis; in-memory fallback)
+  if (!await checkCooldown(clientKey)) {
+    await globalSlot.release();
     return res.status(429).json({
       success: false,
       error: 'Please wait a moment before running code again.',
@@ -158,7 +244,16 @@ router.post('/run', optionalAuthToken, async (req, res) => {
     });
   }
 
-  inFlightExecutions.add(clientKey);
+  // 3. Per-client in-flight lock (distributed via Redis SET NX; in-memory fallback)
+  const lock = await acquireClientLock(clientKey);
+  if (!lock.acquired) {
+    await globalSlot.release();
+    return res.status(429).json({
+      success: false,
+      error: 'An execution is already in progress. Please wait for it to complete.',
+      status: 'Busy'
+    });
+  }
 
   try {
     const {
@@ -276,8 +371,9 @@ router.post('/run', optionalAuthToken, async (req, res) => {
       status: 'Service Unavailable'
     });
   } finally {
-    inFlightExecutions.delete(clientKey);
-    lastExecutionTimes.set(clientKey, Date.now());
+    await lock.release();
+    await globalSlot.release();
+    await setCooldown(clientKey);
   }
 });
 
@@ -285,14 +381,25 @@ router.post('/run', optionalAuthToken, async (req, res) => {
 router.post('/submit', optionalAuthToken, async (req, res) => {
   const clientKey = getClientKey(req);
 
-  if (inFlightExecutions.has(clientKey)) {
+  // 1. Global concurrency cap — protect Judge0/Piston from exam-burst saturation
+  const globalSlot = await acquireGlobalSlot();
+  if (!globalSlot.allowed) {
+    return res.status(503).json({
+      success: false,
+      error: 'Code execution service is at capacity. Please try again in a moment.',
+      status: 'Capacity Exceeded'
+    });
+  }
+
+  // 2. Per-client in-flight lock (distributed via Redis SET NX; in-memory fallback)
+  const lock = await acquireClientLock(clientKey);
+  if (!lock.acquired) {
+    await globalSlot.release();
     return res.status(429).json({
       success: false,
       error: 'A submission or execution is already in progress. Please wait.'
     });
   }
-
-  inFlightExecutions.add(clientKey);
 
   try {
     const {
@@ -407,8 +514,9 @@ router.post('/submit', optionalAuthToken, async (req, res) => {
       error: 'Code execution service is temporarily unavailable — you can still write and submit your code, it will be evaluated shortly.'
     });
   } finally {
-    inFlightExecutions.delete(clientKey);
-    lastExecutionTimes.set(clientKey, Date.now());
+    await lock.release();
+    await globalSlot.release();
+    await setCooldown(clientKey);
   }
 });
 
