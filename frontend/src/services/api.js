@@ -1,122 +1,173 @@
-// Client-side API service — connects React frontend to Express/PostgreSQL backend
+// Client-side API service � connects React frontend to Express/PostgreSQL backend
 // Reads VITE_API_URL from frontend/.env (defaults to /api via Vite proxy in dev)
 
 const resolveBase = () => {
   const envUrl = import.meta.env.VITE_API_URL;
-  if (envUrl && !envUrl.startsWith('http://localhost') && !envUrl.startsWith('http://127.0.0.1')) {
+  if (envUrl && !envUrl.startsWith("http://localhost") && !envUrl.startsWith("http://127.0.0.1")) {
     return envUrl;
   }
-  return '/api';
+  return "/api";
 };
 
 const BASE = resolveBase();
 
-// ─── Auth helpers ────────────────────────────────────────────────────────────
-const getToken = () => localStorage.getItem('rsj_token');
+// -- Token storage (in-memory only � survives page lifecycle, not tab re-open) --
+// NOTE: memory storage is XSS-safe (no JS access from other scripts).
+// The refresh token lives in an HttpOnly cookie and is sent automatically.
+let _memoryToken = localStorage.getItem("rsj_token"); // seed from localStorage on load
+
+const getToken      = () => _memoryToken;
+const saveMemToken  = (t) => { _memoryToken = t; };
+
+// -- Auth headers --
 const authHeaders = () => ({
-  'Content-Type': 'application/json',
-  ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}),
+  "Content-Type": "application/json",
+  ...(getToken() ? { Authorization: "Bearer " + getToken() } : {}),
 });
 
-async function request(method, path, body) {
-  const cleanPath = path.startsWith('/api/') ? path.slice(4) : (path.startsWith('/') ? path : `/${path}`);
+// -- Silent token refresh --
+let _refreshPromise = null;
+
+const tryRefresh = async () => {
+  if (_refreshPromise) return _refreshPromise;
+  _refreshPromise = fetch(BASE + "/auth/refresh", {
+    method: "POST",
+    credentials: "include", // sends HttpOnly refresh cookie
+  })
+    .then((r) => r.json())
+    .then((data) => {
+      if (data.success && data.token) {
+        saveMemToken(data.token);
+        localStorage.setItem("rsj_token", data.token);
+        return data.token;
+      }
+      throw new Error("Refresh failed");
+    })
+    .finally(() => { _refreshPromise = null; });
+  return _refreshPromise;
+};
+
+// -- Core request function with automatic token refresh on 401 --
+async function request(method, path, body, _retry = false) {
+  const cleanPath = path.startsWith("/api/") ? path.slice(4) : (path.startsWith("/") ? path : "/" + path);
   try {
-    const res = await fetch(`${BASE}${cleanPath}`, {
+    const res = await fetch(BASE + cleanPath, {
       method,
       headers: authHeaders(),
+      credentials: "include", // always include cookies for refresh token
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
+
+    // Auto-refresh on 401 (expired access token), then retry once
+    if (res.status === 401 && !_retry) {
+      try {
+        await tryRefresh();
+        return request(method, path, body, true);
+      } catch {
+        // Refresh failed � clear everything and let caller handle 401
+        api.clearToken();
+      }
+    }
+
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      const err = new Error(data.error || data.message || `HTTP ${res.status}`);
+      const err = new Error(data.error || data.message || "HTTP " + res.status);
       err.status = res.status;
       err.data = data;
       throw err;
     }
-    if (typeof data === 'object' && data !== null && !Array.isArray(data)) {
+    if (typeof data === "object" && data !== null && !Array.isArray(data)) {
       return { ok: true, ...data, data, status: res.status };
     }
     return { ok: true, data, status: res.status };
   } catch (err) {
-    console.warn(`[API] ${method} ${path} failed:`, err.message);
+    console.warn("[API] " + method + " " + path + " failed:", err.message);
     return { ok: false, success: false, error: err.message, status: err.status || 500, data: err.data };
   }
 }
 
-// ─── API client ──────────────────────────────────────────────────────────────
+// -- API client --
 export const api = {
-  health: () => request('GET', '/health'),
+  health: () => request("GET", "/health"),
 
-  // Generic HTTP convenience helpers
-  get: (path) => request('GET', path),
-  post: (path, body) => request('POST', path, body),
-  put: (path, body) => request('PUT', path, body),
-  delete: (path) => request('DELETE', path),
+  get:    (path)       => request("GET",    path),
+  post:   (path, body) => request("POST",   path, body),
+  put:    (path, body) => request("PUT",    path, body),
+  delete: (path)       => request("DELETE", path),
 
   code: {
-    run: (body) => request('POST', '/code/run', body),
-    submit: (body) => request('POST', '/code/submit', body),
-    getLanguages: () => request('GET', '/code/languages'),
+    run:          (body) => request("POST", "/code/run",       body),
+    submit:       (body) => request("POST", "/code/submit",    body),
+    getLanguages: ()     => request("GET",  "/code/languages"),
   },
 
   auth: {
-    register: (body) => request('POST', '/auth/register', body),
-    login: (body) => request('POST', '/auth/login', body),
-    adminLogin: (body) => request('POST', '/auth/admin/login', body),
-    me: () => request('GET', '/auth/me'),
+    register:   (body) => request("POST", "/auth/register",     body),
+    login:      (body) => request("POST", "/auth/login",        body),
+    adminLogin: (body) => request("POST", "/auth/admin/login",  body),
+    me:         ()     => request("GET",  "/auth/me"),
+    logout:     ()     => fetch(BASE + "/auth/logout", {
+      method:      "POST",
+      headers:     authHeaders(),
+      credentials: "include",
+    }).then((r) => r.json()),
+    refresh:    ()     => tryRefresh(),
   },
 
   candidates: {
-    getAll: () => request('GET', '/candidates'),
-    getById: (id) => request('GET', `/candidates/${id}`),
-    update: (id, body) => request('PUT', `/candidates/${id}`, body),
-    updateAcademicMarks: (id, body) => request('PUT', `/candidates/${id}/academic-marks`, body),
-    getCompanyEligibilityCriteria: () => request('GET', '/candidates/company-eligibility/criteria'),
-    delete: (id) => request('DELETE', `/candidates/${id}`),
-    submissions: (id) => request('GET', `/candidates/${id}/submissions`),
-    resetAttempt: (id, assessmentId) => request('POST', `/candidates/${id}/reset-attempt`, { assessmentId }),
+    getAll:                    ()          => request("GET",    "/candidates"),
+    getById:                   (id)        => request("GET",    "/candidates/" + id),
+    update:                    (id, body)  => request("PUT",    "/candidates/" + id, body),
+    updateAcademicMarks:       (id, body)  => request("PUT",    "/candidates/" + id + "/academic-marks", body),
+    getCompanyEligibilityCriteria: ()      => request("GET",    "/candidates/company-eligibility/criteria"),
+    delete:                    (id)        => request("DELETE", "/candidates/" + id),
+    submissions:               (id)        => request("GET",    "/candidates/" + id + "/submissions"),
+    resetAttempt: (id, payload) => {
+      const body = typeof payload === "object" && payload !== null ? payload : { assessmentId: payload, targetType: payload };
+      return request("POST", "/candidates/" + id + "/reset-attempt", body);
+    },
   },
 
   assessments: {
-    getAll: () => request('GET', '/assessments'),
-    getById: (id) => request('GET', `/assessments/${id}`),
-    create: (body) => request('POST', '/assessments', body),
-    update: (id, body) => request('PUT', `/assessments/${id}`, body),
-    delete: (id) => request('DELETE', `/assessments/${id}`),
-    getQuestions: (id) => request('GET', `/assessments/${id}/questions`),
-    addQuestions: (id, body) => request('POST', `/assessments/${id}/questions`, body),
-    removeQuestion: (id, questionId) => request('DELETE', `/assessments/${id}/questions/${questionId}`),
+    getAll:         ()          => request("GET",    "/assessments"),
+    getById:        (id)        => request("GET",    "/assessments/" + id),
+    create:         (body)      => request("POST",   "/assessments", body),
+    update:         (id, body)  => request("PUT",    "/assessments/" + id, body),
+    delete:         (id)        => request("DELETE", "/assessments/" + id),
+    getQuestions:   (id)        => request("GET",    "/assessments/" + id + "/questions"),
+    addQuestions:   (id, body)  => request("POST",   "/assessments/" + id + "/questions", body),
+    removeQuestion: (id, qId)   => request("DELETE", "/assessments/" + id + "/questions/" + qId),
   },
 
   questions: {
-    getAll: (params = {}) => {
+    getAll:  (params = {}) => {
       const qs = new URLSearchParams(params).toString();
-      return request('GET', `/questions${qs ? '?' + qs : ''}`);
+      return request("GET", "/questions" + (qs ? "?" + qs : ""));
     },
-    create: (body) => request('POST', '/questions', body),
-    update: (id, body) => request('PUT', `/questions/${id}`, body),
-    delete: (id) => request('DELETE', `/questions/${id}`),
+    create:  (body)        => request("POST",   "/questions",      body),
+    update:  (id, body)    => request("PUT",    "/questions/" + id, body),
+    delete:  (id)          => request("DELETE", "/questions/" + id),
   },
 
   submissions: {
-    submit: (body) => request('POST', '/submissions', body),
-    my: () => request('GET', '/submissions/my'),
-    logProctoringEvent: (body) => request('POST', '/submissions/proctoring-event', body),
-    getProctoringEvents: (attemptId) => request('GET', `/submissions/proctoring-events/${encodeURIComponent(attemptId)}`),
+    submit:              (body)      => request("POST", "/submissions",                            body),
+    my:                  ()          => request("GET",  "/submissions/my"),
+    logProctoringEvent:  (body)      => request("POST", "/submissions/proctoring-event",           body),
+    getProctoringEvents: (attemptId) => request("GET",  "/submissions/proctoring-events/" + encodeURIComponent(attemptId)),
   },
 
   admin: {
-    stats: () => request('GET', '/admin/stats'),
+    stats:     ()           => request("GET", "/admin/stats"),
     analytics: (params = {}) => {
       const qs = new URLSearchParams(params).toString();
-      return request('GET', `/admin/analytics${qs ? '?' + qs : ''}`);
+      return request("GET", "/admin/analytics" + (qs ? "?" + qs : ""));
     },
-    reports: () => request('GET', '/admin/reports'),
+    reports:   ()           => request("GET", "/admin/reports"),
   },
 
-  // Save JWT token after login
-  saveToken: (token) => localStorage.setItem('rsj_token', token),
-  clearToken: () => localStorage.removeItem('rsj_token'),
+  // Token management
+  saveToken:  (token) => { saveMemToken(token); localStorage.setItem("rsj_token", token); },
+  clearToken: ()      => { saveMemToken(null);  localStorage.removeItem("rsj_token"); },
 };
 
 export default api;

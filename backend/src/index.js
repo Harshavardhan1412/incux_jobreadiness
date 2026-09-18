@@ -3,12 +3,15 @@ process.env.UV_THREADPOOL_SIZE = process.env.UV_THREADPOOL_SIZE || '128';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import rateLimit from 'express-rate-limit';
+import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
 dotenv.config();
 
 import { testConnection, closePool } from './db/pool.js';
 import { initSchema } from './db/schema.js';
+
+import { apiLimiter, loginLimiter, registerLimiter, submissionLimiter } from './middleware/rateLimiter.js';
+
 
 import authRoutes from './routes/auth.routes.js';
 import candidatesRoutes from './routes/candidates.routes.js';
@@ -45,46 +48,12 @@ app.use(cors({
 
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser()); // Required for reading HttpOnly refresh token cookies
 
-// ─── Security: Defensive Rate Limiting (DoS & Brute-Force Protection) ───────
-const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 600,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { success: false, error: 'Too many requests. Please slow down and try again later.' }
-});
-
-const isDev = process.env.NODE_ENV !== 'production';
-
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: isDev ? 200 : 30,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { success: false, error: 'Too many login attempts. Please try again after a few minutes.' }
-});
-
-const registerLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000,
-  max: 15,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { success: false, error: 'Too many registration attempts. Please try again later.' }
-});
-
-const submissionLimiter = rateLimit({
-  windowMs: 10 * 60 * 1000,
-  max: 40,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { success: false, error: 'Submission rate limit reached. Please wait before submitting another test attempt.' }
-});
-
+// ─── Security: Rate Limiting (DoS & Brute-Force Protection) ──────────────────
+// All limiters are defined in rateLimiter.js and use Redis when available
+// so they work correctly across multiple Node.js instances.
 app.use('/api', apiLimiter);
-app.use('/api/auth/login', authLimiter);
-app.use('/api/auth/admin/login', authLimiter);
-app.use('/api/auth/register', registerLimiter);
 app.use('/api/submissions', submissionLimiter);
 
 // ─── Performance: Request Duration Logger & Timeout Protection ───────────────
