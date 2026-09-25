@@ -1,6 +1,3 @@
-// Client-side API service — connects React frontend to Express/PostgreSQL backend
-// Reads VITE_API_URL from frontend/.env (defaults to /api via Vite proxy in dev)
-
 const resolveBase = () => {
   const envUrl = import.meta.env.VITE_API_URL;
   if (envUrl && !envUrl.startsWith('http://localhost') && !envUrl.startsWith('http://127.0.0.1')) {
@@ -11,10 +8,11 @@ const resolveBase = () => {
 
 const BASE = resolveBase();
 
-// -- Token storage (in-memory only — survives page lifecycle, not tab re-open) --
-// NOTE: memory storage is XSS-safe (no JS access from other scripts).
-// The refresh token lives in an HttpOnly cookie and is sent automatically.
-let _memoryToken = localStorage.getItem("rsj_token"); // seed from localStorage on load
+// -- Token storage (in-memory ONLY — XSS safe) --
+// VULN-004 fix: Access token is NEVER stored in localStorage/sessionStorage.
+// On page reload, the token is rehydrated via /auth/refresh using the HttpOnly cookie.
+// This prevents XSS attacks from stealing the access token via localStorage.getItem().
+let _memoryToken = null; // Do NOT seed from localStorage
 
 const getToken      = () => _memoryToken;
 const saveMemToken  = (t) => { _memoryToken = t; };
@@ -25,7 +23,25 @@ const authHeaders = () => ({
   ...(getToken() ? { Authorization: "Bearer " + getToken() } : {}),
 });
 
-async function request(method, path, body) {
+async function tryRefresh() {
+  const res = await fetch(`${BASE}/auth/refresh`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+  });
+  if (!res.ok) {
+    throw new Error("Refresh failed");
+  }
+  const data = await res.json();
+  if (data?.token) {
+    saveMemToken(data.token);
+    // VULN-004 fix: Do NOT persist to localStorage — memory only
+    return data.token;
+  }
+  throw new Error("No token returned from refresh endpoint");
+}
+
+async function request(method, path, body, _retry = false) {
   let cleanPath = path.startsWith('/') ? path : `/${path}`;
   if (BASE.endsWith('/api') && cleanPath.startsWith('/api/')) {
     cleanPath = cleanPath.slice(4);
@@ -39,13 +55,13 @@ async function request(method, path, body) {
       ...(body ? { body: JSON.stringify(body) } : {}),
     });
 
-    // Auto-refresh on 401 (expired access token), then retry once
-    if (res.status === 401 && !_retry) {
+    // Auto-refresh on 401 (expired access token), then retry once (avoid retrying on login/refresh)
+    if (res.status === 401 && !_retry && !cleanPath.includes('/auth/login') && !cleanPath.includes('/auth/refresh')) {
       try {
         await tryRefresh();
         return request(method, path, body, true);
       } catch {
-        // Refresh failed — clear everything and let caller handle 401
+        // Refresh failed — clear token
         api.clearToken();
       }
     }
@@ -239,9 +255,9 @@ export const api = {
     reports:   ()           => request("GET", "/admin/reports"),
   },
 
-  // Token management
-  saveToken:  (token) => { saveMemToken(token); localStorage.setItem("rsj_token", token); },
-  clearToken: ()      => { saveMemToken(null);  localStorage.removeItem("rsj_token"); },
+  // Token management — memory only (VULN-004 fix)
+  saveToken:  (token) => { saveMemToken(token); },
+  clearToken: ()      => { saveMemToken(null); },
 };
 
 export default api;

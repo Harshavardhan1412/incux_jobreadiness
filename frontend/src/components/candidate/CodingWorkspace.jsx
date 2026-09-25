@@ -123,7 +123,12 @@ export const CodingWorkspace = ({
   savedAnswer,
   onSaveAnswer,
   onSubmitAssessment,
-  addToast
+  addToast,
+  currentQuestionIndex = 0,
+  totalQuestions = 1,
+  onNextQuestion,
+  onPrevQuestion,
+  isLastQuestion = true
 }) => {
   const [selectedLanguage, setSelectedLanguage] = useState(
     savedAnswer?.language || question?.language || 'python'
@@ -134,7 +139,6 @@ export const CodingWorkspace = ({
   const [isConsoleOpen, setIsConsoleOpen] = useState(true);
   const [consoleTab, setConsoleTab] = useState('testcases'); // 'testcases' | 'results'
   const [selectedTestCaseIndex, setSelectedTestCaseIndex] = useState(0);
-  const [customTestCases, setCustomTestCases] = useState([]);
   const [isRunning, setIsRunning] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submissionProgress, setSubmissionProgress] = useState(null);
@@ -208,7 +212,7 @@ export const CodingWorkspace = ({
     };
   }, [question]);
 
-  // Code state map: stores candidate code per language for this question
+  // Code state map: stores candidate code per language for this specific question
   const [codeMap, setCodeMap] = useState(() => {
     const initial = { ...starterTemplates };
     if (savedAnswer?.language && savedAnswer?.code) {
@@ -220,30 +224,40 @@ export const CodingWorkspace = ({
   const currentCode = codeMap[selectedLanguage] || starterTemplates[selectedLanguage] || '';
   const prevQuestionIdRef = useRef(question?.id);
 
-  // Synchronize when question changes
+  // Synchronize cleanly when question or saved answer changes
   useEffect(() => {
-    // Only clear execution results if the candidate navigated to a different question
+    const qLang = savedAnswer?.language || question?.language || 'python';
+    setSelectedLanguage(qLang);
+
+    let qTemplates = {};
+    if (question?.starter_templates || question?.starterTemplates) {
+      const raw = question.starter_templates || question.starterTemplates;
+      qTemplates = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    }
+    const freshTemplates = {
+      python: qTemplates.python || DEFAULT_STARTER_CODES.python,
+      javascript: qTemplates.javascript || DEFAULT_STARTER_CODES.javascript,
+      cpp: qTemplates.cpp || DEFAULT_STARTER_CODES.cpp,
+      java: qTemplates.java || DEFAULT_STARTER_CODES.java,
+      c: qTemplates.c || DEFAULT_STARTER_CODES.c,
+      typescript: qTemplates.typescript || DEFAULT_STARTER_CODES.typescript
+    };
+
+    if (savedAnswer?.code) {
+      setCodeMap({
+        ...freshTemplates,
+        [qLang]: savedAnswer.code
+      });
+    } else {
+      setCodeMap(freshTemplates);
+    }
+
     if (prevQuestionIdRef.current !== question?.id) {
       prevQuestionIdRef.current = question?.id;
       setRunResults(null);
-    }
-
-    if (savedAnswer?.language && savedAnswer?.code) {
-      setSelectedLanguage(savedAnswer.language);
-      setCodeMap(prev => ({
-        ...prev,
-        [savedAnswer.language]: savedAnswer.code
-      }));
-    } else {
-      setCodeMap(prev => ({
-        ...prev,
-        python: prev.python || starterTemplates.python,
-        javascript: prev.javascript || starterTemplates.javascript,
-        cpp: prev.cpp || starterTemplates.cpp,
-        java: prev.java || starterTemplates.java,
-        c: prev.c || starterTemplates.c,
-        typescript: prev.typescript || starterTemplates.typescript
-      }));
+      setSelectedTestCaseIndex(0);
+      setIsConsoleOpen(true);
+      setConsoleTab('testcases');
     }
   }, [question?.id, savedAnswer?.language, savedAnswer?.code]);
 
@@ -267,9 +281,8 @@ export const CodingWorkspace = ({
 
   // Visible test cases for the runner
   const visibleTestCases = useMemo(() => {
-    const fromBase = baseTestCases.filter(t => !(t.isHidden || t.is_hidden));
-    return [...fromBase, ...customTestCases];
-  }, [baseTestCases, customTestCases]);
+    return baseTestCases.filter(t => !(t.isHidden || t.is_hidden));
+  }, [baseTestCases]);
 
   const activeTestCase = visibleTestCases[selectedTestCaseIndex] || visibleTestCases[0];
 
@@ -311,29 +324,6 @@ export const CodingWorkspace = ({
     navigator.clipboard.writeText(text);
     setCopiedInputIdx(idx);
     setTimeout(() => setCopiedInputIdx(null), 1800);
-  };
-
-  // Add custom testcase (LeetCode style)
-  const handleAddCustomTestCase = () => {
-    const newCase = {
-      id: `custom-${Date.now()}`,
-      input: '',
-      expectedOutput: '',
-      explanation: 'Custom Test Case',
-      isCustom: true
-    };
-    setCustomTestCases(prev => [...prev, newCase]);
-    setSelectedTestCaseIndex(visibleTestCases.length);
-  };
-
-  // Remove custom testcase
-  const handleRemoveCustomTestCase = (indexToRemove) => {
-    const baseCount = baseTestCases.filter(t => !(t.isHidden || t.is_hidden)).length;
-    const customIdx = indexToRemove - baseCount;
-    if (customIdx >= 0) {
-      setCustomTestCases(prev => prev.filter((_, i) => i !== customIdx));
-      setSelectedTestCaseIndex(Math.max(0, indexToRemove - 1));
-    }
   };
 
   // 1. RUN CODE: executes sample/visible test cases in sandbox
@@ -598,16 +588,29 @@ export const CodingWorkspace = ({
             {isFullscreen ? <Minimize2 className="w-4 h-4 text-emerald-400" /> : <Maximize2 className="w-4 h-4" />}
           </button>
 
-          {/* Finish & Submit Assessment Button (Always accessible, especially in Fullscreen) */}
-          {onSubmitAssessment && (
-            <button
-              onClick={onSubmitAssessment}
-              className="ml-2 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-bold rounded-lg flex items-center gap-1.5 transition-all text-xs shadow-md shadow-emerald-900/40 cursor-pointer"
-              title="Finish and submit the entire assessment"
-            >
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              <span>Finish Exam</span>
-            </button>
+          {/* Finish & Submit Assessment Button (Shown only on the final question) */}
+          {isLastQuestion ? (
+            onSubmitAssessment && (
+              <button
+                onClick={onSubmitAssessment}
+                className="ml-2 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-bold rounded-lg flex items-center gap-1.5 transition-all text-xs shadow-md shadow-emerald-900/40 cursor-pointer"
+                title="Finish and submit the entire assessment"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>Finish Exam</span>
+              </button>
+            )
+          ) : (
+            onNextQuestion && (
+              <button
+                onClick={onNextQuestion}
+                className="ml-2 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 active:scale-95 text-white font-bold rounded-lg flex items-center gap-1.5 transition-all text-xs shadow-md shadow-brand-900/40 cursor-pointer"
+                title="Move to the next question"
+              >
+                <span>Next Question</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            )
           )}
         </div>
       </header>
@@ -956,28 +959,8 @@ export const CodingWorkspace = ({
                         }`}
                       >
                         <span>Case {idx + 1}</span>
-                        {tc.isCustom && (
-                          <span
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleRemoveCustomTestCase(idx);
-                            }}
-                            className="text-zinc-500 hover:text-rose-400 ml-0.5"
-                          >
-                            ×
-                          </span>
-                        )}
                       </button>
                     ))}
-
-                    <button
-                      onClick={handleAddCustomTestCase}
-                      className="px-2.5 py-1 rounded-lg text-xs font-bold bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 border border-zinc-700 flex items-center gap-1 transition-all"
-                      title="Add custom testcase"
-                    >
-                      <Plus className="w-3 h-3" />
-                      <span>Case</span>
-                    </button>
                   </div>
 
                   {/* Active Case Details */}
@@ -987,23 +970,10 @@ export const CodingWorkspace = ({
                         <span className="text-[10px] font-sans font-bold uppercase tracking-wider text-zinc-500 block mb-1">
                           Input:
                         </span>
-                        {activeTestCase.isCustom ? (
-                          <textarea
-                            rows={2}
-                            value={activeTestCase.input}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              setCustomTestCases(prev => prev.map(c => c.id === activeTestCase.id ? { ...c, input: val } : c));
-                            }}
-                            placeholder="Enter custom standard input..."
-                            className="w-full bg-zinc-900 p-2 text-zinc-100 rounded border border-zinc-700 outline-none text-xs"
-                          />
-                        ) : (
-                          <pre className="text-zinc-200 whitespace-pre-wrap">{activeTestCase.input}</pre>
-                        )}
+                        <pre className="text-zinc-200 whitespace-pre-wrap">{activeTestCase.input}</pre>
                       </div>
 
-                      {activeTestCase.expectedOutput && !activeTestCase.isCustom && (
+                      {(activeTestCase.expectedOutput || activeTestCase.expected_output) && (
                         <div className="bg-[#181818] p-2.5 rounded-xl border border-zinc-800/90 font-mono text-xs">
                           <span className="text-[10px] font-sans font-bold uppercase tracking-wider text-zinc-500 block mb-1">
                             Expected Output:
@@ -1358,17 +1328,31 @@ export const CodingWorkspace = ({
                 <span>Submit Code</span>
               </button>
 
-              {/* Finish & Submit Assessment Button */}
-              {onSubmitAssessment && (
-                <button
-                  onClick={onSubmitAssessment}
-                  disabled={isRunning || isSubmitting}
-                  className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] text-white rounded-lg font-bold flex items-center gap-1.5 transition-all shadow-md shadow-emerald-600/25 cursor-pointer"
-                  title="Finish exam and view candidate AI scorecard"
-                >
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>Finish Assessment</span>
-                </button>
+              {/* Finish & Submit Assessment Button (Shown only on the final question) */}
+              {isLastQuestion ? (
+                onSubmitAssessment && (
+                  <button
+                    onClick={onSubmitAssessment}
+                    disabled={isRunning || isSubmitting}
+                    className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] text-white rounded-lg font-bold flex items-center gap-1.5 transition-all shadow-md shadow-emerald-600/25 cursor-pointer"
+                    title="Finish exam and view candidate AI scorecard"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Finish Assessment</span>
+                  </button>
+                )
+              ) : (
+                onNextQuestion && (
+                  <button
+                    onClick={onNextQuestion}
+                    disabled={isRunning || isSubmitting}
+                    className="px-4 py-1.5 bg-brand-600 hover:bg-brand-500 active:scale-[0.98] text-white rounded-lg font-bold flex items-center gap-1.5 transition-all shadow-md shadow-brand-600/25 cursor-pointer"
+                    title="Move to the next coding question"
+                  >
+                    <span>Next Question</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                )
               )}
             </div>
           </footer>
@@ -1394,7 +1378,9 @@ export const CodingWorkspace = ({
             </div>
 
             <p className="text-xs text-zinc-300 leading-relaxed">
-              Your solution for this question has been graded and recorded. Would you like to finish and submit the assessment now, or continue reviewing and testing?
+              {isLastQuestion
+                ? "Your solution for the final question has been graded and recorded. You can now finish and submit your assessment."
+                : `Your solution for Question ${currentQuestionIndex + 1} has been graded and recorded. Click below to proceed to the next question.`}
             </p>
 
             <div className="flex items-center justify-end gap-3 pt-2">
@@ -1405,17 +1391,31 @@ export const CodingWorkspace = ({
               >
                 Review Code
               </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowPostSubmitModal(false);
-                  if (onSubmitAssessment) onSubmitAssessment();
-                }}
-                className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-emerald-600/30 flex items-center gap-1.5 transition-all cursor-pointer"
-              >
-                <CheckCircle2 className="w-4 h-4" />
-                <span>Finish &amp; Submit Exam</span>
-              </button>
+              {isLastQuestion ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowPostSubmitModal(false);
+                    if (onSubmitAssessment) onSubmitAssessment();
+                  }}
+                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-emerald-600/30 flex items-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Finish &amp; Submit Exam</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowPostSubmitModal(false);
+                    if (onNextQuestion) onNextQuestion();
+                  }}
+                  className="px-5 py-2 bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-brand-600/30 flex items-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <span>Next Question</span>
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              )}
             </div>
           </div>
         </div>

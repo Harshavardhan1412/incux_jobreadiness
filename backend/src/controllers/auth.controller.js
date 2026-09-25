@@ -47,7 +47,11 @@ const signAccessToken = (payload) =>
 
 /** Sign a long-lived refresh token. */
 const signRefreshToken = (payload) =>
-  jwt.sign(payload, process.env.JWT_SECRET + "_refresh", { expiresIn: REFRESH_TOKEN_TTL });
+  jwt.sign(
+    { ...payload, jti: crypto.randomBytes(16).toString("hex") },
+    process.env.JWT_SECRET + "_refresh",
+    { expiresIn: REFRESH_TOKEN_TTL }
+  );
 
 /** Cookie options for the refresh token. */
 const refreshCookieOpts = () => ({
@@ -146,11 +150,12 @@ export const register = async (req, res) => {
     console.log("Candidate registered: " + candidate.name + " (" + candidate.email + ")");
     return res.status(201).json({ success: true, token: accessToken, candidate });
   } catch (err) {
-    await client.query("ROLLBACK").catch(() => {});
-    if (err.code === "23505")
-      return res.status(409).json({ success: false, error: "An account with this email already exists. Please login instead." });
-    console.error("Register error:", err.message);
-    return res.status(500).json({ success: false, error: "Failed to create candidate profile. Please try again." });
+    await client.query('ROLLBACK').catch(() => {});
+    if (err.code === '23505')
+      // VULN-007: Return generic message to prevent email enumeration
+      return res.status(409).json({ success: false, error: 'Registration could not be completed. Please check your details or try logging in if you already have an account.' });
+    console.error('Register error:', err.message);
+    return res.status(500).json({ success: false, error: 'Failed to create candidate profile. Please try again.' });
   } finally {
     client.release();
   }
@@ -207,7 +212,7 @@ export const loginCandidate = async (req, res) => {
       return res.status(401).json({ success: false, error: "Invalid email or password." });
     }
 
-    // Success — clear failure counter
+    // Success  -  clear failure counter
     await clearFailedLogins(email);
 
     const tokenPayload = { id: user.id, email: user.email, role: "candidate" };
@@ -299,17 +304,25 @@ export const logout = async (req, res) => {
   // Revoke the current access token by adding its jti to Redis denylist
   const authHeader = req.headers["authorization"];
   const token = authHeader && authHeader.split(" ")[1];
+  const refreshTokenCookie = req.cookies?.[REFRESH_COOKIE];
 
-  if (token && isRedisAvailable()) {
+  if (isRedisAvailable()) {
     try {
-      const decoded = jwt.decode(token);
-      if (decoded?.jti && decoded?.exp) {
-        const ttl = decoded.exp - Math.floor(Date.now() / 1000);
-        if (ttl > 0) {
+      if (token) {
+        const decoded = jwt.decode(token);
+        if (decoded?.jti && decoded?.exp) {
+          const ttl = Math.max(1, decoded.exp - Math.floor(Date.now() / 1000));
           await redisClient.set("denylist:" + decoded.jti, "1", { EX: ttl });
         }
       }
-    } catch { /* token may already be invalid — still clear cookie */ }
+      if (refreshTokenCookie) {
+        const decodedRefresh = jwt.decode(refreshTokenCookie);
+        if (decodedRefresh?.jti && decodedRefresh?.exp) {
+          const ttl = Math.max(1, decodedRefresh.exp - Math.floor(Date.now() / 1000));
+          await redisClient.set("denylist:" + decodedRefresh.jti, "1", { EX: ttl });
+        }
+      }
+    } catch { /* token may already be invalid - still clear cookie */ }
   }
 
   // Clear the refresh token cookie
@@ -326,7 +339,41 @@ export const refreshToken = async (req, res) => {
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET + "_refresh");
-    const { id, email, role, name } = decoded;
+    const { id, email, role, name, jti } = decoded;
+
+    // Check if refresh token was revoked (denylist)
+    if (jti && isRedisAvailable()) {
+      try {
+        const revoked = await redisClient.exists("denylist:" + jti);
+        if (revoked === 1) {
+          res.clearCookie(REFRESH_COOKIE, { path: "/api/auth" });
+          return res.status(401).json({ success: false, error: "Refresh token has been revoked. Please log in again." });
+        }
+      } catch {}
+    }
+
+    // Invalidate old refresh token (refresh token rotation)
+    if (jti && isRedisAvailable() && decoded.exp) {
+      const ttl = Math.max(1, decoded.exp - Math.floor(Date.now() / 1000));
+      await redisClient.set("denylist:" + jti, "1", { EX: ttl }).catch(() => {});
+    }
+
+    // Check if user still exists and is active in database (if DB reachable)
+    try {
+      const userCheck = await pool.query(
+        "SELECT id, status, role FROM users WHERE id = $1 LIMIT 1",
+        [id]
+      );
+      if (userCheck.rows.length > 0) {
+        const dbUser = userCheck.rows[0];
+        if (dbUser.status === 'inactive' || dbUser.status === 'suspended' || dbUser.status === 'banned') {
+          res.clearCookie(REFRESH_COOKIE, { path: "/api/auth" });
+          return res.status(403).json({ success: false, error: "Account is disabled. Please contact support." });
+        }
+      }
+    } catch (dbErr) {
+      // In dev or mock mode without DB, proceed with decoded token
+    }
 
     const newAccessToken  = signAccessToken({ id, email, role, ...(name ? { name } : {}) });
     const newRefreshToken = signRefreshToken({ id, email, role, ...(name ? { name } : {}) });
@@ -354,19 +401,33 @@ export const getMe = async (req, res) => {
         COALESCE(cp.twelfth_diploma_marks, c.twelfth_diploma_marks) as twelfth_diploma_marks,
         COALESCE(cp.graduation_percentage, c.graduation_percentage) as graduation_percentage,
         COALESCE(cp.backlogs, c.backlogs, 0) as backlogs,
-        COALESCE(c.job_readiness_score, 0) as job_readiness_score,
-        COALESCE(c.job_readiness_score, 0) as overall_score,
-        COALESCE(c.aptitude_score, 0) as aptitude_score,
-        COALESCE(c.reasoning_score, 0) as reasoning_score,
-        COALESCE(c.technical_score, 0) as technical_score,
-        COALESCE(c.verbal_score, 0) as verbal_score,
-        COALESCE(c.coding_score, 0) as coding_score,
-        COALESCE(c.assessments_completed, 0) as assessments_completed,
+        COALESCE(NULLIF(c.job_readiness_score, 0), s_agg.avg_score, 0) as job_readiness_score,
+        COALESCE(NULLIF(c.job_readiness_score, 0), s_agg.avg_score, 0) as overall_score,
+        GREATEST(COALESCE(c.aptitude_score, 0), COALESCE(s_agg.max_aptitude, 0)) as aptitude_score,
+        GREATEST(COALESCE(c.reasoning_score, 0), COALESCE(s_agg.max_reasoning, 0)) as reasoning_score,
+        GREATEST(COALESCE(c.technical_score, 0), COALESCE(s_agg.max_technical, 0)) as technical_score,
+        GREATEST(COALESCE(c.verbal_score, 0), COALESCE(s_agg.max_verbal, 0)) as verbal_score,
+        GREATEST(COALESCE(c.coding_score, 0), COALESCE(s_agg.max_coding, 0)) as coding_score,
+        COALESCE(c.assessments_completed, s_agg.total_assessments, 0) as assessments_completed,
         COALESCE(c.readiness_status, 'In Progress') as readiness_status,
         COALESCE(cp.created_at, c.created_at) as created_at
       FROM candidate_profiles cp
       LEFT JOIN candidates c ON cp.id = c.id
       LEFT JOIN users u ON cp.user_id = u.id
+      LEFT JOIN (
+        SELECT 
+          candidate_id,
+          candidate_email,
+          COUNT(*) as total_assessments,
+          ROUND(AVG(score)) as avg_score,
+          MAX(COALESCE(NULLIF((category_scores->>'aptitude'), '')::numeric, NULLIF((category_scores->>'Aptitude'), '')::numeric, 0)) as max_aptitude,
+          MAX(COALESCE(NULLIF((category_scores->>'reasoning'), '')::numeric, NULLIF((category_scores->>'Reasoning'), '')::numeric, NULLIF((category_scores->>'LogicalReasoning'), '')::numeric, 0)) as max_reasoning,
+          MAX(COALESCE(NULLIF((category_scores->>'technical'), '')::numeric, NULLIF((category_scores->>'Technical'), '')::numeric, NULLIF((category_scores->>'TechnicalKnowledge'), '')::numeric, 0)) as max_technical,
+          MAX(COALESCE(NULLIF((category_scores->>'verbal'), '')::numeric, NULLIF((category_scores->>'Verbal'), '')::numeric, NULLIF((category_scores->>'english'), '')::numeric, NULLIF((category_scores->>'English'), '')::numeric, 0)) as max_verbal,
+          MAX(COALESCE(NULLIF((category_scores->>'coding'), '')::numeric, NULLIF((category_scores->>'Coding'), '')::numeric, 0)) as max_coding
+        FROM assessment_submissions
+        GROUP BY candidate_id, candidate_email
+      ) s_agg ON cp.id = s_agg.candidate_id OR cp.user_id = s_agg.candidate_id OR LOWER(cp.email) = LOWER(s_agg.candidate_email)
       WHERE cp.id=$1 OR cp.user_id=$1
       LIMIT 1
     `, [req.user.id]);
@@ -390,6 +451,7 @@ export const getMe = async (req, res) => {
     const userRes = await pool.query("SELECT id, name, email, role FROM users WHERE id=$1", [req.user.id]);
     res.json({ success: true, user: userRes.rows[0], role: userRes.rows[0]?.role });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('getMe error:', err.message);
+    res.status(500).json({ error: 'Failed to load profile. Please try again.' });
   }
 };

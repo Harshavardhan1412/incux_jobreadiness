@@ -40,7 +40,8 @@ export const getAllAssessments = async (req, res) => {
 
     res.json(responsePayload);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('getAllAssessments error:', err.message);
+    res.status(500).json({ success: false, error: 'Failed to fetch assessments.' });
   }
 };
 
@@ -65,7 +66,8 @@ export const getAssessmentById = async (req, res) => {
     if (result.rows.length === 0) return res.status(404).json({ error: 'Assessment not found.' });
     res.json({ success: true, data: result.rows[0] });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('getAssessmentById error:', err.message);
+    res.status(500).json({ success: false, error: 'Failed to fetch assessment.' });
   }
 };
 
@@ -107,12 +109,39 @@ export const syncAssessmentQuestions = async (client, assessmentId, selectedQues
       [idsToLink]
     );
 
-    // 3. Upsert questions into assessment_questions
-    for (const q of qDetailsRes.rows) {
-      const aqId = `aq-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
+    // PERF-004 fix: Bulk upsert using UNNEST to eliminate N+1 round-trips (1 query for all questions)
+    if (qDetailsRes.rows.length > 0) {
+      const ids         = qDetailsRes.rows.map(() => `aq-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`);
+      const qIds        = qDetailsRes.rows.map(q => q.id);
+      const categories  = qDetailsRes.rows.map(q => q.category);
+      const topics      = qDetailsRes.rows.map(q => q.topic);
+      const questions   = qDetailsRes.rows.map(q => q.question);
+      const diffs       = qDetailsRes.rows.map(q => q.difficulty);
+      const options     = qDetailsRes.rows.map(q => JSON.stringify(q.options || []));
+      const answers     = qDetailsRes.rows.map(q => q.correct_answer);
+      const marks       = qDetailsRes.rows.map(q => q.marks || 1);
+      const testCases   = qDetailsRes.rows.map(q => q.test_cases ? JSON.stringify(q.test_cases) : null);
+      const templates   = qDetailsRes.rows.map(q => q.starter_templates ? JSON.stringify(q.starter_templates) : null);
+      const constraints = qDetailsRes.rows.map(q => q.constraints || null);
+      const asmIds      = qDetailsRes.rows.map(() => assessmentId);
+
       await client.query(
-        `INSERT INTO assessment_questions (id, assessment_id, question_id, category, topic, question, difficulty, options, correct_answer, marks, test_cases, starter_templates, constraints)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        `INSERT INTO assessment_questions
+           (id, assessment_id, question_id, category, topic, question, difficulty, options, correct_answer, marks, test_cases, starter_templates, constraints)
+         SELECT
+           UNNEST($1::varchar[]),
+           UNNEST($2::varchar[]),
+           UNNEST($3::varchar[]),
+           UNNEST($4::varchar[]),
+           UNNEST($5::varchar[]),
+           UNNEST($6::text[]),
+           UNNEST($7::varchar[]),
+           UNNEST($8::jsonb[]),
+           UNNEST($9::varchar[]),
+           UNNEST($10::int[]),
+           UNNEST($11::jsonb[]),
+           UNNEST($12::jsonb[]),
+           UNNEST($13::text[])
          ON CONFLICT (assessment_id, question_id) DO UPDATE SET
            category = EXCLUDED.category,
            topic = EXCLUDED.topic,
@@ -124,21 +153,7 @@ export const syncAssessmentQuestions = async (client, assessmentId, selectedQues
            test_cases = EXCLUDED.test_cases,
            starter_templates = EXCLUDED.starter_templates,
            constraints = EXCLUDED.constraints`,
-        [
-          aqId,
-          assessmentId,
-          q.id,
-          q.category,
-          q.topic,
-          q.question,
-          q.difficulty,
-          JSON.stringify(q.options || []),
-          q.correct_answer,
-          q.marks || 1,
-          q.test_cases ? JSON.stringify(q.test_cases) : null,
-          q.starter_templates ? JSON.stringify(q.starter_templates) : null,
-          q.constraints || null
-        ]
+        [ids, asmIds, qIds, categories, topics, questions, diffs, options, answers, marks, testCases, templates, constraints]
       );
     }
   } else {
@@ -184,7 +199,8 @@ export const createAssessment = async (req, res) => {
     res.status(201).json({ success: true, data: result.rows[0] });
   } catch (err) {
     await client.query('ROLLBACK');
-    res.status(500).json({ error: err.message });
+    console.error('createAssessment error:', err.message);
+    res.status(500).json({ success: false, error: 'Failed to create assessment.' });
   } finally {
     client.release();
   }
@@ -244,7 +260,8 @@ export const updateAssessment = async (req, res) => {
     res.json({ success: true, data: result.rows[0] });
   } catch (err) {
     await client.query('ROLLBACK');
-    res.status(500).json({ error: err.message });
+    console.error('updateAssessment error:', err.message);
+    res.status(500).json({ success: false, error: 'Failed to update assessment.' });
   } finally {
     client.release();
   }
@@ -267,7 +284,8 @@ export const deleteAssessment = async (req, res) => {
     res.json({ success: true, message: 'Assessment and all associated questions deleted.', data: delRes.rows[0] });
   } catch (err) {
     await client.query('ROLLBACK');
-    res.status(500).json({ error: err.message });
+    console.error('deleteAssessment error:', err.message);
+    res.status(500).json({ success: false, error: 'Failed to delete assessment.' });
   } finally {
     client.release();
   }
@@ -280,10 +298,8 @@ export const getAssessmentQuestions = async (req, res) => {
     const candidateId = req.user?.id;
     const candidateEmail = req.user?.email;
 
-    const allowRetake = req.query?.retake === 'true' || 
-                        req.headers?.['x-allow-retake'] === 'true' || 
-                        process.env.ALLOW_ASSESSMENT_RETAKE === 'true' || 
-                        isAdmin;
+    // Retake only allowed if administrator or server-side env flag explicitly enabled
+    const allowRetake = process.env.ALLOW_ASSESSMENT_RETAKE === 'true' || isAdmin;
 
     // Single Attempt Enforcement: If candidate already completed, block fetching questions
     if (!allowRetake && (candidateId || candidateEmail)) {
@@ -322,9 +338,31 @@ export const getAssessmentQuestions = async (req, res) => {
        ORDER BY aq.created_at ASC`,
       [req.params.id]
     );
-    res.json({ success: true, data: result.rows, total: result.rowCount });
+
+    // Sanitize hidden test cases from candidate responses to prevent answer/input leakage
+    const sanitizedRows = isAdmin ? result.rows : result.rows.map(row => {
+      let tc = row.test_cases;
+      if (typeof tc === 'string') {
+        try { tc = JSON.parse(tc); } catch { tc = []; }
+      }
+      const safeTestCases = Array.isArray(tc)
+        ? tc.filter(item => !item.isHidden).map(item => ({
+            id: item.id,
+            input: item.input,
+            expectedOutput: item.expectedOutput,
+            isHidden: false
+          }))
+        : [];
+      return {
+        ...row,
+        test_cases: safeTestCases
+      };
+    });
+
+    res.json({ success: true, data: sanitizedRows, total: result.rowCount });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('getAssessmentQuestions error:', err.message);
+    res.status(500).json({ success: false, error: 'Failed to fetch assessment questions.' });
   }
 };
 
@@ -404,7 +442,8 @@ export const addQuestionsToAssessment = async (req, res) => {
     res.status(201).json({ success: true, message: `Linked ${insertedRows.length} questions to assessment.`, data: insertedRows });
   } catch (err) {
     await client.query('ROLLBACK');
-    res.status(500).json({ error: err.message });
+    console.error('addQuestionsToAssessment error:', err.message);
+    res.status(500).json({ success: false, error: 'Failed to add questions to assessment.' });
   } finally {
     client.release();
   }
@@ -421,7 +460,8 @@ export const removeQuestionFromAssessment = async (req, res) => {
     clearAssessmentsCache();
     res.json({ success: true, message: 'Question removed from assessment.' });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('removeQuestionFromAssessment error:', err.message);
+    res.status(500).json({ success: false, error: 'Failed to remove question from assessment.' });
   }
 };
 

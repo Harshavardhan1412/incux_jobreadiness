@@ -8,14 +8,22 @@ export default function ScoreOverview({ student }) {
   const latestAttempt = student.examAttempts[student.examAttempts.length - 1];
   const prevAttempt = student.examAttempts.length > 1 ? student.examAttempts[student.examAttempts.length - 2] : null;
 
-  const currentPercents = latestAttempt ? getCategoryPercents(latestAttempt) : { aptitude: 0, reasoning: 0, technical: 0, english: 0, verbal: 0, coding: 0 };
+  const evaluatedPercents = latestAttempt ? getCategoryPercents(latestAttempt) : {};
+  const currentPercents = {
+    aptitude: Number(student.categoryScores?.aptitude || evaluatedPercents.aptitude || 0),
+    reasoning: Number(student.categoryScores?.reasoning || evaluatedPercents.reasoning || 0),
+    technical: Number(student.categoryScores?.technical || evaluatedPercents.technical || 0),
+    verbal: Number(student.categoryScores?.verbal || evaluatedPercents.verbal || evaluatedPercents.english || 0),
+    english: Number(student.categoryScores?.verbal || evaluatedPercents.english || evaluatedPercents.verbal || 0),
+    coding: Number(student.categoryScores?.coding || evaluatedPercents.coding || 0),
+  };
 
   const scoreTrend = student.examAttempts.map((att) => {
     const cats = Object.values(att.categories || {});
     const count = cats.length || 1;
     return {
       date: new Date(att.date).toLocaleDateString('en-US', { month: 'short' }),
-      score: Math.round(
+      score: att.totalScore !== undefined ? Number(att.totalScore) : Math.round(
         cats.reduce((sum, cat) => sum + (cat.maxScore > 0 ? (cat.score / cat.maxScore) * 100 : 0), 0) / count
       ),
     };

@@ -414,6 +414,57 @@ export const cleanOutput = (str) => {
 };
 
 /**
+ * Robust output comparison helper for candidate test case evaluation.
+ * Handles:
+ * 1. Exact string matches & whitespace trimming
+ * 2. Case-insensitive matches (e.g., boolean 'True' vs 'true', 'YES' vs 'yes')
+ * 3. Numeric precision tolerance (e.g., 15.0 vs 15)
+ * 4. Tokenized array/collection comparisons (e.g. [1, 2, 3] vs 1 2 3 vs 1, 2, 3)
+ */
+export const compareOutputs = (actualRaw, expectedRaw) => {
+  const actual = cleanOutput(actualRaw);
+  const expected = cleanOutput(expectedRaw);
+
+  // 1. Exact match
+  if (actual === expected) return true;
+
+  // 2. Case-insensitive match (for booleans and simple strings)
+  if (actual.toLowerCase() === expected.toLowerCase()) return true;
+
+  // 3. Numeric comparison
+  if (!isNaN(actual) && !isNaN(expected) && actual.trim() !== '' && expected.trim() !== '') {
+    if (Math.abs(parseFloat(actual) - parseFloat(expected)) < 1e-6) return true;
+  }
+
+  // 4. Tokenized comparison for arrays & multi-value outputs
+  const normalizeTokens = (str) => {
+    return str
+      .replace(/[\[\]"':,]/g, ' ')
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+  };
+
+  const actualTokens = normalizeTokens(actual);
+  const expectedTokens = normalizeTokens(expected);
+
+  if (actualTokens.length > 0 && actualTokens.length === expectedTokens.length) {
+    const allMatch = actualTokens.every((tok, idx) => {
+      const expTok = expectedTokens[idx];
+      if (tok === expTok) return true;
+      if (tok.toLowerCase() === expTok.toLowerCase()) return true;
+      if (!isNaN(tok) && !isNaN(expTok)) {
+        return Math.abs(parseFloat(tok) - parseFloat(expTok)) < 1e-6;
+      }
+      return false;
+    });
+    if (allMatch) return true;
+  }
+
+  return false;
+};
+
+/**
  * Concurrency-bounded map helper (in-process worker pool, zero external dependencies)
  * Runs up to `limit` promises concurrently to avoid container starvation
  */
@@ -533,7 +584,7 @@ export const evaluateCodeAgainstTestCases = async ({
     }
 
     const actual = cleanOutput(execRes.stdout);
-    const passed = execRes.status === 'Success' && actual === expected;
+    const passed = execRes.status === 'Success' && compareOutputs(execRes.stdout, expected);
     const status = passed ? 'Passed' : (execRes.status === 'Success' ? 'Wrong Answer' : execRes.status);
 
     if (isHidden && !includeHiddenDetails) {

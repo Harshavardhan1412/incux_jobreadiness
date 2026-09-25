@@ -23,7 +23,7 @@ export const getStats = async (req, res) => {
     });
   } catch (err) {
     console.error('Error fetching admin stats:', err);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: 'Failed to fetch admin stats.' });
   }
 };
 
@@ -278,7 +278,7 @@ export const getAnalytics = async (req, res) => {
     });
   } catch (err) {
     console.error('Error fetching admin analytics:', err);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: 'Failed to fetch analytics.' });
   }
 };
 
@@ -301,6 +301,6 @@ export const getPlacementReport = async (req, res) => {
     res.json({ success: true, data: result.rows, total: result.rowCount });
   } catch (err) {
     console.error('Error fetching placement report:', err);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: 'Failed to fetch placement report.' });
   }
 };

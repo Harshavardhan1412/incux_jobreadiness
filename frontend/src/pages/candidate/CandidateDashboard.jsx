@@ -469,7 +469,7 @@ export const CandidateDashboard = () => {
             reasoning: currentUser?.reasoningScore ?? 74,
             technical: currentUser?.technicalScore ?? 78,
             verbal: currentUser?.verbalScore ?? 78,
-            coding: currentUser?.codingScore ?? 78
+            coding: currentUser?.codingScore ?? 75
           }
         }}
         addToast={addToast}

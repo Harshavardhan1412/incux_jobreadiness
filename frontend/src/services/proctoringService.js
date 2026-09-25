@@ -1,16 +1,18 @@
 import { FilesetResolver, FaceLandmarker } from '@mediapipe/tasks-vision';
 
 // Configurable proctoring thresholds
-export const YAW_THRESHOLD = 25;    // Max degrees turn left/right before 'looking_away'
-export const PITCH_THRESHOLD = 20;  // Max degrees tilt up/down before 'looking_away'
-export const GRACE_PERIOD_MS = 1000; // Continuous violation duration before firing strike (1 second)
-export const DETECTION_INTERVAL_MS = 500; // Interval between frames (0.5 seconds for responsive 1s grace evaluation)
-export const MAX_ALLOWED_STRIKES = 3; // 3 warnings before auto-submission
+export const YAW_THRESHOLD = 25;         // Max degrees turn left/right before 'looking_away'
+export const PITCH_UP_THRESHOLD = 22;     // Max degrees tilt up (ceiling or secondary monitor)
+export const PITCH_DOWN_THRESHOLD = 40;   // Max degrees tilt down (allows looking down at keyboard while typing)
+export const PITCH_THRESHOLD = 25;        // Fallback default threshold
+export const GRACE_PERIOD_MS = 4000;      // Continuous violation duration before firing strike (4 seconds)
+export const DETECTION_INTERVAL_MS = 1500; // Interval between frame detections (1.5 seconds)
+export const MAX_ALLOWED_STRIKES = 3;     // 3 warnings before auto-submission
 
 // Eye gaze diversion thresholds (normalized 0.0 - 1.0 blendshape scores)
-export const EYE_LOOK_DOWN_THRESHOLD = 0.55; // Looking down at phone, notes, or lap
+export const EYE_LOOK_DOWN_THRESHOLD = 0.78; // Looking down (relaxed to allow glancing at keyboard/desk)
 export const EYE_LOOK_UP_THRESHOLD = 0.45;   // Looking up toward ceiling or secondary screen
-export const EYE_LOOK_SIDE_THRESHOLD = 0.45; // Looking left or right away from screen
+export const EYE_LOOK_SIDE_THRESHOLD = 0.48; // Looking left or right away from screen
 
 let landmarkerInstance = null;
 let initPromise = null;
@@ -143,8 +145,8 @@ export const estimateEyeGaze = (blendshapeObj, landmarks) => {
   let reason = 'Eyes focused on screen';
   let message = 'Eyes focused on the assessment screen.';
 
-  // Check Downward gaze (looking at phone, notes, or desk)
-  if (downScore > EYE_LOOK_DOWN_THRESHOLD || (hasGeom && geomVert > 0.72 && downScore > 0.40)) {
+  // Check Downward gaze (looking at phone, notes, or desk) - relaxed to allow typing on keyboard
+  if (downScore > EYE_LOOK_DOWN_THRESHOLD || (hasGeom && geomVert > 0.85 && downScore > 0.60)) {
     isDiverted = true;
     gazeDirection = 'down';
     reason = 'Eyes directed downwards (looking away)';
@@ -288,13 +290,14 @@ export const classifyFrame = (results) => {
   const blendshapesObj = results.faceBlendshapes ? results.faceBlendshapes[0] : null;
 
   const { yaw, pitch, roll } = estimateHeadPose(landmarks, matrixObj);
-  const isHeadTurned = Math.abs(yaw) > YAW_THRESHOLD || Math.abs(pitch) > PITCH_THRESHOLD;
+  const isPitchExceeded = pitch > 0 ? pitch > PITCH_DOWN_THRESHOLD : Math.abs(pitch) > PITCH_UP_THRESHOLD;
+  const isHeadTurned = Math.abs(yaw) > YAW_THRESHOLD || isPitchExceeded;
 
   if (isHeadTurned) {
     let directionReason = 'Looking away from screen';
     if (Math.abs(yaw) > YAW_THRESHOLD) {
       directionReason = yaw > 0 ? 'Face turned to the right' : 'Face turned to the left';
-    } else if (Math.abs(pitch) > PITCH_THRESHOLD) {
+    } else if (isPitchExceeded) {
       directionReason = pitch > 0 ? 'Face tilted downwards' : 'Face tilted upwards';
     }
 

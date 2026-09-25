@@ -5,7 +5,7 @@ import { isRedisAvailable } from '../db/redis.js';
 import { processSubmission } from '../workers/submissionWorker.js';
 
 const QUEUE_NAME = 'code-submissions';
-const REDIS_URL = process.env.REDIS_URL || 'redis://default:qeTZunBQpbbGqpqXmnFZoKLNzzqnNCdo@redis.railway.internal:6379';
+const REDIS_URL = process.env.REDIS_URL;
 
 // ─── In-Memory Fallback Queue (Active in dev / when Redis is offline) ─────────
 class InMemorySubmissionQueue extends EventEmitter {
@@ -97,10 +97,12 @@ let useBull = false;
 
 // Attempt BullMQ initialization if Redis is enabled
 const initBullMQ = () => {
+  if (!REDIS_URL || !isRedisAvailable()) {
+    useBull = false;
+    return;
+  }
   try {
-    let connectionUrl = REDIS_URL;
-    // Parse Redis connection details
-    const parsed = new URL(connectionUrl);
+    const parsed = new URL(REDIS_URL);
     const connectionOpts = {
       host: parsed.hostname,
       port: parseInt(parsed.port || '6379', 10),
@@ -120,7 +122,6 @@ const initBullMQ = () => {
     });
 
     bullQueue.on('error', (err) => {
-      // Non-fatal logging if Redis is unreachable in local dev
       if (err.code !== 'ENOTFOUND') console.warn(`[BullMQ Queue] Notice: ${err.message}`);
     });
 

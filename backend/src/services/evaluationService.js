@@ -1,4 +1,6 @@
 import { pool } from '../db/pool.js';
+import { getSubmissionJob } from '../queues/submissionQueue.js';
+import { evaluateCodeAgainstTestCases } from './codeExecutionService.js';
 
 /**
  * Deterministic Authoritative Evaluation Service
@@ -50,9 +52,11 @@ export const evaluateSubmission = async ({
     try {
       if (assessmentId) {
         const aqRes = await dbClient.query(
-          `SELECT question_id as id, correct_answer, marks, category, topic
-           FROM assessment_questions
-           WHERE assessment_id = $1 AND question_id = ANY($2::varchar[])`,
+          `SELECT aq.question_id as id, aq.correct_answer, aq.marks, aq.category, aq.topic, q.type,
+                  COALESCE(aq.test_cases, q.test_cases) as test_cases, q.language
+           FROM assessment_questions aq
+           LEFT JOIN questions q ON aq.question_id = q.id
+           WHERE aq.assessment_id = $1 AND aq.question_id = ANY($2::varchar[])`,
           [assessmentId, allQuestionIds]
         );
         if (aqRes.rows.length > 0) {
@@ -65,7 +69,7 @@ export const evaluateSubmission = async ({
         const foundIds = new Set(assessmentQuestions.map(q => q.id));
         const missingIds = allQuestionIds.filter(id => !foundIds.has(id));
         const qRes = await dbClient.query(
-          `SELECT id, correct_answer, marks, category, topic
+          `SELECT id, correct_answer, marks, category, topic, type, test_cases, language
            FROM questions
            WHERE id = ANY($1::varchar[])`,
           [missingIds]
@@ -85,7 +89,10 @@ export const evaluateSubmission = async ({
       correctAnswer: (q.correct_answer || '').trim().toUpperCase(),
       category: (q.category || 'General').trim(),
       topic: (q.topic || 'General').trim(),
+      type: q.type,
       marks: Number(q.marks) > 0 ? Number(q.marks) : 1,
+      test_cases: q.test_cases,
+      language: q.language
     });
   });
 
@@ -99,23 +106,36 @@ export const evaluateSubmission = async ({
   const topicStats = {};
 
   if (questionMap.size > 0) {
-    questionMap.forEach((q, qId) => {
+    for (const [qId, q] of questionMap.entries()) {
       const qMarks = q.marks;
-      const qTopic = q.topic;
-      const qCategory = q.category;
+      const qTopic = q.topic || 'General';
+
+      const userAnswer = answerEntries[qId];
+      const isCodingAnswer = typeof userAnswer === 'object' && userAnswer !== null && (userAnswer.code !== undefined || userAnswer.score !== undefined);
+
+      const qType = String(q.type || '').toLowerCase();
+      const qCat = String(q.category || '').toLowerCase();
+      const qIdStr = String(q.id || '').toLowerCase();
+      const hasTC = (Array.isArray(q.test_cases) && q.test_cases.length > 0) ||
+        (Array.isArray(q.testCases) && q.testCases.length > 0) ||
+        (typeof q.test_cases === 'string' && q.test_cases.trim() !== '' && q.test_cases !== '[]' && q.test_cases !== 'null') ||
+        (typeof q.testCases === 'string' && q.testCases.trim() !== '' && q.testCases !== '[]' && q.testCases !== 'null');
+      const isCodingQ = isCodingAnswer || qType === 'coding' || qCat === 'coding' || qIdStr.startsWith('code-') || hasTC;
+
+      const effectiveCategory = isCodingQ ? 'Coding' : (q.category || 'Technical');
 
       totalPossibleMarks += qMarks;
 
-      if (!categoryStats[qCategory]) {
-        categoryStats[qCategory] = { totalMarks: 0, obtainedMarks: 0, totalQuestions: 0, correctCount: 0 };
+      if (!categoryStats[effectiveCategory]) {
+        categoryStats[effectiveCategory] = { totalMarks: 0, obtainedMarks: 0, totalQuestions: 0, correctCount: 0 };
       }
-      categoryStats[qCategory].totalMarks += qMarks;
-      categoryStats[qCategory].totalQuestions += 1;
+      categoryStats[effectiveCategory].totalMarks += qMarks;
+      categoryStats[effectiveCategory].totalQuestions += 1;
 
       if (!topicStats[qTopic]) {
         topicStats[qTopic] = {
           topic: qTopic,
-          category: qCategory,
+          category: effectiveCategory,
           totalMarks: 0,
           obtainedMarks: 0,
           totalQuestions: 0,
@@ -127,21 +147,58 @@ export const evaluateSubmission = async ({
       topicStats[qTopic].totalMarks += qMarks;
       topicStats[qTopic].totalQuestions += 1;
 
-      const userAnswer = answerEntries[qId];
-      const isCodingAnswer = typeof userAnswer === 'object' && userAnswer !== null && (userAnswer.code !== undefined || userAnswer.score !== undefined);
       const hasAnswered = isCodingAnswer || (userAnswer !== undefined && userAnswer !== null && String(userAnswer).trim() !== '');
 
       if (hasAnswered) {
         if (isCodingAnswer) {
-          const codingScorePct = Number(userAnswer.score ?? 0);
+          let codingScorePct = 0;
+
+          // 1. Authoritative verification via completed queue jobId
+          const jobId = userAnswer.jobId || userAnswer.submissionId;
+          if (jobId) {
+            try {
+              const job = await getSubmissionJob(String(jobId));
+              if (job && (job.status === 'completed' || job.result?.evaluation)) {
+                codingScorePct = Number(job.result?.evaluation?.score ?? 0);
+              }
+            } catch (err) {
+              console.warn(`Could not verify coding submission job ${jobId}:`, err.message);
+            }
+          }
+
+          // 2. If no valid jobId was found, but source code is present, authoritatively execute against test cases
+          if (codingScorePct === 0 && typeof userAnswer.code === 'string' && userAnswer.code.trim().length > 0) {
+            let tc = q.test_cases;
+            if (typeof tc === 'string') {
+              try { tc = JSON.parse(tc); } catch { tc = []; }
+            }
+            if (Array.isArray(tc) && tc.length > 0) {
+              try {
+                const evalRes = await evaluateCodeAgainstTestCases({
+                  language: userAnswer.language || q.language || 'python',
+                  sourceCode: userAnswer.code,
+                  testCases: tc,
+                  includeHiddenDetails: false,
+                  timeoutMs: 6000
+                });
+                if (evalRes && typeof evalRes.score === 'number') {
+                  codingScorePct = evalRes.score;
+                }
+              } catch (evalErr) {
+                console.warn(`Authoritative evaluation fallback error for ${qId}:`, evalErr.message);
+              }
+            }
+          }
+
+          // Compute earned marks based on verified coding score percentage
           const earned = Math.round((codingScorePct / 100) * qMarks);
           totalObtainedMarks += earned;
-          categoryStats[qCategory].obtainedMarks += earned;
+          categoryStats[effectiveCategory].obtainedMarks += earned;
           topicStats[qTopic].obtainedMarks += earned;
 
           if (codingScorePct >= 60) {
             correctCount += 1;
-            categoryStats[qCategory].correctCount += 1;
+            categoryStats[effectiveCategory].correctCount += 1;
             topicStats[qTopic].correctCount += 1;
           } else {
             incorrectCount += 1;
@@ -153,8 +210,8 @@ export const evaluateSubmission = async ({
             correctCount += 1;
             totalObtainedMarks += qMarks;
 
-            categoryStats[qCategory].correctCount += 1;
-            categoryStats[qCategory].obtainedMarks += qMarks;
+            categoryStats[effectiveCategory].correctCount += 1;
+            categoryStats[effectiveCategory].obtainedMarks += qMarks;
 
             topicStats[qTopic].correctCount += 1;
             topicStats[qTopic].obtainedMarks += qMarks;
@@ -167,7 +224,7 @@ export const evaluateSubmission = async ({
         unansweredCount += 1;
         topicStats[qTopic].unansweredCount += 1;
       }
-    });
+    }
   } else {
     // Fallback if questions table had no matching IDs
     answeredQuestionIds.forEach((qId) => {
@@ -196,7 +253,7 @@ export const evaluateSubmission = async ({
   const score = calculateDeterministicScore(totalObtainedMarks, totalPossibleMarks);
   const accuracy = attemptedCount > 0 ? Math.round((correctCount / attemptedCount) * 100) : 0;
 
-  // Helper function to normalize category to one of the 4 standard sections
+  // Helper function to normalize category to one of the 5 standard sections
   const normalizeSection = (rawCat) => {
     const c = (rawCat || '').toLowerCase().trim();
     if (c.includes('code') || c.includes('prog')) return 'coding';
@@ -244,11 +301,14 @@ export const evaluateSubmission = async ({
     }
   });
 
-  if (categoryStats['Coding'] && categoryStats['Coding'].totalMarks > 0) {
-    categoryScores.coding = Math.round((categoryStats['Coding'].obtainedMarks / categoryStats['Coding'].totalMarks) * 100);
-  } else if (categoryScores.technical > 0) {
-    categoryScores.coding = categoryScores.technical;
-  }
+  // Track which sections were actually tested in this assessment
+  const sectionsTested = {
+    aptitude: normalizedCategoryStats.aptitude.totalMarks > 0,
+    reasoning: normalizedCategoryStats.reasoning.totalMarks > 0,
+    technical: normalizedCategoryStats.technical.totalMarks > 0,
+    verbal: normalizedCategoryStats.verbal.totalMarks > 0,
+    coding: normalizedCategoryStats.coding.totalMarks > 0,
+  };
 
   // Build topic breakdown with accurate topic marks & performance
   const topicBreakdown = Object.keys(topicStats).map((topic) => {
@@ -260,6 +320,8 @@ export const evaluateSubmission = async ({
     else if (topicScore >= 50) status = 'Average';
     else status = 'Weak';
 
+    const attempted = s.correctCount + s.incorrectCount;
+
     return {
       topic: s.topic,
       category: s.category,
@@ -270,6 +332,7 @@ export const evaluateSubmission = async ({
       incorrectCount: s.incorrectCount,
       unansweredCount: s.unansweredCount,
       totalQuestions: s.totalQuestions,
+      accuracy: attempted > 0 ? Math.round((s.correctCount / attempted) * 100) : 0,
       status,
     };
   });
@@ -283,7 +346,8 @@ export const evaluateSubmission = async ({
     incorrectCount,
     unansweredCount,
     totalQuestions,
-    categoryScores: Object.keys(categoryScores).length > 0 ? categoryScores : { technical: score },
+    categoryScores,
+    sectionsTested,
     topicBreakdown,
   };
 };

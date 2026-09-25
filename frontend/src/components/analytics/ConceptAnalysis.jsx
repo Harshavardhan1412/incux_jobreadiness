@@ -14,28 +14,70 @@ export default function ConceptAnalysis({ student }) {
     { key: 'coding', label: 'Coding', color: COLORS.coding || '#6366F1' },
   ];
 
-  const allTopics = [];
+  const allTopicsMap = new Map();
+  const attempts = student.examAttempts || [];
 
-  categories.forEach((cat) => {
-    const catData = latestAttempt.categories[cat.key] || (cat.fallbackKey ? latestAttempt.categories[cat.fallbackKey] : null);
-    if (!catData || !Array.isArray(catData.topics)) return;
-    catData.topics.forEach((topic) => {
-      const maxScore = Number(topic.maxScore) > 0 ? Number(topic.maxScore) : 1;
-      const score = Number(topic.score || 0);
-      const percent = Math.min(100, Math.max(0, Math.round((score / maxScore) * 100)));
-      allTopics.push({
-        category: cat.label,
-        topic: topic.name,
-        score,
-        maxScore,
-        percent,
+  attempts.forEach((att) => {
+    categories.forEach((cat) => {
+      const catData = att.categories?.[cat.key] || (cat.fallbackKey ? att.categories?.[cat.fallbackKey] : null);
+      if (!catData || !Array.isArray(catData.topics)) return;
+      catData.topics.forEach((topic) => {
+        const topicName = topic.name || topic.topic;
+        if (!topicName) return;
+        const maxScore = Number(topic.maxScore) > 0 ? Number(topic.maxScore) : (Number(topic.totalMarks) > 0 ? Number(topic.totalMarks) : 100);
+        const score = Number(topic.score ?? topic.obtainedMarks ?? 0);
+        const percent = Math.min(100, Math.max(0, Math.round((score / maxScore) * 100)));
+        const existing = allTopicsMap.get(topicName);
+        if (!existing || percent > existing.percent) {
+          allTopicsMap.set(topicName, {
+            category: cat.label,
+            topic: topicName,
+            score,
+            maxScore,
+            percent,
+          });
+        }
       });
     });
   });
 
+  if (Array.isArray(student.topicBreakdown)) {
+    student.topicBreakdown.forEach((t) => {
+      const topicName = t.topic || t.name;
+      if (!topicName) return;
+      const maxScore = Number(t.totalMarks ?? t.maxScore ?? 100);
+      const score = Number(t.obtainedMarks ?? t.score ?? 0);
+      const percent = Math.min(100, Math.max(0, Math.round((score / maxScore) * 100)));
+      const existing = allTopicsMap.get(topicName);
+      if (!existing || percent > existing.percent) {
+        allTopicsMap.set(topicName, {
+          category: t.category || 'General',
+          topic: topicName,
+          score,
+          maxScore,
+          percent,
+        });
+      }
+    });
+  }
+
+  const allTopics = Array.from(allTopicsMap.values());
+
   const strengths = allTopics.filter((t) => t.percent >= 80);
   const weaknesses = allTopics.filter((t) => t.percent < 60).sort((a, b) => a.percent - b.percent);
   const needsWork = allTopics.filter((t) => t.percent >= 60 && t.percent < 80);
+
+  const getCategoryPercent = (cat) => {
+    const compositeVal = Number(student.categoryScores?.[cat.key] ?? (cat.fallbackKey ? student.categoryScores?.[cat.fallbackKey] : undefined));
+    if (compositeVal > 0) {
+      return Math.min(100, Math.max(0, Math.round(compositeVal)));
+    }
+    const catData = latestAttempt.categories?.[cat.key] || (cat.fallbackKey ? latestAttempt.categories?.[cat.fallbackKey] : null);
+    if (catData && Number(catData.maxScore) > 0 && Number(catData.score) > 0) {
+      return Math.min(100, Math.max(0, Math.round((Number(catData.score) / Number(catData.maxScore)) * 100)));
+    }
+    return compositeVal || 0;
+  };
 
   return (
     <section id="concepts" className="space-y-6">
@@ -49,11 +91,7 @@ export default function ConceptAnalysis({ student }) {
           datasets={[
             {
               label: 'Your Score',
-              data: categories.map((c) => {
-                const catData = latestAttempt.categories[c.key] || (c.fallbackKey ? latestAttempt.categories[c.fallbackKey] : null);
-                const max = Number(catData?.maxScore) > 0 ? Number(catData.maxScore) : 1;
-                return Math.min(100, Math.max(0, Math.round((Number(catData?.score || 0) / max) * 100)));
-              }),
+              data: categories.map((c) => getCategoryPercent(c)),
               color: '#3B82F6',
               filled: true,
             },
@@ -70,10 +108,10 @@ export default function ConceptAnalysis({ student }) {
         <div className="space-y-3">
           <h3 className="text-base font-bold text-slate-800">Section Performance</h3>
           {categories.map((cat) => {
-            const catData = latestAttempt.categories[cat.key] || (cat.fallbackKey ? latestAttempt.categories[cat.fallbackKey] : null);
-            const score = Number(catData?.score || 0);
+            const percent = getCategoryPercent(cat);
+            const catData = latestAttempt.categories?.[cat.key] || (cat.fallbackKey ? latestAttempt.categories?.[cat.fallbackKey] : null);
             const maxScore = Number(catData?.maxScore) > 0 ? Number(catData.maxScore) : 25;
-            const percent = Math.min(100, Math.max(0, Math.round((score / maxScore) * 100)));
+            const score = Math.round((percent / 100) * maxScore);
             return (
               <div key={cat.key} className="bg-white rounded-xl p-4 border border-slate-200/90 shadow-card">
                 <div className="flex items-center justify-between mb-2">

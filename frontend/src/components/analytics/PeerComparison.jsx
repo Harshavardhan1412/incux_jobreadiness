@@ -1,10 +1,21 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { mockPeerComparison, COLORS } from '../../data/analyticsData';
 import ComparisonLineChart from './ComparisonLineChart';
 import ScoreBarChart from './ScoreBarChart';
 
 export default function PeerComparison({ student }) {
-  const data = mockPeerComparison;
+  const data = useMemo(() => {
+    return mockPeerComparison.map(d => {
+      const key = d.category.toLowerCase();
+      const actualScore = student?.categoryScores?.[key];
+      return {
+        ...d,
+        studentScore: (actualScore !== undefined && actualScore !== null && !isNaN(Number(actualScore)))
+          ? Number(actualScore)
+          : d.studentScore,
+      };
+    });
+  }, [student]);
 
   const overallStudent = Math.round(data.reduce((s, d) => s + d.studentScore, 0) / data.length);
   const overallAvg = Math.round(data.reduce((s, d) => s + d.classAverage, 0) / data.length);
@@ -120,7 +131,7 @@ export default function PeerComparison({ student }) {
         title="Your Score Distribution"
         labels={data.map((d) => d.category)}
         data={data.map((d) => d.studentScore)}
-        colors={[COLORS.aptitude, COLORS.reasoning, COLORS.technical, COLORS.verbal || COLORS.english]}
+        colors={[COLORS.aptitude, COLORS.reasoning, COLORS.technical, COLORS.verbal || COLORS.english, COLORS.coding || '#6366F1']}
       />
     </section>
   );

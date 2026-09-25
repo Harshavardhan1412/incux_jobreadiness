@@ -14,7 +14,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const distPath = path.resolve(__dirname, '../../frontend/dist');
 
-import { testConnection, closePool } from './db/pool.js';
+import { testConnection, closePool, getDbStatus } from './db/pool.js';
+import { isRedisAvailable } from './db/redis.js';
 import { initSchema } from './db/schema.js';
 
 import { apiLimiter, loginLimiter, registerLimiter, submissionLimiter } from './middleware/rateLimiter.js';
@@ -31,6 +32,9 @@ import codeRoutes from './routes/code.routes.js';
 const app = express();
 const PORT = parseInt(process.env.PORT || '5000', 10);
 const HOST = '0.0.0.0';
+
+// Enable trust proxy for correct IP identification behind proxies & load balancers
+app.set('trust proxy', 1);
 
 // ─── Security: Defensive HTTP Headers (Helmet) ──────────────────────────────
 app.use(helmet());
@@ -57,48 +61,10 @@ app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser()); // Required for reading HttpOnly refresh token cookies
 
-const isDev = process.env.NODE_ENV !== 'production';
-
-// ─── Security: Defensive Rate Limiting (Campus NAT & DoS Protection) ────────
-const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: isDev ? 20000 : 5000, // Supports 150-500 students sharing the same college NAT IP
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { success: false, error: 'Too many requests. Please slow down and try again later.' },
-  keyGenerator: (req) => {
-    // Key by candidate / user token when available, falling back to IP
-    return req.headers['authorization'] || req.headers['x-candidate-id'] || req.body?.candidateId || req.ip;
-  }
-});
-
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: isDev ? 200 : 30,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { success: false, error: 'Too many login attempts. Please try again after a few minutes.' }
-});
-
-const registerLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000,
-  max: 15,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { success: false, error: 'Too many registration attempts. Please try again later.' }
-});
-
-const submissionLimiter = rateLimit({
-  windowMs: 10 * 60 * 1000,
-  max: 40,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { success: false, error: 'Submission rate limit reached. Please wait before submitting another test attempt.' }
-});
-
-app.use(['/api', '/api/*'], apiLimiter);
-app.use(['/api/auth/login', '/auth/login'], authLimiter);
-app.use(['/api/auth/admin/login', '/auth/admin/login'], authLimiter);
+// ─── Security: Rate Limiting (Campus NAT & DoS Protection) ──────────────────
+app.use(['/api', '/api/*', '/auth', '/auth/*', '/candidates', '/candidates/*', '/assessments', '/assessments/*', '/questions', '/questions/*', '/submissions', '/submissions/*', '/admin', '/admin/*', '/code', '/code/*'], apiLimiter);
+app.use(['/api/auth/login', '/auth/login'], loginLimiter);
+app.use(['/api/auth/admin/login', '/auth/admin/login'], loginLimiter);
 app.use(['/api/auth/register', '/auth/register'], registerLimiter);
 app.use(['/api/submissions', '/submissions'], submissionLimiter);
 
@@ -128,12 +94,15 @@ app.use((req, res, next) => {
 
 // ─── Health Check ─────────────────────────────────────────────────────────────
 const healthHandler = async (_req, res) => {
-  const dbOk = await testConnection().catch(() => false);
+  if (res.headersSent) return;
+  const dbOk = getDbStatus();
+  const redisOk = isRedisAvailable();
   res.json({
-    status: 'online',
+    status: dbOk ? (redisOk ? 'online' : 'degraded') : 'offline',
     service: 'ReadySetJob API',
     version: '1.0.0',
     database: dbOk ? 'connected ✅' : 'offline ❌',
+    redis: redisOk ? 'connected ✅' : 'offline ⚠️ (distributed rate-limiting & instant token revocation degraded)',
     timestamp: new Date().toISOString(),
     pid: process.pid,
   });
@@ -167,13 +136,28 @@ if (fs.existsSync(distPath)) {
   });
 }
 
-// ─── 404 & Global Error Handler ──────────────────────────────────────────────
 app.use((_req, res) => res.status(404).json({ error: 'API endpoint not found.' }));
 
 app.use((err, _req, res, _next) => {
-  console.error('Unhandled error:', err.message);
-  res.status(500).json({ error: 'Internal server error.' });
+  // VULN-005 fix: Return 413 for oversized payloads (body-parser throws SyntaxError/entity.too.large)
+  if (err.type === 'entity.too.large' || err.status === 413) {
+    return res.status(413).json({ error: 'Request payload too large. Maximum allowed size is 1MB.' });
+  }
+  // ARCH-002 fix: Never expose raw internal error messages to clients
+  console.error('Unhandled error:', err.message, err.stack?.split('\n')[1]);
+  res.status(err.status || 500).json({ error: 'Internal server error.' });
 });
+
+// ─── Security: Cryptographic JWT Secret Validation ──────────────────────────
+const jwtSecret = process.env.JWT_SECRET;
+if (!jwtSecret || jwtSecret.length < 32 || jwtSecret === 'rsj_super_secret_jwt_key_2026_change_in_prod') {
+  if (process.env.NODE_ENV === 'production') {
+    console.error('FATAL [SECURITY]: JWT_SECRET must be configured with a high-entropy string (>= 32 chars) in production.');
+    process.exit(1);
+  } else {
+    console.warn('⚠️  [SECURITY WARNING] Default or low-entropy JWT_SECRET detected in dev mode. Ensure a secure 256-bit secret is configured in production.');
+  }
+}
 
 // ─── Startup ─────────────────────────────────────────────────────────────────
 const server = app.listen(PORT, HOST, async () => {

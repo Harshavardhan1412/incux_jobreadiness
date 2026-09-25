@@ -14,8 +14,13 @@ const AppContext = createContext();
 
 export const AppProvider = ({ children }) => {
   // Authentication & Role: 'candidate' | 'admin' | 'guest'
+  // VULN-004 fix: Do NOT read access token from localStorage.
+  // User objects (non-secret metadata) may still be stored in localStorage for UX purposes.
+  // The actual access token lives in memory only; session is rehydrated via HttpOnly cookie on mount.
   const [currentUser, setCurrentUser] = useState(() => {
     try {
+      // Clean up any stale rsj_token that may have been saved by a previous version
+      localStorage.removeItem('rsj_token');
       const saved = localStorage.getItem('rsj_user');
       return saved ? JSON.parse(saved) : null;
     } catch (e) {
@@ -34,12 +39,13 @@ export const AppProvider = ({ children }) => {
 
   const [role, setRole] = useState(() => {
     try {
-      const savedRole = localStorage.getItem('rsj_role');
-      const user = localStorage.getItem('rsj_user');
       const admin = localStorage.getItem('rsj_admin_user');
-      if (admin) return 'admin';
-      if (user) return 'candidate';
-      return savedRole || 'guest';
+      const user = localStorage.getItem('rsj_user');
+      const savedRole = localStorage.getItem('rsj_role');
+      // Optimistically restore role from saved metadata (validateSession will correct this if invalid)
+      if (admin || savedRole === 'admin') return 'admin';
+      if (user || savedRole === 'candidate') return 'candidate';
+      return 'guest';
     } catch (e) {
       return 'guest';
     }
@@ -51,12 +57,53 @@ export const AppProvider = ({ children }) => {
     const user = localStorage.getItem('rsj_user');
     const admin = localStorage.getItem('rsj_admin_user');
     const savedRole = localStorage.getItem('rsj_role');
-    const activeRole = admin ? 'admin' : (user ? 'candidate' : (savedRole || 'guest'));
+    // Use saved role metadata (not access token) to infer initial role for view routing
+    // validateSession will correct the actual auth state after mount
+    const activeRole = (admin || savedRole === 'admin') ? 'admin' : (user || savedRole === 'candidate' ? 'candidate' : 'guest');
     const path = typeof window !== 'undefined' ? window.location.pathname : '/';
-    // Root URL or Landing Path always loads JobReadinessHero landing page
+
+    // 1. Direct Public Open Paths
     if (path === '/' || path === '/hero' || path === '/landing') {
       return 'hero';
     }
+    if (path === '/login') {
+      return 'login';
+    }
+    if (path === '/admin' || path === '/admin-login') {
+      return 'admin';
+    }
+    if (path === '/signup') {
+      return 'signup';
+    }
+
+    // 2. Candidate Protected Routes (Must sign in first!)
+    if (path === '/candidate-analytics' || path === '/results' || path === '/dashboard' || path === '/assessments') {
+      if (activeRole === 'guest') {
+        try {
+          localStorage.setItem('rsj_post_login_redirect', path === '/results' ? 'candidate-analytics' : path.substring(1));
+          if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+            window.history.replaceState(null, '', '/login');
+          }
+        } catch (e) {}
+        return 'login';
+      }
+      return path === '/results' ? 'candidate-analytics' : path.substring(1);
+    }
+
+    // 3. Admin Protected Routes (Must sign in as admin first!)
+    if (path.startsWith('/admin-')) {
+      if (activeRole !== 'admin') {
+        try {
+          if (typeof window !== 'undefined' && window.location.pathname !== '/admin') {
+            window.history.replaceState(null, '', '/admin');
+          }
+        } catch (e) {}
+        return 'admin';
+      }
+      return path.substring(1);
+    }
+
+    // 4. Saved view fallback for authenticated roles
     if (activeRole === 'admin') {
       if (savedView && savedView.startsWith('admin-')) {
         return savedView;
@@ -64,7 +111,6 @@ export const AppProvider = ({ children }) => {
       return 'admin-candidates';
     }
 
-    // 2. Authenticated Candidate Session
     if (activeRole === 'candidate') {
       if (savedView === 'results') return 'candidate-analytics';
       if (savedView && ['assessments', 'take-assessment', 'candidate-analytics', 'dashboard'].includes(savedView)) {
@@ -73,10 +119,7 @@ export const AppProvider = ({ children }) => {
       return 'dashboard';
     }
 
-    // 3. Guest / Unauthenticated Session
-    if (path === '/login') return 'login';
-    if (path === '/admin' || path === '/admin-login') return 'admin';
-    if (path === '/signup') return 'signup';
+    // 5. Guest fallback
     if (savedView && ['login', 'admin', 'signup', 'hero'].includes(savedView)) {
       return savedView;
     }
@@ -169,10 +212,37 @@ export const AppProvider = ({ children }) => {
       setMediaStream(null);
     }
   };
+
+  const sanitizeResultScores = (res) => {
+    if (!res || typeof res !== 'object') return res;
+    const catScores = { ...(res.categoryScores || {}) };
+    const topics = Array.isArray(res.topicBreakdown) ? res.topicBreakdown : [];
+    const hasCodingTopic = topics.some(t => {
+      const cat = (t.category || '').toLowerCase().trim();
+      const top = (t.topic || '').toLowerCase().trim();
+      return cat.includes('code') || cat.includes('prog') || (cat === '' && top.includes('code'));
+    });
+    const codingTested = res.sectionsTested ? Boolean(res.sectionsTested.coding) : hasCodingTopic;
+    if (!codingTested && catScores.coding !== undefined) {
+      catScores.coding = 0;
+    }
+    return {
+      ...res,
+      categoryScores: catScores,
+      sectionsTested: res.sectionsTested || {
+        aptitude: Boolean(catScores.aptitude),
+        reasoning: Boolean(catScores.reasoning),
+        technical: Boolean(catScores.technical),
+        verbal: Boolean(catScores.verbal || catScores.english),
+        coding: codingTested
+      }
+    };
+  };
+
   const [latestResult, setLatestResult] = useState(() => {
     try {
       const saved = localStorage.getItem('rsj_latest_result');
-      if (saved) return JSON.parse(saved);
+      if (saved) return sanitizeResultScores(JSON.parse(saved));
     } catch (e) {}
     return {
       score: 78,
@@ -269,12 +339,15 @@ export const AppProvider = ({ children }) => {
     }
   }, [currentView]);
 
-  // Validate stored JWT session on startup
+  // Validate and rehydrate session on startup using HttpOnly refresh cookie
+  // VULN-004 fix: Do NOT read access token from localStorage — use /auth/refresh via HttpOnly cookie
   useEffect(() => {
     const validateSession = async () => {
-      const token = localStorage.getItem('rsj_token');
-      if (!token) return;
       try {
+        // Step 1: Rehydrate access token via refresh cookie (no localStorage read)
+        await api.auth.refresh();
+
+        // Step 2: Fetch the current user's profile with the fresh token
         const res = await api.auth.me();
         if (res.ok && res.data) {
           if (res.data.role === 'candidate' && res.data.candidate) {
@@ -290,7 +363,7 @@ export const AppProvider = ({ children }) => {
                 setCandidateSubmissions(subList);
                 if (subList.length > 0) {
                   const latest = subList[0];
-                  const mappedResult = {
+                  const mappedResult = sanitizeResultScores({
                     score: Number(latest.score ?? 0),
                     totalMarks: Number(latest.total_marks ?? 100),
                     obtainedMarks: Number(latest.obtained_marks ?? latest.score ?? 0),
@@ -304,8 +377,11 @@ export const AppProvider = ({ children }) => {
                     assessmentId: latest.assessment_id,
                     categoryScores: typeof latest.category_scores === 'string' ? JSON.parse(latest.category_scores) : (latest.category_scores || {}),
                     topicBreakdown: typeof latest.topic_breakdown === 'string' ? JSON.parse(latest.topic_breakdown) : (latest.topic_breakdown || []),
-                  };
+                  });
                   setLatestResult(mappedResult);
+                  try {
+                    localStorage.setItem('rsj_latest_result', JSON.stringify(mappedResult));
+                  } catch (e) {}
                 }
               }
             } catch (subErr) {
@@ -315,33 +391,74 @@ export const AppProvider = ({ children }) => {
             setAdminUser(res.data.user);
             setRole('admin');
           }
-        } else {
-          // Token is expired or invalid
+        } else if (res.status === 401 || res.status === 403) {
+          // Token is definitively expired or invalid
           api.clearToken();
           setCurrentUser(null);
           setAdminUser(null);
           setRole('guest');
+          try {
+            localStorage.removeItem('rsj_user');
+            localStorage.removeItem('rsj_admin_user');
+            localStorage.removeItem('rsj_role');
+          } catch (e) {}
         }
       } catch (err) {
-        console.warn('Session auto-validation failed:', err.message);
+        // Refresh failed (no cookie or expired) — user is not logged in
+        api.clearToken();
+        setCurrentUser(null);
+        setAdminUser(null);
+        setRole('guest');
+        console.info('No active session:', err.message);
       }
     };
     validateSession();
   }, []);
 
-  // Continuously ensure candidate submissions are synced with PostgreSQL database
+  // Continuously ensure candidate submissions and profile are synced with PostgreSQL database
   useEffect(() => {
     let isMounted = true;
     const syncSubmissions = async () => {
-      const token = localStorage.getItem('rsj_token');
-      if (token && currentUser && role === 'candidate') {
+      if (currentUser && role === 'candidate') {
         try {
+          // VULN-004: token is now in memory only — api.auth.me() uses the in-memory token automatically
+          const meRes = await api.auth.me();
+          if (isMounted && meRes?.ok && meRes.data?.candidate) {
+            const freshCand = meRes.data.candidate;
+            setCurrentUser(freshCand);
+            try {
+              localStorage.setItem('rsj_user', JSON.stringify(freshCand));
+            } catch (e) {}
+          }
+
           const subRes = await api.submissions.my();
           const subList = Array.isArray(subRes?.data?.data)
             ? subRes.data.data
             : (Array.isArray(subRes?.data) ? subRes.data : []);
           if (isMounted && subRes.ok && Array.isArray(subList)) {
             setCandidateSubmissions(subList);
+            if (subList.length > 0) {
+              const latest = subList[0];
+              const mappedResult = sanitizeResultScores({
+                score: Number(latest.score ?? 0),
+                totalMarks: Number(latest.total_marks ?? 100),
+                obtainedMarks: Number(latest.obtained_marks ?? latest.score ?? 0),
+                accuracy: Number(latest.accuracy ?? latest.score ?? 0),
+                correctCount: Number(latest.correct_count ?? 0),
+                incorrectCount: Number(latest.incorrect_count ?? 0),
+                unansweredCount: Number(latest.unanswered_count ?? 0),
+                timeTaken: latest.time_taken || '28 min',
+                completedAt: new Date(latest.created_at || Date.now()).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+                assessmentName: latest.assessment_title || 'Technical Assessment',
+                assessmentId: latest.assessment_id,
+                categoryScores: typeof latest.category_scores === 'string' ? JSON.parse(latest.category_scores) : (latest.category_scores || {}),
+                topicBreakdown: typeof latest.topic_breakdown === 'string' ? JSON.parse(latest.topic_breakdown) : (latest.topic_breakdown || []),
+              });
+              setLatestResult(mappedResult);
+              try {
+                localStorage.setItem('rsj_latest_result', JSON.stringify(mappedResult));
+              } catch (e) {}
+            }
           }
         } catch (e) {}
       }
@@ -398,10 +515,13 @@ export const AppProvider = ({ children }) => {
     'dashboard',
     'assessments',
     'take-assessment',
-    'candidate-analytics'
+    'candidate-analytics',
   ];
 
-  const PUBLIC_VIEWS = ['hero', 'landing', 'signup', 'login', 'admin', 'admin-login', '/', '/hero', '/signup', '/login', '/admin', '/admin-login'];
+  const PUBLIC_VIEWS = [
+    'hero', 'landing', 'signup', 'login', 'admin', 'admin-login',
+    '/', '/hero', '/signup', '/login', '/admin', '/admin-login'
+  ];
 
   // Guarded Navigation Helper
   const navigateTo = (view, payload = null) => {
@@ -415,9 +535,9 @@ export const AppProvider = ({ children }) => {
     // 1. Guard Admin-Only Views
     if (ADMIN_ONLY_VIEWS.includes(normalizedView)) {
       if (role !== 'admin') {
-        addToast('Access Denied: Admin privileges required to access this portal.', 'error');
-        setCurrentView(role === 'candidate' ? 'dashboard' : 'admin');
-        try { window.history.pushState(null, '', role === 'candidate' ? '/dashboard' : '/admin'); } catch (e) {}
+        addToast('Admin sign in required to access management controls.', 'info');
+        setCurrentView('admin');
+        try { window.history.pushState(null, '', '/admin'); } catch (e) {}
         return;
       }
     }
@@ -425,9 +545,12 @@ export const AppProvider = ({ children }) => {
     // 2. Guard Candidate-Protected Views
     if (CANDIDATE_PROTECTED_VIEWS.includes(normalizedView)) {
       if (role !== 'candidate' && role !== 'admin') {
-        addToast('Please login or register to access student assessments.', 'info');
-        setCurrentView('signup');
-        try { window.history.pushState(null, '', '/signup'); } catch (e) {}
+        addToast('Please sign in to access candidate analytics.', 'info');
+        try {
+          localStorage.setItem('rsj_post_login_redirect', normalizedView);
+        } catch (e) {}
+        setCurrentView('login');
+        try { window.history.pushState(null, '', '/login'); } catch (e) {}
         return;
       }
     }
@@ -537,7 +660,7 @@ export const AppProvider = ({ children }) => {
           setCandidateSubmissions(subList);
           if (subList.length > 0) {
             const latest = subList[0];
-            const mappedResult = {
+            const mappedResult = sanitizeResultScores({
               score: Number(latest.score ?? 0),
               totalMarks: Number(latest.total_marks ?? 100),
               obtainedMarks: Number(latest.obtained_marks ?? latest.score ?? 0),
@@ -551,13 +674,23 @@ export const AppProvider = ({ children }) => {
               assessmentId: latest.assessment_id,
               categoryScores: typeof latest.category_scores === 'string' ? JSON.parse(latest.category_scores) : (latest.category_scores || {}),
               topicBreakdown: typeof latest.topic_breakdown === 'string' ? JSON.parse(latest.topic_breakdown) : (latest.topic_breakdown || []),
-            };
+            });
             setLatestResult(mappedResult);
+            try {
+              localStorage.setItem('rsj_latest_result', JSON.stringify(mappedResult));
+            } catch (e) {}
           }
         }
       } catch (e) {}
       addToast(`Welcome back, ${cand.name || 'Candidate'}! Logged into Student Portal.`, 'success');
-      setCurrentView('assessments');
+      const redirectTarget = localStorage.getItem('rsj_post_login_redirect');
+      if (redirectTarget) {
+        localStorage.removeItem('rsj_post_login_redirect');
+        setCurrentView(redirectTarget);
+        try { window.history.pushState(null, '', `/${redirectTarget}`); } catch (e) {}
+      } else {
+        setCurrentView('assessments');
+      }
       return { success: true };
     } catch (err) {
       console.error('Candidate login error:', err);
@@ -567,16 +700,28 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  const logoutCandidate = () => {
+  const logoutCandidate = async () => {
+    try {
+      await api.auth.logout();
+    } catch (e) {
+      console.warn('Backend candidate logout notice:', e.message);
+    }
     api.clearToken();
     setCurrentUser(null);
     setRole('guest');
     setCandidateSubmissions([]);
     try {
+      localStorage.removeItem('rsj_user');
+      localStorage.removeItem('rsj_role');
       localStorage.removeItem('rsj_candidate_submissions');
       localStorage.removeItem('rsj_current_view');
+      localStorage.removeItem('rsj_latest_result');
+      localStorage.removeItem('rsj_post_login_redirect');
     } catch (e) {}
-    navigateTo('login');
+    setCurrentView('login');
+    try {
+      if (typeof window !== 'undefined') window.history.pushState(null, '', '/login');
+    } catch (e) {}
     addToast('Signed out of Student Portal', 'info');
   };
 
@@ -608,27 +753,37 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  const logoutAdmin = () => {
+  const logoutAdmin = async () => {
+    try {
+      await api.auth.logout();
+    } catch (e) {
+      console.warn('Backend admin logout notice:', e.message);
+    }
     api.clearToken();
     setAdminUser(null);
     setRole('guest');
     try {
+      localStorage.removeItem('rsj_admin_user');
+      localStorage.removeItem('rsj_role');
       localStorage.removeItem('rsj_current_view');
     } catch (e) {}
-    navigateTo('admin');
+    setCurrentView('admin');
+    try {
+      if (typeof window !== 'undefined') window.history.pushState(null, '', '/admin');
+    } catch (e) {}
     addToast('Signed out of Recruiter Console', 'info');
   };
 
-  const logout = () => {
+  const logout = async () => {
     if (role === 'admin') {
-      logoutAdmin();
+      await logoutAdmin();
     } else {
-      logoutCandidate();
+      await logoutCandidate();
     }
   };
 
   // Start / Submit Assessment
-  const startAssessment = (assessmentId) => {
+  const startAssessment = async (assessmentId) => {
     const asm = assessments.find(a => a.id === assessmentId) || assessments[0];
     const targetId = asm?.id || assessmentId;
 
@@ -638,96 +793,130 @@ export const AppProvider = ({ children }) => {
       navigateTo('candidate-analytics');
       return;
     }
-    
-    // Deduplicate question bank by ID and statement to guarantee ZERO repeating questions
-    const uniquePoolMap = new Map();
-    questionBank.forEach(q => {
-      if (q && q.id && q.question) {
-        const key = `${q.id}-${q.question.trim().toLowerCase()}`;
-        if (!uniquePoolMap.has(key)) {
-          uniquePoolMap.set(key, q);
+
+    // Try fetching authoritative assessment questions from backend first (without answer keys)
+    let loadedFromApi = [];
+    if (targetId) {
+      try {
+        const qRes = await api.assessments.getQuestions(targetId);
+        if (qRes.ok && Array.isArray(qRes.data?.data) && qRes.data.data.length > 0) {
+          loadedFromApi = qRes.data.data.map(q => ({
+            id: q.question_id || q.id,
+            category: q.category,
+            topic: q.topic,
+            difficulty: q.difficulty,
+            type: q.type || 'Single Choice',
+            question: q.question,
+            codeSnippet: q.code_snippet,
+            language: q.language,
+            options: typeof q.options === 'string' ? JSON.parse(q.options) : (q.options || []),
+            test_cases: typeof q.test_cases === 'string' ? JSON.parse(q.test_cases) : (q.test_cases || []),
+            starter_templates: typeof q.starter_templates === 'string' ? JSON.parse(q.starter_templates) : (q.starter_templates || null),
+            constraints: q.constraints,
+            marks: Number(q.marks) > 0 ? Number(q.marks) : 1,
+            timeLimitSec: Number(q.time_limit_sec) || 60,
+            tags: q.tags || []
+          }));
         }
+      } catch (err) {
+        // Fallback to local pool below
       }
-    });
-    const cleanQuestionBank = Array.from(uniquePoolMap.values());
+    }
 
-    // Get questions matching assessment category
-    const cat = (asm.category || 'Technical').trim();
-    const isAllMix = ['All', 'Full Length', 'All Mix (Combined)', 'All Mix'].some(m => m.toLowerCase() === cat.toLowerCase());
-    const isCodingCat = cat.toLowerCase() === 'coding';
+    let finalUniqueQuestions = [];
 
-    let availableQuestions = [];
-    if (isCodingCat) {
-      availableQuestions = cleanQuestionBank.filter(isCodingQuestion);
-    } else if (isAllMix) {
-      // All Mix: strictly non-coding objective MCQs across all 4 pillars
-      availableQuestions = cleanQuestionBank.filter(q => !isCodingQuestion(q));
+    if (loadedFromApi.length > 0) {
+      finalUniqueQuestions = loadedFromApi;
     } else {
-      // Sectional MCQ assessment: strictly only questions matching this category and NOT coding
-      availableQuestions = cleanQuestionBank.filter(q => q.category && q.category.trim().toLowerCase() === cat.toLowerCase() && !isCodingQuestion(q));
-    }
+      // Deduplicate question bank by ID and statement to guarantee ZERO repeating questions
+      const uniquePoolMap = new Map();
+      questionBank.forEach(q => {
+        if (q && q.id && q.question) {
+          const key = `${q.id}-${q.question.trim().toLowerCase()}`;
+          if (!uniquePoolMap.has(key)) {
+            uniquePoolMap.set(key, q);
+          }
+        }
+      });
+      const cleanQuestionBank = Array.from(uniquePoolMap.values());
 
-    if (availableQuestions.length === 0) {
-      availableQuestions = isCodingCat
-        ? cleanQuestionBank.filter(isCodingQuestion)
-        : cleanQuestionBank.filter(q => !isCodingQuestion(q));
-    }
+      // Get questions matching assessment category
+      const cat = (asm.category || 'Technical').trim();
+      const isAllMix = ['All', 'Full Length', 'All Mix (Combined)', 'All Mix'].some(m => m.toLowerCase() === cat.toLowerCase());
+      const isCodingCat = cat.toLowerCase() === 'coding';
 
-    let selectedQList = [];
-    if (asm.selectedQuestionIds && asm.selectedQuestionIds.length > 0) {
-      const idSet = new Set(asm.selectedQuestionIds);
-      selectedQList = cleanQuestionBank.filter(q => idSet.has(q.id));
-      // Strictly enforce track isolation on pre-selected question IDs
+      let availableQuestions = [];
       if (isCodingCat) {
-        selectedQList = selectedQList.filter(isCodingQuestion);
+        availableQuestions = cleanQuestionBank.filter(isCodingQuestion);
+      } else if (isAllMix) {
+        // All Mix: strictly non-coding objective MCQs across all 4 pillars
+        availableQuestions = cleanQuestionBank.filter(q => !isCodingQuestion(q));
       } else {
-        // Both Sectional and All Mix strictly exclude coding questions
-        selectedQList = selectedQList.filter(q => !isCodingQuestion(q));
+        // Sectional MCQ assessment: strictly only questions matching this category and NOT coding
+        availableQuestions = cleanQuestionBank.filter(q => q.category && q.category.trim().toLowerCase() === cat.toLowerCase() && !isCodingQuestion(q));
       }
-    }
 
-    if (selectedQList.length === 0 && availableQuestions.length > 0) {
-      const targetCount = Math.min(
-        Number(asm.totalQuestions || asm.total_questions) || 5,
-        availableQuestions.length
-      );
-      
-      if (isAllMix) {
-        // Balanced mix across categories
-        const categories = ['Aptitude', 'Reasoning', 'Technical', 'Verbal'];
-        const perCat = Math.max(1, Math.floor(targetCount / categories.length));
-        const mixPool = [];
-        categories.forEach(c => {
-          const list = cleanQuestionBank.filter(q => q.category && q.category.trim().toLowerCase() === c.toLowerCase() && !isCodingQuestion(q));
-          const shuffled = [...list].sort(() => 0.5 - Math.random());
-          mixPool.push(...shuffled.slice(0, perCat));
-        });
-        if (mixPool.length < targetCount) {
-          const rem = cleanQuestionBank.filter(q => !mixPool.some(m => m.id === q.id) && !isCodingQuestion(q));
-          const shuffledRem = [...rem].sort(() => 0.5 - Math.random());
-          mixPool.push(...shuffledRem.slice(0, targetCount - mixPool.length));
-        }
-        selectedQList = mixPool;
-      } else {
-        // Fisher-Yates non-repeating shuffle for specific category
-        const pool = [...availableQuestions];
-        for (let i = pool.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1));
-          [pool[i], pool[j]] = [pool[j], pool[i]];
-        }
-        selectedQList = pool.slice(0, targetCount);
+      if (availableQuestions.length === 0) {
+        availableQuestions = isCodingCat
+          ? cleanQuestionBank.filter(isCodingQuestion)
+          : cleanQuestionBank.filter(q => !isCodingQuestion(q));
       }
-    }
 
-    // Ensure strict uniqueness in selected list
-    const finalUniqueQuestions = [];
-    const seenIds = new Set();
-    selectedQList.forEach(q => {
-      if (!seenIds.has(q.id)) {
-        seenIds.add(q.id);
-        finalUniqueQuestions.push(q);
+      let selectedQList = [];
+      if (asm.selectedQuestionIds && asm.selectedQuestionIds.length > 0) {
+        const idSet = new Set(asm.selectedQuestionIds);
+        selectedQList = cleanQuestionBank.filter(q => idSet.has(q.id));
+        // Strictly enforce track isolation on pre-selected question IDs
+        if (isCodingCat) {
+          selectedQList = selectedQList.filter(isCodingQuestion);
+        } else {
+          // Both Sectional and All Mix strictly exclude coding questions
+          selectedQList = selectedQList.filter(q => !isCodingQuestion(q));
+        }
       }
-    });
+
+      if (selectedQList.length === 0 && availableQuestions.length > 0) {
+        const targetCount = Math.min(
+          Number(asm.totalQuestions || asm.total_questions) || 5,
+          availableQuestions.length
+        );
+        
+        if (isAllMix) {
+          // Balanced mix across categories
+          const categories = ['Aptitude', 'Reasoning', 'Technical', 'Verbal'];
+          const perCat = Math.max(1, Math.floor(targetCount / categories.length));
+          const mixPool = [];
+          categories.forEach(c => {
+            const list = cleanQuestionBank.filter(q => q.category && q.category.trim().toLowerCase() === c.toLowerCase() && !isCodingQuestion(q));
+            const shuffled = [...list].sort(() => 0.5 - Math.random());
+            mixPool.push(...shuffled.slice(0, perCat));
+          });
+          if (mixPool.length < targetCount) {
+            const rem = cleanQuestionBank.filter(q => !mixPool.some(m => m.id === q.id) && !isCodingQuestion(q));
+            const shuffledRem = [...rem].sort(() => 0.5 - Math.random());
+            mixPool.push(...shuffledRem.slice(0, targetCount - mixPool.length));
+          }
+          selectedQList = mixPool;
+        } else {
+          // Fisher-Yates non-repeating shuffle for specific category
+          const pool = [...availableQuestions];
+          for (let i = pool.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [pool[i], pool[j]] = [pool[j], pool[i]];
+          }
+          selectedQList = pool.slice(0, targetCount);
+        }
+      }
+
+      // Ensure strict uniqueness in selected list
+      const seenIds = new Set();
+      selectedQList.forEach(q => {
+        if (!seenIds.has(q.id)) {
+          seenIds.add(q.id);
+          finalUniqueQuestions.push(q);
+        }
+      });
+    }
 
     setActiveAssessment({
       ...asm,
@@ -758,7 +947,9 @@ export const AppProvider = ({ children }) => {
 
     asmQuestions.forEach((q) => {
       const qMarks = Number(q.marks) > 0 ? Number(q.marks) : 1;
-      const cat = (q.category || 'Technical').trim();
+      const userAns = answers[q.id];
+      const isCoding = isCodingQuestion(q) || String(q.type || '').toLowerCase() === 'coding' || (typeof userAns === 'object' && userAns !== null);
+      const cat = isCoding ? 'Coding' : (q.category || 'Technical').trim();
       const top = (q.topic || 'General').trim();
       const correctAns = (q.correctAnswer || '').trim().toUpperCase();
 
@@ -785,8 +976,6 @@ export const AppProvider = ({ children }) => {
       topicStats[top].totalMarks += qMarks;
       topicStats[top].totalQuestions += 1;
 
-      const userAns = answers[q.id];
-      const isCoding = q.type === 'Coding' || (typeof userAns === 'object' && userAns !== null);
       const hasAnswered = isCoding || (userAns !== undefined && userAns !== null && String(userAns).trim() !== '');
 
       if (hasAnswered) {
@@ -879,6 +1068,14 @@ export const AppProvider = ({ children }) => {
         categoryScores[sec] = 0;
       }
     });
+
+    const sectionsTested = {
+      aptitude: normalizedCategoryStats.aptitude.totalMarks > 0,
+      reasoning: normalizedCategoryStats.reasoning.totalMarks > 0,
+      technical: normalizedCategoryStats.technical.totalMarks > 0,
+      verbal: normalizedCategoryStats.verbal.totalMarks > 0,
+      coding: normalizedCategoryStats.coding.totalMarks > 0,
+    };
 
     // Build dynamic topic breakdown with marks and accuracy
     let topicBreakdown = Object.keys(topicStats).map(topic => {
@@ -1027,8 +1224,9 @@ export const AppProvider = ({ children }) => {
       timeTaken: `${timeSpentMin} min`,
       completedAt: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
       assessmentId: activeAssessment?.id || 'asm-1',
-      assessmentName: activeAssessment?.title || 'Technical Assessment',
+      assessmentName: activeAssessment?.title || 'Assessment',
       categoryScores,
+      sectionsTested,
       topicBreakdown,
       strengths: dynamicStrengths,
       weaknesses: dynamicWeaknesses,
@@ -1047,11 +1245,11 @@ export const AppProvider = ({ children }) => {
         ...prev,
         overallScore: calculatedScore,
         jobReadinessScore: calculatedScore,
-        aptitudeScore: categoryScores.aptitude ?? prev.aptitudeScore ?? 0,
-        reasoningScore: categoryScores.reasoning ?? prev.reasoningScore ?? 0,
-        technicalScore: categoryScores.technical ?? prev.technicalScore ?? calculatedScore,
-        verbalScore: categoryScores.verbal ?? prev.verbalScore ?? 0,
-        codingScore: categoryScores.coding ?? prev.codingScore ?? 0,
+        aptitudeScore: sectionsTested.aptitude ? categoryScores.aptitude : (prev.aptitudeScore ?? 0),
+        reasoningScore: sectionsTested.reasoning ? categoryScores.reasoning : (prev.reasoningScore ?? 0),
+        technicalScore: sectionsTested.technical ? categoryScores.technical : (prev.technicalScore ?? 0),
+        verbalScore: sectionsTested.verbal ? (categoryScores.verbal ?? categoryScores.english ?? 0) : (prev.verbalScore ?? 0),
+        codingScore: sectionsTested.coding ? categoryScores.coding : (prev.codingScore ?? 0),
         assessmentStatus: 'Completed',
         assessmentsCompleted: (prev.assessmentsCompleted || 0) + 1
       };
@@ -1153,24 +1351,52 @@ export const AppProvider = ({ children }) => {
       } catch (e) {}
     }
 
-    // CLOSE EXAM SESSION COMPLETELY
+    // CLOSE CURRENT EXAM SESSION
     setActiveAssessment(null);
     setAssessmentAnswers({});
     setCurrentQuestionIndex(0);
     setMarkedForReview([]);
     stopMediaStream();
 
-    addToast('Assessment submitted successfully! Score calculated.', 'success');
-    setCurrentView('candidate-analytics');
-    try {
-      window.history.pushState(null, '', '/candidate-analytics');
-    } catch (e) {}
-    return submissionRes;
+    // Check for remaining uncompleted assessments to auto-redirect
+    const currentIdStr = String(currentAsmId).trim().toLowerCase();
+    const updatedSubmissions = (candidateSubmissions || []).concat([
+      { assessment_id: currentAsmId, assessmentId: currentAsmId, status: 'Completed', score: calculatedScore }
+    ]);
+
+    const remainingAssessments = (assessments || []).filter(a => {
+      const aId = String(a.id || '').trim().toLowerCase();
+      if (aId === currentIdStr) return false;
+      const alreadyDone = updatedSubmissions.some(
+        s => String(s.assessment_id || s.assessmentId || '').trim().toLowerCase() === aId &&
+        (s.status === 'Completed' || s.score !== undefined)
+      );
+      return !alreadyDone && a.status !== 'Completed';
+    });
+
+    if (remainingAssessments.length > 0) {
+      const nextAsm = remainingAssessments[0];
+      const nextTitle = nextAsm.title || nextAsm.assessmentTitle || 'Next Assessment';
+      addToast(`Assessment submitted! Transitioning to next assessment: "${nextTitle}"...`, 'info');
+      setTimeout(() => {
+        startAssessment(nextAsm.id);
+      }, 600);
+      return { ok: true, redirectedToNext: true, nextAssessment: nextAsm, submissionRes };
+    } else {
+      addToast('All assessments submitted successfully! Viewing candidate analytics.', 'success');
+      setCurrentView('candidate-analytics');
+      try {
+        window.history.pushState(null, '', '/candidate-analytics');
+      } catch (e) {}
+      return { ok: true, redirectedToNext: false, submissionRes };
+    }
   };
 
-  // Fetch questions from PostgreSQL database on load and merge with local state
+  // Fetch questions from PostgreSQL database on load for admin role and merge with local state
   useEffect(() => {
     const fetchQuestions = async () => {
+      // Only administrators are permitted to query the full question bank
+      if (role !== 'admin' && !adminUser) return;
       const res = await api.questions.getAll();
       if (res.ok && res.data?.data) {
         const dbList = res.data.data.map(q => ({
@@ -1207,7 +1433,7 @@ export const AppProvider = ({ children }) => {
       }
     };
     fetchQuestions();
-  }, []);
+  }, [role, adminUser]);
 
   // Question Bank CRUD
   const addQuestionsBatch = (questionsArray) => {
@@ -1471,9 +1697,12 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  const resetCandidateAttempt = async (id, assessmentId = null) => {
+  const resetCandidateAttempt = async (id, target = 'all') => {
     try {
-      const res = await api.candidates.resetAttempt(id, assessmentId);
+      const payload = typeof target === 'object' && target !== null 
+        ? target 
+        : { targetType: target, assessmentId: target };
+      const res = await api.candidates.resetAttempt(id, payload);
       if (res && res.ok) {
         // Refresh candidates list from DB if possible
         try {
@@ -1520,18 +1749,65 @@ export const AppProvider = ({ children }) => {
         // If the reset candidate is the currently logged-in candidate, refresh their submissions and status
         if (currentUser && (currentUser.id === id || currentUser.email === id)) {
           try {
-            const subRes = await api.submissions.my();
+            const [meRes, subRes] = await Promise.all([
+              api.auth.me().catch(() => null),
+              api.submissions.my().catch(() => null)
+            ]);
+            if (meRes?.ok && meRes.data?.candidate) {
+              const freshCand = meRes.data.candidate;
+              setCurrentUser(freshCand);
+              try {
+                localStorage.setItem('rsj_user', JSON.stringify(freshCand));
+              } catch (e) {}
+            }
             const subList = Array.isArray(subRes?.data?.data)
               ? subRes.data.data
               : (Array.isArray(subRes?.data) ? subRes.data : []);
-            if (subRes && subRes.ok && Array.isArray(subList)) {
+            if (subRes && subRes.ok) {
               setCandidateSubmissions(subList);
               if (subList.length === 0) {
                 setLatestResult(null);
+                try {
+                  localStorage.removeItem('rsj_latest_result');
+                } catch (e) {}
+              } else {
+                const latest = subList[0];
+                const catScores = typeof latest.category_scores === 'string' ? JSON.parse(latest.category_scores) : (latest.category_scores || {});
+                const topicBreakdown = typeof latest.topic_breakdown === 'string' ? JSON.parse(latest.topic_breakdown) : (latest.topic_breakdown || []);
+                const mappedResult = sanitizeResultScores({
+                  score: Number(latest.score ?? 0),
+                  totalMarks: Number(latest.total_marks ?? 100),
+                  obtainedMarks: Number(latest.obtained_marks ?? latest.score ?? 0),
+                  accuracy: Number(latest.accuracy ?? latest.score ?? 0),
+                  correctCount: Number(latest.correct_count ?? 0),
+                  incorrectCount: Number(latest.incorrect_count ?? 0),
+                  unansweredCount: Number(latest.unanswered_count ?? 0),
+                  timeTaken: latest.time_taken || '28 min',
+                  completedAt: new Date(latest.created_at || Date.now()).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+                  assessmentName: latest.assessment_title || 'Technical Assessment',
+                  assessmentId: latest.assessment_id,
+                  categoryScores: catScores,
+                  topicBreakdown: topicBreakdown,
+                });
+                setLatestResult(mappedResult);
+                try {
+                  localStorage.setItem('rsj_latest_result', JSON.stringify(mappedResult));
+                } catch (e) {}
               }
             }
           } catch (e) {}
         }
+
+        // Also update assessments state
+        const targetStr = String(payload.targetType || payload.assessmentId || target || 'all').toLowerCase();
+        setAssessments(prev => prev.map(a => {
+          const isCoding = (a.category || '').toLowerCase().includes('cod') || (a.title || '').toLowerCase().includes('cod');
+          if (targetStr === 'all') return { ...a, status: 'Active', progress: 0, completedQuestions: 0 };
+          if (targetStr === 'coding' && isCoding) return { ...a, status: 'Active', progress: 0, completedQuestions: 0 };
+          if ((targetStr === 'technical' || targetStr === 'other' || targetStr === 'mcq') && !isCoding) return { ...a, status: 'Active', progress: 0, completedQuestions: 0 };
+          if (String(a.id).toLowerCase() === targetStr) return { ...a, status: 'Active', progress: 0, completedQuestions: 0 };
+          return a;
+        }));
 
         addToast(res.message || 'Assessment attempt reset successfully. The candidate can now retake the assessment.', 'success');
         return { success: true, data: res };
@@ -1575,6 +1851,7 @@ export const AppProvider = ({ children }) => {
         timeRemainingSeconds,
         setTimeRemainingSeconds,
         latestResult,
+        setLatestResult,
         toasts,
         addToast,
         removeToast,

@@ -20,7 +20,9 @@ import {
   Mail,
   User,
   RotateCcw,
-  ShieldAlert
+  ShieldAlert,
+  Code,
+  Loader2
 } from 'lucide-react';
 
 export const AdminCandidatesPage = () => {
@@ -33,8 +35,26 @@ export const AdminCandidatesPage = () => {
   const [selectedReadiness, setSelectedReadiness] = useState('All');
   const [viewCandidate, setViewCandidate] = useState(null);
   const [reportCandidate, setReportCandidate] = useState(null);
+  const [retakeCandidate, setRetakeCandidate] = useState(null);
+  const [retakeProcessing, setRetakeProcessing] = useState(false);
   const [candidateProctoringEvents, setCandidateProctoringEvents] = useState([]);
   const [loadingProctoring, setLoadingProctoring] = useState(false);
+
+  const handlePerformRetake = async (targetType) => {
+    if (!retakeCandidate) return;
+    setRetakeProcessing(targetType);
+    try {
+      const res = await resetCandidateAttempt(retakeCandidate.id, targetType);
+      if (res?.success) {
+        setRetakeCandidate(null);
+        if (viewCandidate && viewCandidate.id === retakeCandidate.id) {
+          setViewCandidate(null);
+        }
+      }
+    } finally {
+      setRetakeProcessing(false);
+    }
+  };
 
   useEffect(() => {
     if (viewCandidate?.id) {
@@ -251,14 +271,9 @@ export const AdminCandidatesPage = () => {
                         <Eye className="w-3.5 h-3.5" />
                       </button>
                       <button
-                        onClick={async () => {
-                          const candName = cand.name || cand.fullName || cand.email || 'this candidate';
-                          if (window.confirm(`Allow Retake for "${candName}"?\n\nThis will reset their assessment attempt, clear previous submission record(s), and allow the candidate to retake the assessment.`)) {
-                            await resetCandidateAttempt(cand.id);
-                          }
-                        }}
+                        onClick={() => setRetakeCandidate(cand)}
                         className="p-1.5 rounded-lg bg-slate-100 hover:bg-amber-50 hover:text-amber-600 text-slate-600 transition-colors"
-                        title="Allow Retake / Reset Attempt"
+                        title="Allow Assessment Retake (Coding or Technical)"
                       >
                         <RotateCcw className="w-3.5 h-3.5" />
                       </button>
@@ -416,15 +431,9 @@ export const AdminCandidatesPage = () => {
             <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-100">
               <button
                 type="button"
-                onClick={async () => {
-                  const candName = viewCandidate.name || viewCandidate.fullName || viewCandidate.email || 'this candidate';
-                  if (window.confirm(`Allow Retake for "${candName}"?\n\nThis will reset their assessment attempt, clear previous submission record(s), and allow the candidate to write the assessment again.`)) {
-                    await resetCandidateAttempt(viewCandidate.id);
-                    setViewCandidate(null);
-                  }
-                }}
+                onClick={() => setRetakeCandidate(viewCandidate)}
                 className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold flex items-center gap-1.5 transition-all shadow-sm shadow-amber-500/20"
-                title="Reset attempt and allow candidate to retake the assessment"
+                title="Allow Retake (Coding, Technical, or All)"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
                 Allow Retake / Reset Attempt
@@ -481,14 +490,209 @@ export const AdminCandidatesPage = () => {
             completedAt: new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
             assessmentName: 'Comprehensive Job Readiness Assessment',
             categoryScores: {
-              aptitude: reportCandidate.aptitudeScore ?? 82,
-              reasoning: reportCandidate.reasoningScore ?? 74,
-              technical: reportCandidate.technicalScore ?? (reportCandidate.overallScore ?? 78),
-              verbal: reportCandidate.verbalScore ?? 78
+              aptitude: reportCandidate.aptitudeScore ?? reportCandidate.aptitude_score ?? 82,
+              reasoning: reportCandidate.reasoningScore ?? reportCandidate.reasoning_score ?? 74,
+              technical: reportCandidate.technicalScore ?? reportCandidate.technical_score ?? 78,
+              verbal: reportCandidate.verbalScore ?? reportCandidate.verbal_score ?? 78,
+              coding: reportCandidate.codingScore ?? reportCandidate.coding_score ?? 75,
             }
           }}
           addToast={addToast}
         />
+      )}
+      {/* Dedicated Assessment Retake / Reset Attempt Modal */}
+      {retakeCandidate && (
+        <Modal
+          isOpen={!!retakeCandidate}
+          onClose={() => !retakeProcessing && setRetakeCandidate(null)}
+          title="Allow Assessment Retake / Reset Attempt"
+          maxWidth="max-w-2xl"
+        >
+          <div className="space-y-5">
+            {/* Candidate Summary Banner */}
+            <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-extrabold text-slate-900 text-base">
+                    {retakeCandidate.name || retakeCandidate.fullName || 'Candidate'}
+                  </h3>
+                  <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-brand-50 text-brand-700 border border-brand-200">
+                    {retakeCandidate.college || 'Engineering College'}
+                  </span>
+                </div>
+                <div className="text-xs text-slate-500 font-medium mt-0.5 flex items-center gap-2">
+                  <span>{retakeCandidate.email}</span>
+                  {retakeCandidate.branch && <span>• {retakeCandidate.branch}</span>}
+                </div>
+              </div>
+
+              {/* Current Recorded Scores */}
+              <div className="flex items-center gap-3 bg-white px-3 py-2 rounded-xl border border-slate-200 shadow-sm">
+                <div className="text-center">
+                  <div className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Technical</div>
+                  <div className="font-extrabold text-brand-600 text-sm">
+                    {retakeCandidate.technicalScore ?? retakeCandidate.technical_score ?? 0}%
+                  </div>
+                </div>
+                <div className="w-[1px] h-6 bg-slate-200" />
+                <div className="text-center">
+                  <div className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Coding</div>
+                  <div className="font-extrabold text-indigo-600 text-sm">
+                    {retakeCandidate.codingScore ?? retakeCandidate.coding_score ?? 0}%
+                  </div>
+                </div>
+                <div className="w-[1px] h-6 bg-slate-200" />
+                <div className="text-center">
+                  <div className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Overall</div>
+                  <div className="font-black text-emerald-600 text-sm">
+                    {retakeCandidate.overallScore ?? retakeCandidate.jobReadinessScore ?? retakeCandidate.job_readiness_score ?? 0}%
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Explanatory notice */}
+            <div className="bg-amber-50/60 border border-amber-200/80 rounded-xl p-3 text-xs text-amber-900 flex items-start gap-2.5">
+              <RotateCcw className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <strong className="font-bold">Independent Retake Policy:</strong> You can permit a candidate to retake the Coding assessment or the Technical assessment separately. Resetting one assessment will clear its submissions and allow a re-attempt without affecting the other assessment's scores.
+              </div>
+            </div>
+
+            {/* Retake Options List */}
+            <div className="space-y-3">
+              {/* Option 1: Coding Retake */}
+              <div className="p-4 rounded-2xl border-2 border-indigo-100 bg-indigo-50/30 hover:border-indigo-300 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <Code className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-slate-900 text-sm">Coding Assessment Retake</span>
+                      <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-indigo-100 text-indigo-700">
+                        Preserves Technical Marks
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Clears only coding submissions and test run results. The candidate can retake the Coding test immediately. Technical marks ({retakeCandidate.technicalScore ?? retakeCandidate.technical_score ?? 0}%) remain untouched.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  disabled={retakeProcessing}
+                  onClick={() => handlePerformRetake('coding')}
+                  className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold whitespace-nowrap transition-colors flex items-center justify-center gap-1.5 shadow-sm shadow-indigo-600/20 flex-shrink-0"
+                >
+                  {retakeProcessing === 'coding' ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Resetting...</span>
+                    </>
+                  ) : (
+                    <>
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>Allow Retake: Coding</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {/* Option 2: Technical / Other Assessment Retake */}
+              <div className="p-4 rounded-2xl border-2 border-amber-100 bg-amber-50/30 hover:border-amber-300 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <FileText className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-slate-900 text-sm">Technical / MCQ Assessment Retake</span>
+                      <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-amber-100 text-amber-700">
+                        Preserves Coding Marks
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Clears MCQ, sectional technical, and aptitude submissions. The candidate can retake the Technical test immediately. Coding marks ({retakeCandidate.codingScore ?? retakeCandidate.coding_score ?? 0}%) remain untouched.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  disabled={retakeProcessing}
+                  onClick={() => handlePerformRetake('technical')}
+                  className="px-4 py-2.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold whitespace-nowrap transition-colors flex items-center justify-center gap-1.5 shadow-sm shadow-amber-600/20 flex-shrink-0"
+                >
+                  {retakeProcessing === 'technical' ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Resetting...</span>
+                    </>
+                  ) : (
+                    <>
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>Allow Retake: Technical</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {/* Option 3: Reset All Assessments */}
+              <div className="p-4 rounded-2xl border-2 border-slate-200 bg-slate-50/60 hover:border-rose-200 hover:bg-rose-50/20 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <RotateCcw className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-slate-900 text-sm">Reset All Assessments</span>
+                      <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-rose-100 text-rose-700">
+                        Full Reset
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Wipes all candidate submissions across both Technical and Coding assessments for a complete fresh start.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  disabled={retakeProcessing}
+                  onClick={() => {
+                    if (window.confirm(`Are you sure you want to reset ALL assessments for ${retakeCandidate.name || retakeCandidate.email}? This will wipe both Coding and Technical submissions.`)) {
+                      handlePerformRetake('all');
+                    }
+                  }}
+                  className="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold whitespace-nowrap transition-colors flex items-center justify-center gap-1.5 shadow-sm shadow-rose-600/20 flex-shrink-0"
+                >
+                  {retakeProcessing === 'all' ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Resetting All...</span>
+                    </>
+                  ) : (
+                    <>
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>Reset All Attempts</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex justify-end pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                disabled={retakeProcessing}
+                onClick={() => setRetakeCandidate(null)}
+                className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </Modal>
       )}
 
     </div>

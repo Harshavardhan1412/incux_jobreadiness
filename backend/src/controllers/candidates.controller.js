@@ -31,29 +31,33 @@ export const getAllCandidates = async (req, res) => {
         COALESCE(cp.twelfth_diploma_marks, c.twelfth_diploma_marks) as twelfth_diploma_marks,
         COALESCE(cp.graduation_percentage, c.graduation_percentage) as graduation_percentage,
         COALESCE(cp.backlogs, c.backlogs, 0) as backlogs,
-        COALESCE(c.job_readiness_score, s.latest_score, 0) as job_readiness_score,
-        COALESCE(c.job_readiness_score, s.latest_score, 0) as overall_score,
-        COALESCE(c.aptitude_score, NULLIF((s.category_scores->>'aptitude'), '')::int, NULLIF((s.category_scores->>'Aptitude'), '')::int, 0) as aptitude_score,
-        COALESCE(c.reasoning_score, NULLIF((s.category_scores->>'reasoning'), '')::int, NULLIF((s.category_scores->>'Reasoning'), '')::int, 0) as reasoning_score,
-        COALESCE(c.technical_score, NULLIF((s.category_scores->>'technical'), '')::int, NULLIF((s.category_scores->>'Technical'), '')::int, 0) as technical_score,
-        COALESCE(c.verbal_score, NULLIF((s.category_scores->>'verbal'), '')::int, NULLIF((s.category_scores->>'Verbal'), '')::int, NULLIF((s.category_scores->>'english'), '')::int, 0) as verbal_score,
-        COALESCE(c.coding_score, NULLIF((s.category_scores->>'coding'), '')::int, NULLIF((s.category_scores->>'Coding'), '')::int, 0) as coding_score,
-        COALESCE(c.assessments_completed, 0) as assessments_completed,
-        CASE WHEN s.latest_score IS NOT NULL OR COALESCE(c.assessments_completed, 0) > 0 THEN 'Completed' ELSE 'Active' END as assessment_status,
+        COALESCE(NULLIF(c.job_readiness_score, 0), s_agg.avg_score, 0) as job_readiness_score,
+        COALESCE(NULLIF(c.job_readiness_score, 0), s_agg.avg_score, 0) as overall_score,
+        GREATEST(COALESCE(c.aptitude_score, 0), COALESCE(s_agg.max_aptitude, 0)) as aptitude_score,
+        GREATEST(COALESCE(c.reasoning_score, 0), COALESCE(s_agg.max_reasoning, 0)) as reasoning_score,
+        GREATEST(COALESCE(c.technical_score, 0), COALESCE(s_agg.max_technical, 0)) as technical_score,
+        GREATEST(COALESCE(c.verbal_score, 0), COALESCE(s_agg.max_verbal, 0)) as verbal_score,
+        GREATEST(COALESCE(c.coding_score, 0), COALESCE(s_agg.max_coding, 0)) as coding_score,
+        COALESCE(c.assessments_completed, s_agg.total_assessments, 0) as assessments_completed,
+        CASE WHEN s_agg.avg_score IS NOT NULL OR COALESCE(c.assessments_completed, 0) > 0 THEN 'Completed' ELSE 'Active' END as assessment_status,
         COALESCE(cp.created_at, c.created_at) as created_at
       FROM candidate_profiles cp
       LEFT JOIN candidates c ON cp.id = c.id
       LEFT JOIN users u ON cp.user_id = u.id
       LEFT JOIN (
-        SELECT DISTINCT ON (candidate_id)
+        SELECT 
           candidate_id,
           candidate_email,
-          score as latest_score,
-          category_scores,
-          created_at
+          COUNT(*) as total_assessments,
+          ROUND(AVG(score)) as avg_score,
+          MAX(COALESCE(NULLIF((category_scores->>'aptitude'), '')::numeric, NULLIF((category_scores->>'Aptitude'), '')::numeric, 0)) as max_aptitude,
+          MAX(COALESCE(NULLIF((category_scores->>'reasoning'), '')::numeric, NULLIF((category_scores->>'Reasoning'), '')::numeric, NULLIF((category_scores->>'LogicalReasoning'), '')::numeric, 0)) as max_reasoning,
+          MAX(COALESCE(NULLIF((category_scores->>'technical'), '')::numeric, NULLIF((category_scores->>'Technical'), '')::numeric, NULLIF((category_scores->>'TechnicalKnowledge'), '')::numeric, 0)) as max_technical,
+          MAX(COALESCE(NULLIF((category_scores->>'verbal'), '')::numeric, NULLIF((category_scores->>'Verbal'), '')::numeric, NULLIF((category_scores->>'english'), '')::numeric, NULLIF((category_scores->>'English'), '')::numeric, 0)) as max_verbal,
+          MAX(COALESCE(NULLIF((category_scores->>'coding'), '')::numeric, NULLIF((category_scores->>'Coding'), '')::numeric, 0)) as max_coding
         FROM assessment_submissions
-        ORDER BY candidate_id, created_at DESC
-      ) s ON cp.id = s.candidate_id OR cp.user_id = s.candidate_id OR LOWER(cp.email) = LOWER(s.candidate_email)
+        GROUP BY candidate_id, candidate_email
+      ) s_agg ON cp.id = s_agg.candidate_id OR cp.user_id = s_agg.candidate_id OR LOWER(cp.email) = LOWER(s_agg.candidate_email)
       ORDER BY created_at DESC
     `);
     const responsePayload = { success: true, data: result.rows, total: result.rowCount };
@@ -64,7 +68,7 @@ export const getAllCandidates = async (req, res) => {
     res.json(responsePayload);
   } catch (err) {
     console.error('getAllCandidates error:', err.message);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ success: false, error: 'Failed to fetch candidates.' });
   }
 };
 
@@ -90,36 +94,41 @@ export const getCandidateById = async (req, res) => {
         COALESCE(cp.twelfth_diploma_marks, c.twelfth_diploma_marks) as twelfth_diploma_marks,
         COALESCE(cp.graduation_percentage, c.graduation_percentage) as graduation_percentage,
         COALESCE(cp.backlogs, c.backlogs, 0) as backlogs,
-        COALESCE(c.job_readiness_score, s.latest_score, 0) as job_readiness_score,
-        COALESCE(c.job_readiness_score, s.latest_score, 0) as overall_score,
-        COALESCE(c.aptitude_score, NULLIF((s.category_scores->>'aptitude'), '')::int, NULLIF((s.category_scores->>'Aptitude'), '')::int, 0) as aptitude_score,
-        COALESCE(c.reasoning_score, NULLIF((s.category_scores->>'reasoning'), '')::int, NULLIF((s.category_scores->>'Reasoning'), '')::int, 0) as reasoning_score,
-        COALESCE(c.technical_score, NULLIF((s.category_scores->>'technical'), '')::int, NULLIF((s.category_scores->>'Technical'), '')::int, 0) as technical_score,
-        COALESCE(c.verbal_score, NULLIF((s.category_scores->>'verbal'), '')::int, NULLIF((s.category_scores->>'Verbal'), '')::int, NULLIF((s.category_scores->>'english'), '')::int, 0) as verbal_score,
-        COALESCE(c.coding_score, NULLIF((s.category_scores->>'coding'), '')::int, NULLIF((s.category_scores->>'Coding'), '')::int, 0) as coding_score,
-        COALESCE(c.assessments_completed, 0) as assessments_completed,
-        CASE WHEN s.latest_score IS NOT NULL OR COALESCE(c.assessments_completed, 0) > 0 THEN 'Completed' ELSE 'Active' END as assessment_status,
+        COALESCE(NULLIF(c.job_readiness_score, 0), s_agg.avg_score, 0) as job_readiness_score,
+        COALESCE(NULLIF(c.job_readiness_score, 0), s_agg.avg_score, 0) as overall_score,
+        GREATEST(COALESCE(c.aptitude_score, 0), COALESCE(s_agg.max_aptitude, 0)) as aptitude_score,
+        GREATEST(COALESCE(c.reasoning_score, 0), COALESCE(s_agg.max_reasoning, 0)) as reasoning_score,
+        GREATEST(COALESCE(c.technical_score, 0), COALESCE(s_agg.max_technical, 0)) as technical_score,
+        GREATEST(COALESCE(c.verbal_score, 0), COALESCE(s_agg.max_verbal, 0)) as verbal_score,
+        GREATEST(COALESCE(c.coding_score, 0), COALESCE(s_agg.max_coding, 0)) as coding_score,
+        COALESCE(c.assessments_completed, s_agg.total_assessments, 0) as assessments_completed,
+        CASE WHEN s_agg.avg_score IS NOT NULL OR COALESCE(c.assessments_completed, 0) > 0 THEN 'Completed' ELSE 'Active' END as assessment_status,
         COALESCE(cp.created_at, c.created_at) as created_at
       FROM candidate_profiles cp
       LEFT JOIN candidates c ON cp.id = c.id
       LEFT JOIN users u ON cp.user_id = u.id
       LEFT JOIN (
-        SELECT DISTINCT ON (candidate_id)
+        SELECT 
           candidate_id,
           candidate_email,
-          score as latest_score,
-          category_scores,
-          created_at
+          COUNT(*) as total_assessments,
+          ROUND(AVG(score)) as avg_score,
+          MAX(COALESCE(NULLIF((category_scores->>'aptitude'), '')::numeric, NULLIF((category_scores->>'Aptitude'), '')::numeric, 0)) as max_aptitude,
+          MAX(COALESCE(NULLIF((category_scores->>'reasoning'), '')::numeric, NULLIF((category_scores->>'Reasoning'), '')::numeric, NULLIF((category_scores->>'LogicalReasoning'), '')::numeric, 0)) as max_reasoning,
+          MAX(COALESCE(NULLIF((category_scores->>'technical'), '')::numeric, NULLIF((category_scores->>'Technical'), '')::numeric, NULLIF((category_scores->>'TechnicalKnowledge'), '')::numeric, 0)) as max_technical,
+          MAX(COALESCE(NULLIF((category_scores->>'verbal'), '')::numeric, NULLIF((category_scores->>'Verbal'), '')::numeric, NULLIF((category_scores->>'english'), '')::numeric, NULLIF((category_scores->>'English'), '')::numeric, 0)) as max_verbal,
+          MAX(COALESCE(NULLIF((category_scores->>'coding'), '')::numeric, NULLIF((category_scores->>'Coding'), '')::numeric, 0)) as max_coding
         FROM assessment_submissions
-        ORDER BY candidate_id, created_at DESC
-      ) s ON cp.id = s.candidate_id OR cp.user_id = s.candidate_id OR LOWER(cp.email) = LOWER(s.candidate_email)
+        GROUP BY candidate_id, candidate_email
+      ) s_agg ON cp.id = s_agg.candidate_id OR cp.user_id = s_agg.candidate_id OR LOWER(cp.email) = LOWER(s_agg.candidate_email)
       WHERE cp.id=$1 OR cp.user_id=$1 OR c.id=$1
       LIMIT 1
     `, [req.params.id]);
     if (result.rows.length === 0) return res.status(404).json({ error: 'Candidate not found.' });
     res.json({ success: true, data: result.rows[0] });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('getCandidateById error:', err.message);
+    res.status(500).json({ success: false, error: 'Failed to fetch candidate profile.' });
   }
 };
 
@@ -142,7 +151,8 @@ export const updateCandidate = async (req, res) => {
     );
     res.json({ success: true, data: result.rows[0] });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('updateCandidate error:', err.message);
+    res.status(500).json({ success: false, error: 'Failed to update candidate profile.' });
   }
 };
 
@@ -256,7 +266,7 @@ export const deleteCandidate = async (req, res) => {
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     console.error(`❌ Error deleting candidate ${candidateId}:`, err.message);
-    return res.status(500).json({ success: false, error: err.message });
+    return res.status(500).json({ success: false, error: 'Failed to delete candidate.' });
   } finally {
     client.release();
   }
@@ -266,14 +276,17 @@ export const deleteCandidate = async (req, res) => {
 export const getCandidateSubmissions = async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT * FROM assessment_submissions 
-       WHERE candidate_id=$1 OR candidate_email IN (SELECT email FROM candidate_profiles WHERE id=$1 OR user_id=$1) 
-       ORDER BY created_at DESC`,
+      `SELECT s.*, a.title as assessment_title, a.category as assessment_category 
+       FROM assessment_submissions s
+       LEFT JOIN assessments a ON s.assessment_id = a.id
+       WHERE s.candidate_id=$1 OR s.candidate_email IN (SELECT email FROM candidate_profiles WHERE id=$1 OR user_id=$1) 
+       ORDER BY s.created_at DESC`,
       [req.params.id]
     );
     res.json({ success: true, data: result.rows });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('getCandidateSubmissions error:', err.message);
+    res.status(500).json({ success: false, error: 'Failed to fetch candidate submissions.' });
   }
 };
 
@@ -283,7 +296,8 @@ export const getCompanyEligibilityCriteria = async (req, res) => {
     const result = await pool.query('SELECT * FROM company_eligibility_criteria ORDER BY company ASC, role ASC');
     res.json({ success: true, data: result.rows });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('getCompanyEligibilityCriteria error:', err.message);
+    res.status(500).json({ success: false, error: 'Failed to fetch company eligibility criteria.' });
   }
 };
 
@@ -382,14 +396,16 @@ export const updateAcademicMarks = async (req, res) => {
     });
   } catch (err) {
     console.error('updateAcademicMarks error:', err.message);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: 'Failed to update academic marks.' });
   }
 };
 
 // POST /api/candidates/:id/reset-attempt (Admin Only)
 export const resetCandidateAttempt = async (req, res) => {
   const candidateId = req.params.id;
-  const { assessmentId } = req.body;
+  const { assessmentId, category, targetType } = req.body || {};
+  const selectedType = (targetType || category || assessmentId || 'all').toString().trim();
+  const lowerType = selectedType.toLowerCase();
 
   if (!candidateId) {
     return res.status(400).json({ success: false, error: 'Candidate ID is required.' });
@@ -427,24 +443,75 @@ export const resetCandidateAttempt = async (req, res) => {
     const targetIds = Array.from(idsSet);
     const targetEmails = Array.from(emailsSet);
 
-    // 2. Delete submission(s) from assessment_submissions and submissions
+    // 2. Determine target submissions to delete based on selectedType ('coding' | 'technical' / 'other' | specific asmId | 'all')
     let deletedCount = 0;
-    if (assessmentId && assessmentId !== 'all') {
+    let targetCategoryLabel = 'all';
+
+    if (lowerType === 'coding') {
+      targetCategoryLabel = 'coding';
+      const codingAsms = await client.query(
+        `SELECT id FROM assessments WHERE category ILIKE '%cod%' OR title ILIKE '%cod%'`
+      );
+      const codingIds = codingAsms.rows.map(r => r.id);
+
+      const delAsm = await client.query(
+        `DELETE FROM assessment_submissions 
+         WHERE (candidate_id = ANY($1::varchar[]) OR LOWER(candidate_email) = ANY($2::varchar[]))
+           AND (
+             assessment_id = ANY($3::varchar[])
+             OR assessment_id IN (SELECT id FROM assessments WHERE category ILIKE '%cod%' OR title ILIKE '%cod%')
+           )
+         RETURNING id`,
+        [targetIds, targetEmails, codingIds]
+      );
+      deletedCount += delAsm.rowCount || 0;
+
+      await client.query(
+        `DELETE FROM submissions 
+         WHERE candidate_id = ANY($1::varchar[])
+           AND (
+             assessment_id = ANY($2::varchar[])
+             OR assessment_id IN (SELECT id FROM assessments WHERE category ILIKE '%cod%' OR title ILIKE '%cod%')
+           )`,
+        [targetIds, codingIds]
+      );
+    } else if (lowerType === 'technical' || lowerType === 'other' || lowerType === 'mcq') {
+      targetCategoryLabel = 'technical';
+      const delAsm = await client.query(
+        `DELETE FROM assessment_submissions 
+         WHERE (candidate_id = ANY($1::varchar[]) OR LOWER(candidate_email) = ANY($2::varchar[]))
+           AND assessment_id NOT IN (SELECT id FROM assessments WHERE category ILIKE '%cod%' OR title ILIKE '%cod%')
+         RETURNING id`,
+        [targetIds, targetEmails]
+      );
+      deletedCount += delAsm.rowCount || 0;
+
+      await client.query(
+        `DELETE FROM submissions 
+         WHERE candidate_id = ANY($1::varchar[])
+           AND assessment_id NOT IN (SELECT id FROM assessments WHERE category ILIKE '%cod%' OR title ILIKE '%cod%')`,
+        [targetIds]
+      );
+    } else if (selectedType && lowerType !== 'all') {
+      // Specific assessment ID was provided
+      targetCategoryLabel = selectedType;
       const delAsm = await client.query(
         `DELETE FROM assessment_submissions 
          WHERE (candidate_id = ANY($1::varchar[]) OR LOWER(candidate_email) = ANY($2::varchar[]))
            AND assessment_id = $3
          RETURNING id`,
-        [targetIds, targetEmails, assessmentId]
+        [targetIds, targetEmails, selectedType]
       );
       deletedCount += delAsm.rowCount || 0;
 
       await client.query(
         `DELETE FROM submissions 
          WHERE candidate_id = ANY($1::varchar[]) AND assessment_id = $2`,
-        [targetIds, assessmentId]
+        [targetIds, selectedType]
       );
     } else {
+      // Full reset of all assessments
+      targetCategoryLabel = 'all';
       const delAsm = await client.query(
         `DELETE FROM assessment_submissions 
          WHERE candidate_id = ANY($1::varchar[]) OR LOWER(candidate_email) = ANY($2::varchar[])
@@ -462,9 +529,12 @@ export const resetCandidateAttempt = async (req, res) => {
 
     // 3. Re-calculate candidate scores from remaining submissions
     const remaining = await client.query(
-      `SELECT score, category_scores, created_at FROM assessment_submissions 
-       WHERE candidate_id = ANY($1::varchar[]) OR LOWER(candidate_email) = ANY($2::varchar[])
-       ORDER BY created_at DESC LIMIT 1`,
+      `SELECT s.assessment_id, s.score, s.category_scores, s.created_at,
+              COALESCE(a.category, '') as asm_category, COALESCE(a.title, '') as asm_title
+       FROM assessment_submissions s
+       LEFT JOIN assessments a ON s.assessment_id = a.id
+       WHERE s.candidate_id = ANY($1::varchar[]) OR LOWER(s.candidate_email) = ANY($2::varchar[])
+       ORDER BY s.created_at DESC`,
       [targetIds, targetEmails]
     );
 
@@ -483,26 +553,72 @@ export const resetCandidateAttempt = async (req, res) => {
         [targetIds]
       );
     } else {
-      const r = remaining.rows[0];
-      const scores = typeof r.category_scores === 'string' ? JSON.parse(r.category_scores) : (r.category_scores || {});
+      let latestCodingScore = null;
+      let latestTechnicalScore = null;
+      let latestAptitudeScore = null;
+      let latestReasoningScore = null;
+      let latestVerbalScore = null;
+
+      remaining.rows.forEach(r => {
+        const isCoding = (r.asm_category || '').toLowerCase().includes('cod') || (r.asm_title || '').toLowerCase().includes('cod');
+        const cat = typeof r.category_scores === 'string' ? JSON.parse(r.category_scores) : (r.category_scores || {});
+
+        if (isCoding) {
+          if (latestCodingScore === null) {
+            latestCodingScore = Number(cat.coding ?? cat.Coding ?? r.score ?? 0);
+          }
+        } else {
+          if (latestTechnicalScore === null && (cat.technical !== undefined || cat.Technical !== undefined || r.score !== undefined)) {
+            latestTechnicalScore = Number(cat.technical ?? cat.Technical ?? r.score ?? 0);
+          }
+          if (latestAptitudeScore === null && cat.aptitude !== undefined) {
+            latestAptitudeScore = Number(cat.aptitude ?? 0);
+          }
+          if (latestReasoningScore === null && cat.reasoning !== undefined) {
+            latestReasoningScore = Number(cat.reasoning ?? 0);
+          }
+          if (latestVerbalScore === null && (cat.verbal !== undefined || cat.english !== undefined)) {
+            latestVerbalScore = Number(cat.verbal ?? cat.english ?? 0);
+          }
+        }
+      });
+
+      const newCodingScore = latestCodingScore !== null ? latestCodingScore : 0;
+      const newTechScore = latestTechnicalScore !== null ? latestTechnicalScore : 0;
+      const newAptScore = latestAptitudeScore !== null ? latestAptitudeScore : 0;
+      const newReasonScore = latestReasoningScore !== null ? latestReasoningScore : 0;
+      const newVerbScore = latestVerbalScore !== null ? latestVerbalScore : 0;
+
+      const completedScores = [];
+      if (latestCodingScore !== null) completedScores.push(latestCodingScore);
+      if (latestTechnicalScore !== null) completedScores.push(latestTechnicalScore);
+      if (latestAptitudeScore !== null && latestAptitudeScore > 0) completedScores.push(latestAptitudeScore);
+      if (latestReasoningScore !== null && latestReasoningScore > 0) completedScores.push(latestReasoningScore);
+      if (latestVerbalScore !== null && latestVerbalScore > 0) completedScores.push(latestVerbalScore);
+
+      const newOverallScore = completedScores.length > 0 
+        ? Math.round(completedScores.reduce((a, b) => a + b, 0) / completedScores.length)
+        : (remaining.rows[0]?.score || 0);
+
       await client.query(
         `UPDATE candidates SET 
            readiness_status = 'Completed',
            job_readiness_score = $1,
-           aptitude_score = COALESCE($2, aptitude_score),
-           reasoning_score = COALESCE($3, reasoning_score),
-           technical_score = COALESCE($4, technical_score),
-           verbal_score = COALESCE($5, verbal_score),
-           coding_score = COALESCE($6, coding_score),
-           assessments_completed = GREATEST(1, COALESCE(assessments_completed, 1) - 1)
-         WHERE id = ANY($7::varchar[])`,
+           aptitude_score = $2,
+           reasoning_score = $3,
+           technical_score = $4,
+           verbal_score = $5,
+           coding_score = $6,
+           assessments_completed = $7
+         WHERE id = ANY($8::varchar[])`,
         [
-          r.score,
-          scores.aptitude ?? scores.Aptitude ?? 0,
-          scores.reasoning ?? scores.Reasoning ?? 0,
-          scores.technical ?? scores.Technical ?? 0,
-          scores.verbal ?? scores.Verbal ?? 0,
-          scores.coding ?? scores.Coding ?? 0,
+          newOverallScore,
+          newAptScore,
+          newReasonScore,
+          newTechScore,
+          newVerbScore,
+          newCodingScore,
+          remaining.rows.length,
           targetIds
         ]
       );
@@ -511,18 +627,27 @@ export const resetCandidateAttempt = async (req, res) => {
     await client.query('COMMIT');
     clearCandidatesCache();
 
-    console.log(`✅ Candidate ${candidateId} assessment attempt reset by administrator.`);
+    let message = 'Assessment attempt reset successfully. The candidate can now retake the assessment.';
+    if (targetCategoryLabel === 'coding') {
+      message = 'Coding assessment attempt reset successfully. The candidate can now retake the Coding assessment.';
+    } else if (targetCategoryLabel === 'technical') {
+      message = 'Technical / MCQ assessment attempt reset successfully. The candidate can now retake the Technical assessment.';
+    } else if (targetCategoryLabel !== 'all') {
+      message = `Assessment attempt for ${targetCategoryLabel} reset successfully.`;
+    }
+
+    console.log(`✅ Candidate ${candidateId} attempt for [${targetCategoryLabel}] reset by administrator.`);
     return res.json({
       success: true,
-      message: 'Assessment attempt reset successfully. The candidate can now retake the assessment.',
+      message,
       candidateId,
-      assessmentId: assessmentId || 'all',
+      targetCategory: targetCategoryLabel,
       deletedSubmissions: deletedCount
     });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     console.error(`❌ Error resetting candidate attempt:`, err.message);
-    return res.status(500).json({ success: false, error: err.message });
+    return res.status(500).json({ success: false, error: 'Failed to reset candidate attempt.' });
   } finally {
     client.release();
   }

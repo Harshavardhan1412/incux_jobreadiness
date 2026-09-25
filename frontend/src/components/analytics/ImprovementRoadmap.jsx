@@ -25,7 +25,11 @@ export default function ImprovementRoadmap({ student }) {
     { key: 'coding', label: 'Coding' },
   ];
   const currentPercents = categoryKeys.map((c) => {
-    const cat = latestAttempt.categories?.[c.key] || (c.fallbackKey ? latestAttempt.categories?.[c.fallbackKey] : null);
+    const compositeVal = student.categoryScores?.[c.key] ?? (c.fallbackKey ? student.categoryScores?.[c.fallbackKey] : undefined);
+    if (compositeVal !== undefined && compositeVal !== null && Number(compositeVal) > 0) {
+      return Math.min(100, Math.max(0, Math.round(Number(compositeVal))));
+    }
+    const cat = latestAttempt?.categories?.[c.key] || (c.fallbackKey ? latestAttempt?.categories?.[c.fallbackKey] : null);
     const max = Number(cat?.maxScore) > 0 ? Number(cat.maxScore) : 1;
     return Math.min(100, Math.max(0, Math.round((Number(cat?.score || 0) / max) * 100)));
   });

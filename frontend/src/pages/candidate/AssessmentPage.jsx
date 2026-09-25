@@ -114,7 +114,7 @@ export const AssessmentPage = () => {
   const requestExamFullscreen = () => {
     const elem = document.documentElement;
     if (elem.requestFullscreen) {
-      elem.requestFullscreen().catch(() => {});
+      elem.requestFullscreen().catch(() => { });
     } else if (elem.webkitRequestFullscreen) {
       elem.webkitRequestFullscreen();
     } else if (elem.msRequestFullscreen) {
@@ -128,13 +128,13 @@ export const AssessmentPage = () => {
     if (document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement) {
       try {
         if (document.exitFullscreen) {
-          document.exitFullscreen().catch(() => {});
+          document.exitFullscreen().catch(() => { });
         } else if (document.webkitExitFullscreen) {
           document.webkitExitFullscreen();
         } else if (document.msExitFullscreen) {
           document.msExitFullscreen();
         }
-      } catch (e) {}
+      } catch (e) { }
     }
     stopMediaStream();
   };
@@ -228,6 +228,7 @@ export const AssessmentPage = () => {
     }
 
     exitExamFullscreenAndStopMedia();
+    let redirected = false;
 
     try {
       const finalAnswers = await evaluatePendingCodingAnswers(assessmentAnswers);
@@ -238,6 +239,9 @@ export const AssessmentPage = () => {
         autoSubmitted: true,
         autoSubmitReason: reason || 'proctoring_violations'
       });
+      if (res && res.redirectedToNext) {
+        redirected = true;
+      }
       if (res && !res.ok) {
         if (res.status === 409) {
           addToast?.('This assessment has already been submitted.', 'info');
@@ -249,7 +253,9 @@ export const AssessmentPage = () => {
       console.warn('Auto-submit error:', err);
     } finally {
       setIsSubmitting(false);
-      navigateTo('candidate-analytics');
+      if (!redirected) {
+        navigateTo('candidate-analytics');
+      }
     }
   };
 
@@ -288,6 +294,11 @@ export const AssessmentPage = () => {
       isSubmittedRef.current = true;
       setShowSubmitModal(false);
       exitExamFullscreenAndStopMedia();
+
+      if (res && res.redirectedToNext) {
+        setIsSubmitting(false);
+        return;
+      }
       navigateTo('candidate-analytics');
     } catch (err) {
       addToast?.('Failed to submit assessment. Please try again.', 'error');
@@ -349,10 +360,10 @@ export const AssessmentPage = () => {
                   const violationType = classification.status === 'no_face'
                     ? 'NO_FACE'
                     : classification.status === 'multiple_faces'
-                    ? 'MULTIPLE_FACES'
-                    : isEyeGaze
-                    ? 'EYE_GAZE_DIVERTED'
-                    : 'LOOKING_AWAY';
+                      ? 'MULTIPLE_FACES'
+                      : isEyeGaze
+                        ? 'EYE_GAZE_DIVERTED'
+                        : 'LOOKING_AWAY';
 
                   api.submissions.logProctoringEvent({
                     attemptId: attemptIdRef.current,
@@ -562,12 +573,12 @@ export const AssessmentPage = () => {
 
   return (
     <div className="min-h-screen bg-slate-100/70 pb-16">
-      
+
       {/* DISTRACTION-FREE TOPBAR */}
       <header className="sticky top-0 z-40 bg-white border-b border-slate-200 shadow-xs">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
-            
+
             {/* Title & Assessment Info */}
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-lg bg-brand-600 text-white flex items-center justify-center font-bold text-xs shadow-xs">
@@ -587,21 +598,30 @@ export const AssessmentPage = () => {
 
             {/* Live Countdown Timer & Submit Button */}
             <div className="flex items-center gap-4">
-              <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border font-mono text-sm font-bold shadow-2xs ${
-                timeRemainingSeconds < 300
+              <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border font-mono text-sm font-bold shadow-2xs ${timeRemainingSeconds < 300
                   ? 'bg-rose-50 border-rose-200 text-rose-600 animate-pulse'
                   : 'bg-slate-50 border-slate-200 text-slate-800'
-              }`}>
+                }`}>
                 <Clock className="w-4 h-4 text-slate-500" />
                 <span>{formatTime(timeRemainingSeconds)}</span>
               </div>
 
-              <button
-                onClick={() => setShowSubmitModal(true)}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white rounded-xl text-xs font-bold shadow-sm transition-all"
-              >
-                Submit Assessment
-              </button>
+              {currentQuestionIndex === totalQuestions - 1 ? (
+                <button
+                  onClick={() => setShowSubmitModal(true)}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white rounded-xl text-xs font-bold shadow-sm transition-all"
+                >
+                  Submit Assessment
+                </button>
+              ) : (
+                <button
+                  onClick={handleNext}
+                  className="px-4 py-2 bg-brand-600 hover:bg-brand-700 active:scale-[0.99] text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center gap-1.5"
+                >
+                  <span>Next Question</span>
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              )}
             </div>
 
           </div>
@@ -611,20 +631,26 @@ export const AssessmentPage = () => {
       {/* MAIN CONTENT AREA */}
       <div className={`${currentQuestion?.type === 'Coding' ? 'max-w-[98vw] px-2 sm:px-4' : 'max-w-7xl px-4 sm:px-6 lg:px-8'} mx-auto mt-5 transition-all duration-200`}>
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          
+
           {/* MAIN QUESTION CARD / CODING WORKSPACE */}
           <div className={`${currentQuestion?.type === 'Coding' ? 'lg:col-span-9' : 'lg:col-span-8'} flex flex-col justify-between space-y-6`}>
             {currentQuestion?.type === 'Coding' ? (
               <CodingWorkspace
+                key={currentQuestion?.id || `coding-${currentQuestionIndex}`}
                 question={currentQuestion}
                 savedAnswer={assessmentAnswers[currentQuestion?.id]}
                 onSaveAnswer={(ans) => setAssessmentAnswers(prev => ({ ...prev, [currentQuestion?.id]: ans }))}
                 onSubmitAssessment={() => setShowSubmitModal(true)}
                 addToast={addToast}
+                currentQuestionIndex={currentQuestionIndex}
+                totalQuestions={totalQuestions}
+                onNextQuestion={handleNext}
+                onPrevQuestion={handlePrev}
+                isLastQuestion={currentQuestionIndex === totalQuestions - 1}
               />
             ) : (
               <div className="bg-white rounded-2xl border border-slate-200/90 shadow-card p-6 sm:p-8 space-y-6">
-                
+
                 {/* Question Meta Header */}
                 <div className="flex items-center justify-between border-b border-slate-100 pb-4">
                   <div className="flex items-center gap-2.5">
@@ -639,11 +665,10 @@ export const AssessmentPage = () => {
 
                   <button
                     onClick={handleToggleReview}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
-                      isMarked
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${isMarked
                         ? 'bg-amber-50 border-amber-300 text-amber-700 shadow-2xs'
                         : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-                    }`}
+                      }`}
                   >
                     <Flag className={`w-3.5 h-3.5 ${isMarked ? 'fill-amber-500 text-amber-500' : ''}`} />
                     <span>{isMarked ? 'Marked for Review' : 'Mark for Review'}</span>
@@ -685,17 +710,15 @@ export const AssessmentPage = () => {
                       <div
                         key={opt.id}
                         onClick={() => handleSelectOption(opt.id)}
-                        className={`flex items-start gap-3.5 p-4 rounded-xl border cursor-pointer transition-all ${
-                          isSelected
+                        className={`flex items-start gap-3.5 p-4 rounded-xl border cursor-pointer transition-all ${isSelected
                             ? 'bg-brand-50/80 border-brand-500 text-brand-950 shadow-xs ring-1 ring-brand-500'
                             : 'bg-slate-50 hover:bg-slate-100/70 border-slate-200/80 text-slate-800'
-                        }`}
+                          }`}
                       >
-                        <div className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0 transition-colors ${
-                          isSelected
+                        <div className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0 transition-colors ${isSelected
                             ? 'bg-brand-600 text-white'
                             : 'bg-white border border-slate-300 text-slate-600'
-                        }`}>
+                          }`}>
                           {opt.id}
                         </div>
                         <span className="text-xs sm:text-sm font-medium leading-relaxed pt-0.5">
@@ -746,11 +769,10 @@ export const AssessmentPage = () => {
                         <span>Submitted ({ans.passedTests ?? 0}/{ans.totalTests ?? 0} Total)</span>
                       </span>
                       {ans.hiddenTotal !== undefined && (
-                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-bold ${
-                          (ans.hiddenPassed ?? 0) === (ans.hiddenTotal ?? 0)
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-bold ${(ans.hiddenPassed ?? 0) === (ans.hiddenTotal ?? 0)
                             ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                             : 'bg-amber-50 text-amber-700 border-amber-200'
-                        }`}>
+                          }`}>
                           <Lock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
                           <span>Hidden: {ans.hiddenPassed ?? 0}/{ans.hiddenTotal ?? 0} Passed</span>
                         </span>
@@ -773,7 +795,7 @@ export const AssessmentPage = () => {
 
           {/* RIGHT SIDEBAR: CAMERA PREVIEW & QUESTION PALETTE */}
           <div className={`${currentQuestion?.type === 'Coding' ? 'lg:col-span-3' : 'lg:col-span-4'} space-y-4`}>
-            
+
             {/* Live Camera & Proctoring Status Widget */}
             {mediaStream && (
               <div className="flex justify-end lg:justify-start">
@@ -834,9 +856,8 @@ export const AssessmentPage = () => {
                     <button
                       key={q.id}
                       onClick={() => setCurrentQuestionIndex(idx)}
-                      className={`h-10 rounded-xl text-xs font-bold flex items-center justify-center transition-all relative ${bgClass} ${
-                        isCur ? 'ring-2 ring-brand-600 ring-offset-2 scale-105' : ''
-                      }`}
+                      className={`h-10 rounded-xl text-xs font-bold flex items-center justify-center transition-all relative ${bgClass} ${isCur ? 'ring-2 ring-brand-600 ring-offset-2 scale-105' : ''
+                        }`}
                       title={isCodingQ ? `Q${idx + 1}: Coding Challenge` : `Q${idx + 1}`}
                     >
                       {isCodingQ && <Code2 className="w-2.5 h-2.5 mr-0.5 opacity-80" />}
@@ -865,24 +886,34 @@ export const AssessmentPage = () => {
                 </div>
               </div>
 
-              {/* Submit CTA */}
-              <button
-                onClick={() => setShowSubmitModal(true)}
-                disabled={isSubmitting}
-                className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-600/20 transition-all flex items-center justify-center gap-2"
-              >
-                {isSubmitting ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    <span>Submitting Assessment...</span>
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>Submit & View AI Analysis</span>
-                  </>
-                )}
-              </button>
+              {/* Submit CTA - Shown prominently on the final question or when finished */}
+              {currentQuestionIndex === totalQuestions - 1 ? (
+                <button
+                  onClick={() => setShowSubmitModal(true)}
+                  disabled={isSubmitting}
+                  className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-600/20 transition-all flex items-center justify-center gap-2"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Submitting Assessment...</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>Submit</span>
+                    </>
+                  )}
+                </button>
+              ) : (
+                <button
+                  onClick={handleNext}
+                  className="w-full py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold shadow-md shadow-brand-600/20 transition-all flex items-center justify-center gap-2"
+                >
+                  <span>Next Question</span>
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              )}
 
             </div>
           </div>
@@ -959,7 +990,7 @@ export const AssessmentPage = () => {
       {/* FULLSCREEN REQUIRED ENTER MODAL */}
       <Modal
         isOpen={showEnterFullscreenModal}
-        onClose={() => {}}
+        onClose={() => { }}
         title="🔒 Full-Screen Exam Environment Required"
         subtitle="Anti-cheating & proctoring controls active"
       >
@@ -993,7 +1024,7 @@ export const AssessmentPage = () => {
       {/* FULLSCREEN EXIT WARNING MODAL (1ST VIOLATION) */}
       <Modal
         isOpen={showFullscreenWarning}
-        onClose={() => {}}
+        onClose={() => { }}
         title="⚠️ WARNING: Fullscreen Mode Exited!"
         subtitle="First proctoring violation warning"
       >
@@ -1061,7 +1092,7 @@ export const AssessmentPage = () => {
       {/* PROCTORING WARNING MODAL (STRIKE 1 OR 2) */}
       <Modal
         isOpen={warningModalData.isOpen && !warningModalData.isFinal}
-        onClose={() => {}}
+        onClose={() => { }}
         title={`⚠️ Proctoring Warning: Strike ${warningModalData.violationNumber} of 3`}
         subtitle="Face-presence integrity alert"
       >
@@ -1116,7 +1147,7 @@ export const AssessmentPage = () => {
       {/* PROCTORING 3RD STRIKE AUTO-SUBMIT MODAL */}
       <Modal
         isOpen={warningModalData.isOpen && warningModalData.isFinal}
-        onClose={() => {}}
+        onClose={() => { }}
         title="🚨 Exam Auto-Submitted: Maximum Violations Reached"
         subtitle="Assessment terminated due to repeated proctoring strikes"
       >

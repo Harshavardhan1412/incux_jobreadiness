@@ -584,6 +584,7 @@ export const mockPeerComparison = [
   { category: 'Reasoning', studentScore: 72, classAverage: 58, topperScore: 92, classMedian: 56 },
   { category: 'Technical', studentScore: 84, classAverage: 55, topperScore: 96, classMedian: 52 },
   { category: 'Verbal', studentScore: 72, classAverage: 60, topperScore: 88, classMedian: 58 },
+  { category: 'Coding', studentScore: 80, classAverage: 52, topperScore: 98, classMedian: 50 },
 ];
 
 /**
@@ -604,12 +605,12 @@ export function computeEligibility(student, criteriaList = standardCompanyEligib
 
   // Extract candidate section & overall exam scores
   const catPercents = getCategoryPercents(student?.examAttempts?.[student.examAttempts.length - 1]);
-  const candApt = Number(student?.categoryScores?.aptitude ?? student?.aptitudeScore ?? catPercents.aptitude ?? 0);
-  const candReason = Number(student?.categoryScores?.reasoning ?? student?.reasoningScore ?? catPercents.reasoning ?? 0);
-  const candTech = Number(student?.categoryScores?.technical ?? student?.technicalScore ?? catPercents.technical ?? 0);
-  const candVerb = Number(student?.categoryScores?.verbal ?? student?.verbalScore ?? catPercents.verbal ?? 0);
-  const candCode = Number(student?.categoryScores?.coding ?? candTech);
-  const candOverall = Number(student?.overallScore ?? student?.jobReadinessScore ?? 0);
+  const candApt = Math.max(Number(student?.categoryScores?.aptitude || 0), Number(student?.categoryScores?.Aptitude || 0), Number(student?.aptitudeScore || 0), Number(student?.aptitude_score || 0), Number(catPercents.aptitude || 0));
+  const candReason = Math.max(Number(student?.categoryScores?.reasoning || 0), Number(student?.categoryScores?.Reasoning || 0), Number(student?.reasoningScore || 0), Number(student?.reasoning_score || 0), Number(catPercents.reasoning || 0));
+  const candTech = Math.max(Number(student?.categoryScores?.technical || 0), Number(student?.categoryScores?.Technical || 0), Number(student?.technicalScore || 0), Number(student?.technical_score || 0), Number(catPercents.technical || 0));
+  const candVerb = Math.max(Number(student?.categoryScores?.verbal || 0), Number(student?.categoryScores?.Verbal || 0), Number(student?.verbalScore || 0), Number(student?.verbal_score || 0), Number(catPercents.verbal || catPercents.english || 0));
+  const candCode = Math.max(Number(student?.categoryScores?.coding || 0), Number(student?.categoryScores?.Coding || 0), Number(student?.codingScore || 0), Number(student?.coding_score || 0), Number(catPercents.coding || 0));
+  const candOverall = Math.max(Number(student?.overallScore || 0), Number(student?.jobReadinessScore || 0), Number(student?.job_readiness_score || 0));
 
   return list.map((item) => {
     const compName = item.company || item.name || 'Company';
@@ -704,6 +705,7 @@ export function computeEligibility(student, criteriaList = standardCompanyEligib
       calcRatio(candReason, reqReason),
       calcRatio(candVerb, reqVerb),
       calcRatio(candTech, reqTech),
+      calcRatio(candCode, reqCode),
       calcRatio(candOverall, reqOverall),
     ];
     const avgExamRatio = examRatios.reduce((s, r) => s + r, 0) / examRatios.length;
@@ -785,42 +787,50 @@ export function computeEligibility(student, criteriaList = standardCompanyEligib
 }
 
 export function computeImprovements(student) {
-  const latestAttempt = student.examAttempts[student.examAttempts.length - 1];
-  if (!latestAttempt) return [];
+  const attempts = student?.examAttempts || [];
+  if (attempts.length === 0) return [];
 
-  const areas = [];
-  const categoryKeys = ['aptitude', 'reasoning', 'technical', 'verbal', 'english'];
+  const areasMap = new Map();
+  const categoryKeys = ['aptitude', 'reasoning', 'technical', 'verbal', 'english', 'coding'];
+  const priorityOrder = { high: 0, medium: 1, low: 2 };
 
-  categoryKeys.forEach((key) => {
-    const cat = latestAttempt.categories?.[key];
-    if (!cat || !Array.isArray(cat.topics)) return;
-    cat.topics.forEach((topic) => {
-      const maxScore = Number(topic.maxScore) > 0 ? Number(topic.maxScore) : 1;
-      const percent = (Number(topic.score || 0) / maxScore) * 100;
-      let priority = 'low';
-      let estimatedHours = 2;
+  attempts.forEach((att) => {
+    categoryKeys.forEach((key) => {
+      const cat = att.categories?.[key];
+      if (!cat || !Array.isArray(cat.topics)) return;
+      cat.topics.forEach((topic) => {
+        const topicName = topic.name || topic.topic;
+        if (!topicName) return;
+        const maxScore = Number(topic.maxScore) > 0 ? Number(topic.maxScore) : (Number(topic.totalMarks) > 0 ? Number(topic.totalMarks) : 100);
+        const rawScore = Number(topic.score ?? topic.obtainedMarks ?? 0);
+        const percent = (rawScore / maxScore) * 100;
+        let priority = 'low';
+        let estimatedHours = 2;
 
-      if (percent < 50) {
-        priority = 'high';
-        estimatedHours = 8;
-      } else if (percent < 70) {
-        priority = 'medium';
-        estimatedHours = 4;
-      }
+        if (percent < 50) {
+          priority = 'high';
+          estimatedHours = 8;
+        } else if (percent < 70) {
+          priority = 'medium';
+          estimatedHours = 4;
+        }
 
-      areas.push({
-        category: key.charAt(0).toUpperCase() + key.slice(1),
-        topic: topic.name,
-        currentScore: topic.score,
-        maxScore: topic.maxScore,
-        priority,
-        estimatedHours,
+        const existing = areasMap.get(topicName);
+        if (!existing || priorityOrder[priority] < priorityOrder[existing.priority]) {
+          areasMap.set(topicName, {
+            category: key.charAt(0).toUpperCase() + key.slice(1),
+            topic: topicName,
+            currentScore: rawScore,
+            maxScore,
+            priority,
+            estimatedHours,
+          });
+        }
       });
     });
   });
 
-  return areas.sort((a, b) => {
-    const priorityOrder = { high: 0, medium: 1, low: 2 };
+  return Array.from(areasMap.values()).sort((a, b) => {
     return priorityOrder[a.priority] - priorityOrder[b.priority];
   });
 }
@@ -829,15 +839,28 @@ export function getCategoryPercents(attempt) {
   if (!attempt || !attempt.categories) {
     return { aptitude: 84, reasoning: 72, technical: 84, english: 72, verbal: 72, coding: 80 };
   }
-  const engCat = attempt.categories.verbal || attempt.categories.english || { score: 0, maxScore: 25 };
-  const engPct = engCat.maxScore > 0 ? Math.round((engCat.score / engCat.maxScore) * 100) : 0;
-  const codingCat = attempt.categories.coding || { score: 0, maxScore: 25 };
-  const codingPct = codingCat.maxScore > 0 ? Math.round((codingCat.score / codingCat.maxScore) * 100) : (attempt.categories.coding?.score ?? 0);
+  const calcPct = (cat, key) => {
+    if (cat && typeof cat.maxScore === 'number' && cat.maxScore > 0) {
+      return Math.min(100, Math.max(0, Math.round((cat.score / cat.maxScore) * 100)));
+    }
+    if (cat && typeof cat.score === 'number' && cat.score > 0) {
+      return Math.min(100, Math.max(0, Math.round(cat.score)));
+    }
+    if (attempt.categoryScores && attempt.categoryScores[key] !== undefined) {
+      return Math.min(100, Math.max(0, Math.round(Number(attempt.categoryScores[key]))));
+    }
+    return 0;
+  };
+
+  const engCat = attempt.categories.verbal || attempt.categories.english;
+  const engPct = calcPct(engCat, 'verbal') || calcPct(engCat, 'english');
+  const codingCat = attempt.categories.coding;
+  const codingPct = calcPct(codingCat, 'coding');
 
   return {
-    aptitude: attempt.categories.aptitude?.maxScore > 0 ? Math.round((attempt.categories.aptitude.score / attempt.categories.aptitude.maxScore) * 100) : 0,
-    reasoning: attempt.categories.reasoning?.maxScore > 0 ? Math.round((attempt.categories.reasoning.score / attempt.categories.reasoning.maxScore) * 100) : 0,
-    technical: attempt.categories.technical?.maxScore > 0 ? Math.round((attempt.categories.technical.score / attempt.categories.technical.maxScore) * 100) : 0,
+    aptitude: calcPct(attempt.categories.aptitude, 'aptitude'),
+    reasoning: calcPct(attempt.categories.reasoning, 'reasoning'),
+    technical: calcPct(attempt.categories.technical, 'technical'),
     english: engPct,
     verbal: engPct,
     coding: codingPct,

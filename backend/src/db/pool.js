@@ -39,21 +39,29 @@ if (pool) {
   console.warn('⚠️  DATABASE_URL is not set in backend/.env. Database features will run in mock mode.');
 }
 
-export const testConnection = async (retries = 3) => {
+let isConnected = false;
+export const getDbStatus = () => isConnected;
+
+export const testConnection = async (retries = 1, timeoutMs = 3000) => {
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
-      const client = await pool.connect();
+      const client = await Promise.race([
+        pool.connect(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Connection timeout')), timeoutMs)),
+      ]);
       const res = await client.query('SELECT NOW() as time, current_database() as db');
       client.release();
       console.log(`✅ PostgreSQL connected → database: "${res.rows[0].db}" at ${res.rows[0].time}`);
+      isConnected = true;
       return true;
     } catch (err) {
       console.error(`⚠️ PostgreSQL connection attempt ${attempt}/${retries} failed: ${err.message}`);
       if (attempt < retries) {
-        await new Promise(r => setTimeout(r, 2000));
+        await new Promise(r => setTimeout(r, 1000));
       }
     }
   }
+  isConnected = false;
   return false;
 };
 

@@ -1,7 +1,8 @@
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 
 /**
  * Parse an Excel (.xlsx, .xls) or .csv file and extract formatted question objects.
+ * Uses ExcelJS for secure parsing without prototype pollution vulnerabilities.
  * @param {File} file 
  * @param {string} fallbackCategory (e.g., 'Aptitude', 'Reasoning', 'Technical', 'Verbal')
  * @param {string} fallbackTopic 
@@ -9,31 +10,54 @@ import * as XLSX from 'xlsx';
  */
 export const parseQuestionsFromExcel = async (file, fallbackCategory = 'Technical', fallbackTopic = 'General') => {
   const data = await file.arrayBuffer();
-  const workbook = XLSX.read(data, { type: 'array' });
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(data);
   
-  if (!workbook.SheetNames.length) {
+  if (!workbook.worksheets || workbook.worksheets.length === 0) {
     throw new Error('Excel workbook contains no sheets.');
   }
 
-  const sheetName = workbook.SheetNames[0];
-  const worksheet = workbook.Sheets[sheetName];
-  const rawRows = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+  const worksheet = workbook.worksheets[0];
+  const rawRows = [];
+  const headers = [];
 
-  if (!rawRows || rawRows.length === 0) {
+  worksheet.eachRow((row, rowNumber) => {
+    if (rowNumber === 1) {
+      row.eachCell((cell, colNumber) => {
+        const val = typeof cell.value === 'object' && cell.value !== null 
+          ? (cell.value.text || cell.value.result || '') 
+          : cell.value;
+        const cleanKey = String(val || '').trim().toLowerCase().replace(/\s+/g, '_');
+        // Prototype pollution guard
+        if (cleanKey && cleanKey !== '__proto__' && cleanKey !== 'constructor' && cleanKey !== 'prototype') {
+          headers[colNumber] = cleanKey;
+        }
+      });
+    } else {
+      const rowData = {};
+      row.eachCell((cell, colNumber) => {
+        const header = headers[colNumber];
+        if (header) {
+          const val = typeof cell.value === 'object' && cell.value !== null 
+            ? (cell.value.text || cell.value.result || '') 
+            : cell.value;
+          rowData[header] = val;
+        }
+      });
+      if (Object.keys(rowData).length > 0) {
+        rawRows.push(rowData);
+      }
+    }
+  });
+
+  if (rawRows.length === 0) {
     throw new Error('Excel file is empty or missing data rows.');
   }
 
   const parsedQuestions = [];
 
   for (let i = 0; i < rawRows.length; i++) {
-    const row = rawRows[i];
-
-    // Normalize keys to lowercase and trim spaces
-    const normalized = {};
-    Object.keys(row).forEach(key => {
-      const cleanKey = key.trim().toLowerCase().replace(/\s+/g, '_');
-      normalized[cleanKey] = row[key];
-    });
+    const normalized = rawRows[i];
 
     const questionText = normalized.question || normalized.question_statement || normalized.question_text || normalized.q;
     if (!questionText || !String(questionText).trim()) {
@@ -92,7 +116,7 @@ export const parseQuestionsFromExcel = async (file, fallbackCategory = 'Technica
  * question | difficulty | topic | option_a | option_b | option_c | option_d | correct_answer | marks | time_limit_sec
  * @param {string} category 
  */
-export const downloadExcelQuestionTemplate = (category = 'Aptitude') => {
+export const downloadExcelQuestionTemplate = async (category = 'Aptitude') => {
   const sampleDataByCategory = {
     Aptitude: [
       {
@@ -203,25 +227,32 @@ export const downloadExcelQuestionTemplate = (category = 'Aptitude') => {
   const activeCategory = (category && sampleDataByCategory[category]) ? category : 'Aptitude';
   const sampleData = sampleDataByCategory[activeCategory];
 
-  const worksheet = XLSX.utils.json_to_sheet(sampleData, {
-    header: ["question", "difficulty", "topic", "option_a", "option_b", "option_c", "option_d", "correct_answer", "marks", "time_limit_sec"]
-  });
+  const workbook = new ExcelJS.Workbook();
+  const worksheet = workbook.addWorksheet(`${activeCategory} Questions`);
 
-  // Set column widths for clean readability
-  worksheet['!cols'] = [
-    { wch: 60 }, // question
-    { wch: 12 }, // difficulty
-    { wch: 25 }, // topic
-    { wch: 25 }, // option_a
-    { wch: 25 }, // option_b
-    { wch: 25 }, // option_c
-    { wch: 25 }, // option_d
-    { wch: 15 }, // correct_answer
-    { wch: 10 }, // marks
-    { wch: 15 }  // time_limit_sec
+  worksheet.columns = [
+    { header: "question", key: "question", width: 60 },
+    { header: "difficulty", key: "difficulty", width: 12 },
+    { header: "topic", key: "topic", width: 25 },
+    { header: "option_a", key: "option_a", width: 25 },
+    { header: "option_b", key: "option_b", width: 25 },
+    { header: "option_c", key: "option_c", width: 25 },
+    { header: "option_d", key: "option_d", width: 25 },
+    { header: "correct_answer", key: "correct_answer", width: 15 },
+    { header: "marks", key: "marks", width: 10 },
+    { header: "time_limit_sec", key: "time_limit_sec", width: 15 }
   ];
 
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, `${activeCategory} Questions`);
-  XLSX.writeFile(workbook, `${activeCategory.toLowerCase()}_questions_template.xlsx`);
+  sampleData.forEach(item => worksheet.addRow(item));
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${activeCategory.toLowerCase()}_questions_template.xlsx`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 };

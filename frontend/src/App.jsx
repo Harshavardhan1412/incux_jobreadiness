@@ -71,8 +71,12 @@ function AppContent() {
 
   // 2. PUBLIC GUEST AUTH VIEWS (Only when NOT logged in)
   if (role !== 'candidate' && role !== 'admin') {
-    if (safeView === 'login' || safeView === '/login') return <><LoginPage /><ToastContainer /></>;
-    if (safeView === 'admin' || safeView === '/admin' || safeView === 'admin-login' || safeView === '/admin-login') return <><AdminLoginPage /><ToastContainer /></>;
+    if (safeView === 'login' || safeView === '/login' || safeView === 'candidate-analytics' || safeView === '/candidate-analytics' || safeView === 'results' || safeView === '/results') {
+      return <><LoginPage /><ToastContainer /></>;
+    }
+    if (safeView === 'admin' || safeView === '/admin' || safeView === 'admin-login' || safeView === '/admin-login' || safeView.startsWith('admin-')) {
+      return <><AdminLoginPage /><ToastContainer /></>;
+    }
     if (safeView === 'signup' || safeView === '/signup') return <><SignupPage /><ToastContainer /></>;
     return <><JobReadinessHero /><ToastContainer /></>;
   }

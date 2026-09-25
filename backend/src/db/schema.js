@@ -319,6 +319,7 @@ export const initSchema = async () => {
       ALTER TABLE assessment_submissions ADD COLUMN IF NOT EXISTS proctoring_violations INT DEFAULT 0;
       ALTER TABLE assessment_submissions ADD COLUMN IF NOT EXISTS auto_submitted BOOLEAN DEFAULT FALSE;
       ALTER TABLE assessment_submissions ADD COLUMN IF NOT EXISTS auto_submit_reason VARCHAR(128);
+      ALTER TABLE assessment_submissions ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ;
 
       CREATE INDEX IF NOT EXISTS idx_proctoring_attempt ON proctoring_events(attempt_id);
       CREATE INDEX IF NOT EXISTS idx_proctoring_candidate ON proctoring_events(candidate_id);
@@ -326,46 +327,28 @@ export const initSchema = async () => {
     `);
     console.log('✅ Safe column alterations applied.');
 
-    // 4b. Sync latest assessment scores to candidates table (job readiness, aptitude, reasoning, technical, verbal)
+    // 4b. Sync aggregated assessment scores to candidates table across all submissions
     await client.query(`
       UPDATE candidates c
       SET 
-        job_readiness_score = COALESCE(sub.latest_score, c.job_readiness_score, 0),
-        aptitude_score = COALESCE(
-          NULLIF((sub.category_scores->>'aptitude'), '')::int,
-          NULLIF((sub.category_scores->>'Aptitude'), '')::int,
-          c.aptitude_score,
-          0
-        ),
-        reasoning_score = COALESCE(
-          NULLIF((sub.category_scores->>'reasoning'), '')::int,
-          NULLIF((sub.category_scores->>'Reasoning'), '')::int,
-          c.reasoning_score,
-          0
-        ),
-        technical_score = COALESCE(
-          NULLIF((sub.category_scores->>'technical'), '')::int,
-          NULLIF((sub.category_scores->>'Technical'), '')::int,
-          c.technical_score,
-          0
-        ),
-        verbal_score = COALESCE(
-          NULLIF((sub.category_scores->>'verbal'), '')::int,
-          NULLIF((sub.category_scores->>'Verbal'), '')::int,
-          NULLIF((sub.category_scores->>'english'), '')::int,
-          0
-        ),
-        coding_score = COALESCE(
-          NULLIF((sub.category_scores->>'coding'), '')::int,
-          NULLIF((sub.category_scores->>'Coding'), '')::int,
-          c.coding_score,
-          0
-        )
+        job_readiness_score = COALESCE(NULLIF(c.job_readiness_score, 0), sub.avg_score, 0),
+        aptitude_score = GREATEST(COALESCE(c.aptitude_score, 0), COALESCE(sub.max_aptitude, 0)),
+        reasoning_score = GREATEST(COALESCE(c.reasoning_score, 0), COALESCE(sub.max_reasoning, 0)),
+        technical_score = GREATEST(COALESCE(c.technical_score, 0), COALESCE(sub.max_technical, 0)),
+        verbal_score = GREATEST(COALESCE(c.verbal_score, 0), COALESCE(sub.max_verbal, 0)),
+        coding_score = GREATEST(COALESCE(c.coding_score, 0), COALESCE(sub.max_coding, 0))
       FROM (
-        SELECT DISTINCT ON (candidate_id) candidate_id, score AS latest_score, category_scores
+        SELECT 
+          candidate_id,
+          ROUND(AVG(score)) AS avg_score,
+          MAX(COALESCE(NULLIF((category_scores->>'aptitude'), '')::int, NULLIF((category_scores->>'Aptitude'), '')::int, 0)) AS max_aptitude,
+          MAX(COALESCE(NULLIF((category_scores->>'reasoning'), '')::int, NULLIF((category_scores->>'Reasoning'), '')::int, NULLIF((category_scores->>'LogicalReasoning'), '')::int, 0)) AS max_reasoning,
+          MAX(COALESCE(NULLIF((category_scores->>'technical'), '')::int, NULLIF((category_scores->>'Technical'), '')::int, NULLIF((category_scores->>'TechnicalKnowledge'), '')::int, 0)) AS max_technical,
+          MAX(COALESCE(NULLIF((category_scores->>'verbal'), '')::int, NULLIF((category_scores->>'Verbal'), '')::int, NULLIF((category_scores->>'english'), '')::int, NULLIF((category_scores->>'English'), '')::int, 0)) AS max_verbal,
+          MAX(COALESCE(NULLIF((category_scores->>'coding'), '')::int, NULLIF((category_scores->>'Coding'), '')::int, 0)) AS max_coding
         FROM assessment_submissions
         WHERE candidate_id IS NOT NULL AND category_scores IS NOT NULL AND category_scores::text != '{}'
-        ORDER BY candidate_id, created_at DESC
+        GROUP BY candidate_id
       ) sub
       WHERE c.id = sub.candidate_id;
     `);
@@ -396,14 +379,20 @@ export const initSchema = async () => {
     `);
     console.log('✅ Performance indexes and duplicate submission prevention constraint applied.');
 
-    // 6. Ensure permanent single admin account exists
-    const adminHash = await bcrypt.hash('Admin@2026', 10);
-    await client.query(`
-      INSERT INTO users (id, email, password_hash, role, name, status)
-      VALUES ('admin-1', 'admin@readysetjob.com', $1, 'admin', 'HR Administrator', 'active')
-      ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash, role = 'admin', status = 'active';
-    `, [adminHash]);
-    console.log('✅ Permanent single admin credential verified (admin@readysetjob.com).');
+    // 6. Ensure admin account exists (configurable via env variables, no hardcoded password in production)
+    const adminEmail = process.env.ADMIN_INITIAL_EMAIL || 'admin@readysetjob.com';
+    const adminPassword = process.env.ADMIN_INITIAL_PASSWORD || (process.env.NODE_ENV === 'production' ? null : 'Admin@2026');
+    if (adminPassword) {
+      const adminHash = await bcrypt.hash(adminPassword, 10);
+      await client.query(`
+        INSERT INTO users (id, email, password_hash, role, name, status)
+        VALUES ('admin-1', $1, $2, 'admin', 'HR Administrator', 'active')
+        ON CONFLICT (email) DO UPDATE SET role = 'admin', status = 'active';
+      `, [adminEmail, adminHash]);
+      console.log(`✅ Administrator credential verified (${adminEmail}).`);
+    } else {
+      console.log('ℹ️  Skipping automatic admin password seeding in production (ADMIN_INITIAL_PASSWORD not set).');
+    }
 
     // 7. Seed standard company eligibility criteria
     const criteria = [

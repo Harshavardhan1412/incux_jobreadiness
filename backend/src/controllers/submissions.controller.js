@@ -36,13 +36,29 @@ export const submitAssessment = async (req, res) => {
   const name = (req.user && req.user.role !== 'admin' && req.user.name)
     ? req.user.name
     : (candidateName || req.user?.name || 'Candidate Student');
-  const asmId = assessmentId || 'asm-1';
+  // VULN-002 fix: require a real authenticated candidate ID — never fall back to arbitrary/hardcoded values
+  if (!candidateId || candidateId === 'cand-user') {
+    return res.status(401).json({ success: false, error: 'Authenticated candidate required to submit an assessment.' });
+  }
+
+  const asmId = assessmentId;
   const id = `sub-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
 
   const client = await pool.connect();
 
   try {
     await client.query('BEGIN');
+
+    // VULN-002 fix: Validate that assessmentId actually exists in the assessments table
+    if (!asmId) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ success: false, error: 'assessmentId is required.' });
+    }
+    const asmCheck = await client.query('SELECT id FROM assessments WHERE id = $1', [asmId]);
+    if (asmCheck.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ success: false, error: 'Assessment not found.' });
+    }
 
     // 1. Authoritative Backend Scoring
     // Calculate deterministic scores using stored answer keys in PostgreSQL
@@ -59,14 +75,20 @@ export const submitAssessment = async (req, res) => {
     const finalCorrectCount = evaluation.correctCount;
     const finalIncorrectCount = evaluation.incorrectCount;
     const finalUnansweredCount = evaluation.unansweredCount;
-    const finalCategoryScores = (evaluation.categoryScores && Object.keys(evaluation.categoryScores).length > 0)
-      ? evaluation.categoryScores
-      : (clientCategoryScores || {});
+    // VULN-002 fix: ALWAYS use server-evaluated category scores — never fall back to client-supplied values
+    const finalCategoryScores = evaluation.categoryScores || { aptitude: 0, reasoning: 0, technical: 0, verbal: 0, coding: 0 };
     const finalTopicBreakdown = (evaluation.topicBreakdown && evaluation.topicBreakdown.length > 0)
       ? evaluation.topicBreakdown
       : (clientTopicBreakdown || []);
 
-    const catScores = finalCategoryScores || {};
+    const catScores = finalCategoryScores;
+    const sectionsTested = evaluation.sectionsTested || {};
+    const hasAptitude = Boolean(sectionsTested.aptitude);
+    const hasReasoning = Boolean(sectionsTested.reasoning);
+    const hasTechnical = Boolean(sectionsTested.technical);
+    const hasVerbal = Boolean(sectionsTested.verbal);
+    const hasCoding = Boolean(sectionsTested.coding);
+
     const finalAptitudeScore = Number(catScores.aptitude ?? catScores.Aptitude ?? 0);
     const finalReasoningScore = Number(catScores.reasoning ?? catScores.Reasoning ?? 0);
     const finalTechnicalScore = Number(catScores.technical ?? catScores.Technical ?? 0);
@@ -81,15 +103,27 @@ export const submitAssessment = async (req, res) => {
       [candidateId, email || '', asmId]
     );
 
+    // 2a. Authoritative proctoring violation count from DB events (prevents client under-reporting)
+    const pEventsRes = await client.query(
+      `SELECT COUNT(*) FROM proctoring_events 
+       WHERE (candidate_id = $1 OR attempt_id = $2) AND (assessment_id = $3 OR assessment_id IS NULL)`,
+      [candidateId, req.body.attemptId || '', asmId]
+    );
+    const dbViolations = parseInt(pEventsRes.rows[0]?.count || '0', 10);
+    const finalViolations = Math.max(dbViolations, Number(proctoringViolations || 0));
+
     let savedSubmissionRecord = null;
+
 
     if (existingSubmission.rows.length > 0) {
       const existingId = existingSubmission.rows[0].id;
       // Update existing attempt with fresh score, accuracy, and evaluated answers
+      // ARCH-003 fix: Preserve original created_at (audit trail) — only update updated_at
       const updated = await client.query(
         `UPDATE assessment_submissions 
          SET score = $1, accuracy = $2, correct_count = $3, incorrect_count = $4, unanswered_count = $5,
-             time_taken = $6, category_scores = $7, topic_breakdown = $8, answers = $9, status = 'Completed', created_at = NOW(),
+             time_taken = $6, category_scores = $7, topic_breakdown = $8, answers = $9, status = 'Completed',
+             updated_at = NOW(),
              proctoring_violations = $10, auto_submitted = $11, auto_submit_reason = $12
          WHERE id = $13
          RETURNING *`,
@@ -103,13 +137,14 @@ export const submitAssessment = async (req, res) => {
           JSON.stringify(catScores),
           JSON.stringify(finalTopicBreakdown),
           JSON.stringify(answers || {}),
-          Number(proctoringViolations || 0),
+          finalViolations,
           Boolean(autoSubmitted),
           autoSubmitReason || null,
           existingId
         ]
       );
       savedSubmissionRecord = updated.rows[0];
+
 
       // Update legacy submissions table
       await client.query(
@@ -156,7 +191,7 @@ export const submitAssessment = async (req, res) => {
           JSON.stringify(finalCategoryScores),
           JSON.stringify(finalTopicBreakdown),
           JSON.stringify(answers || {}),
-          Number(proctoringViolations || 0),
+          finalViolations,
           Boolean(autoSubmitted),
           autoSubmitReason || null
         ]
@@ -182,15 +217,18 @@ export const submitAssessment = async (req, res) => {
       `INSERT INTO candidates (id, job_readiness_score, aptitude_score, reasoning_score, technical_score, verbal_score, coding_score, readiness_status, assessments_completed)
        VALUES ($1, $2, $3, $4, $5, $6, $7, 'Completed', 1)
        ON CONFLICT (id) DO UPDATE SET
-         job_readiness_score = EXCLUDED.job_readiness_score,
-         aptitude_score = EXCLUDED.aptitude_score,
-         reasoning_score = EXCLUDED.reasoning_score,
-         technical_score = EXCLUDED.technical_score,
-         verbal_score = EXCLUDED.verbal_score,
-         coding_score = EXCLUDED.coding_score,
+         job_readiness_score = GREATEST(COALESCE(candidates.job_readiness_score, 0), EXCLUDED.job_readiness_score),
+         aptitude_score = CASE WHEN $8 = true THEN GREATEST(COALESCE(candidates.aptitude_score, 0), EXCLUDED.aptitude_score) ELSE candidates.aptitude_score END,
+         reasoning_score = CASE WHEN $9 = true THEN GREATEST(COALESCE(candidates.reasoning_score, 0), EXCLUDED.reasoning_score) ELSE candidates.reasoning_score END,
+         technical_score = CASE WHEN $10 = true THEN GREATEST(COALESCE(candidates.technical_score, 0), EXCLUDED.technical_score) ELSE candidates.technical_score END,
+         verbal_score = CASE WHEN $11 = true THEN GREATEST(COALESCE(candidates.verbal_score, 0), EXCLUDED.verbal_score) ELSE candidates.verbal_score END,
+         coding_score = CASE WHEN $12 = true THEN GREATEST(COALESCE(candidates.coding_score, 0), EXCLUDED.coding_score) ELSE candidates.coding_score END,
          readiness_status = 'Completed',
          assessments_completed = COALESCE(candidates.assessments_completed, 0) + 1`,
-      [candidateId, finalScore, finalAptitudeScore, finalReasoningScore, finalTechnicalScore, finalVerbalScore, finalCodingScore]
+      [
+        candidateId, finalScore, finalAptitudeScore, finalReasoningScore, finalTechnicalScore, finalVerbalScore, finalCodingScore,
+        hasAptitude, hasReasoning, hasTechnical, hasVerbal, hasCoding
+      ]
     );
 
     // 6. If candidate profile exists, update timestamp
@@ -222,7 +260,7 @@ export const submitAssessment = async (req, res) => {
       });
     }
     console.error('Submission controller error:', err.message);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: 'Failed to process submission. Please try again.' });
   } finally {
     client.release();
   }
@@ -242,7 +280,8 @@ export const getAllSubmissions = async (req, res) => {
     );
     res.json({ success: true, data: result.rows });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('getAllSubmissions error:', err.message);
+    res.status(500).json({ success: false, error: 'Failed to fetch submissions.' });
   }
 };
 
@@ -261,7 +300,8 @@ export const getMySubmissions = async (req, res) => {
     );
     res.json({ success: true, data: result.rows });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('getMySubmissions error:', err.message);
+    res.status(500).json({ success: false, error: 'Failed to fetch your submissions.' });
   }
 };
 
@@ -281,7 +321,12 @@ export const logProctoringEvent = async (req, res) => {
       return res.status(400).json({ success: false, error: 'attemptId and type are required' });
     }
 
-    const candidateId = req.user?.id || bodyCandId || null;
+    // Authoritative candidate identity: use token user id unless admin explicitly logging for candidate
+    const candidateId = (req.user?.role === 'admin' && bodyCandId) ? bodyCandId : (req.user?.id || bodyCandId);
+    if (!candidateId) {
+      return res.status(401).json({ success: false, error: 'Candidate authentication required' });
+    }
+
     const asmId = assessmentId || null;
     const eventId = `pe-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
     const eventTime = timestamp ? new Date(timestamp) : new Date();
@@ -319,13 +364,24 @@ export const getProctoringEvents = async (req, res) => {
       return res.status(400).json({ success: false, error: 'attemptId is required' });
     }
 
-    const result = await pool.query(
-      `SELECT id, attempt_id, candidate_id, assessment_id, type, timestamp, details
-       FROM proctoring_events
-       WHERE attempt_id = $1 OR candidate_id = $1
-       ORDER BY timestamp ASC`,
-      [attemptId]
-    );
+    const isAdmin = req.user?.role === 'admin';
+    const currentUserId = req.user?.id;
+
+    // Non-admins can strictly only fetch events belonging to their own candidate profile
+    let sql = `
+      SELECT id, attempt_id, candidate_id, assessment_id, type, timestamp, details
+      FROM proctoring_events
+      WHERE (attempt_id = $1 OR candidate_id = $1)
+    `;
+    const params = [attemptId];
+
+    if (!isAdmin) {
+      sql += ` AND candidate_id = $2`;
+      params.push(currentUserId);
+    }
+    sql += ` ORDER BY timestamp ASC`;
+
+    const result = await pool.query(sql, params);
 
     return res.status(200).json({
       success: true,

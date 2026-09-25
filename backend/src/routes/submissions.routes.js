@@ -11,12 +11,12 @@ import { requireRole } from '../middleware/rbac.js';
 
 const router = Router();
 
-// Proctoring telemetry logs (support active assessment sessions & optional token)
-router.post('/proctoring-event', optionalAuthToken, logProctoringEvent);
-router.get('/proctoring-events/:attemptId', optionalAuthToken, getProctoringEvents);
-
-// All other submission endpoints require standard authentication
+// All submission and proctoring endpoints require authentication
 router.use(authenticateToken);
+
+// Proctoring telemetry logs (authenticated candidates & admin)
+router.post('/proctoring-event', logProctoringEvent);
+router.get('/proctoring-events/:attemptId', getProctoringEvents);
 
 // Candidate / Admin test attempt submission
 router.post('/', submitAssessment);

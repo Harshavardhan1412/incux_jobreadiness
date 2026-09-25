@@ -25,7 +25,8 @@ import {
   GraduationCap,
   ChevronRight,
   BookOpen,
-  Code2
+  Code2,
+  Terminal
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
@@ -188,16 +189,19 @@ export const AssessmentReportModal = ({
 
   // 4 Core Section Scores (+ Coding if available)
   const catScores = result?.categoryScores || studentData?.categoryScores || {};
-  const getValidScore = (val, fallback) => {
-    const n = Number(val);
-    return (!isNaN(n) && n > 0) ? Math.round(n) : fallback;
+  const getValidScore = (val, fallback = 0) => {
+    if (val !== undefined && val !== null && val !== '') {
+      const n = Number(val);
+      if (!isNaN(n)) return Math.round(n);
+    }
+    return fallback;
   };
 
-  const aptitudeScore = getValidScore(catScores.aptitude ?? catScores.Aptitude ?? candidate?.aptitudeScore, 82);
-  const reasoningScore = getValidScore(catScores.reasoning ?? catScores.LogicalReasoning ?? catScores.Reasoning ?? candidate?.reasoningScore, 74);
-  const technicalScore = getValidScore(catScores.technical ?? catScores.TechnicalKnowledge ?? catScores.Technical ?? candidate?.technicalScore, score > 0 ? score : 78);
-  const verbalScore = getValidScore(catScores.verbal ?? catScores.english ?? catScores.Verbal ?? studentData?.categoryScores?.verbal ?? candidate?.verbalScore, 78);
-  const codingScore = getValidScore(catScores.coding ?? technicalScore, 75);
+  const aptitudeScore = getValidScore(catScores.aptitude ?? catScores.Aptitude ?? candidate?.aptitudeScore, 0);
+  const reasoningScore = getValidScore(catScores.reasoning ?? catScores.LogicalReasoning ?? catScores.Reasoning ?? candidate?.reasoningScore, 0);
+  const technicalScore = getValidScore(catScores.technical ?? catScores.TechnicalKnowledge ?? catScores.Technical ?? candidate?.technicalScore ?? studentData?.categoryScores?.technical, 0);
+  const verbalScore = getValidScore(catScores.verbal ?? catScores.english ?? catScores.Verbal ?? studentData?.categoryScores?.verbal ?? candidate?.verbalScore, 0);
+  const codingScore = getValidScore(catScores.coding ?? catScores.Coding ?? candidate?.codingScore ?? studentData?.categoryScores?.coding, 0);
 
   // Cohort & Percentile Analytics
   const percentile = Number(studentData?.percentile ?? Math.min(99, Math.max(25, Math.round(score * 0.95 + 10))));
@@ -294,6 +298,12 @@ export const AssessmentReportModal = ({
       { topic: 'Contextual Vocabulary & Idioms', score: 3, maxScore: 5, percent: 60, status: 'Competent' },
       { topic: 'Para Jumbles & Cohesion Flow', score: 2, maxScore: 5, percent: 40, status: 'Needs Focus' }
     ];
+    const codeTopics = [
+      { topic: 'Array Processing & Two-Pointer Logic', score: 5, maxScore: 5, percent: 100, status: 'Mastered' },
+      { topic: 'String Parsing & Pattern Matching', score: 4, maxScore: 5, percent: 80, status: 'Mastered' },
+      { topic: 'Recursion Trees & Backtracking', score: 4, maxScore: 5, percent: 80, status: 'Mastered' },
+      { topic: 'Time & Space Complexity Optimization', score: 3, maxScore: 5, percent: 60, status: 'Competent' }
+    ];
 
     const calcAvg = (topics, fallback) => {
       if (fallback && fallback > 0) return fallback;
@@ -337,9 +347,18 @@ export const AssessmentReportModal = ({
         color: 'border-purple-200 bg-purple-50/20',
         badgeColor: 'bg-purple-100 text-purple-800 border-purple-200',
         topics: verbalTopics
+      },
+      {
+        id: 'coding',
+        title: 'Section 4.5: Coding & Algorithms',
+        icon: Terminal,
+        domainScore: calcAvg(codeTopics, codingScore),
+        color: 'border-cyan-200 bg-cyan-50/20',
+        badgeColor: 'bg-cyan-100 text-cyan-800 border-cyan-200',
+        topics: codeTopics
       }
     ];
-  }, [aptitudeScore, reasoningScore, technicalScore, verbalScore]);
+  }, [aptitudeScore, reasoningScore, technicalScore, verbalScore, codingScore]);
 
   // Flattened for strengths and weaknesses
   const allTopics = useMemo(() => domainSections.flatMap(d => d.topics), [domainSections]);
@@ -387,13 +406,14 @@ export const AssessmentReportModal = ({
             aptitude: { score: Math.round((aptitudeScore / 100) * 25), maxScore: 25, topics: domainSections[0].topics.map(t => ({ name: t.topic, score: t.score, maxScore: t.maxScore })) },
             reasoning: { score: Math.round((reasoningScore / 100) * 25), maxScore: 25, topics: domainSections[1].topics.map(t => ({ name: t.topic, score: t.score, maxScore: t.maxScore })) },
             technical: { score: Math.round((technicalScore / 100) * 25), maxScore: 25, topics: domainSections[2].topics.map(t => ({ name: t.topic, score: t.score, maxScore: t.maxScore })) },
-            verbal: { score: Math.round((verbalScore / 100) * 25), maxScore: 25, topics: domainSections[3].topics.map(t => ({ name: t.topic, score: t.score, maxScore: t.maxScore })) }
+            verbal: { score: Math.round((verbalScore / 100) * 25), maxScore: 25, topics: domainSections[3].topics.map(t => ({ name: t.topic, score: t.score, maxScore: t.maxScore })) },
+            coding: { score: Math.round((codingScore / 100) * 25), maxScore: 25, topics: (domainSections[4]?.topics || []).map(t => ({ name: t.topic, score: t.score, maxScore: t.maxScore })) }
           }
         }
       ]
     };
     return computeImprovements(studentObj);
-  }, [studentData, score, aptitudeScore, reasoningScore, technicalScore, verbalScore, domainSections]);
+  }, [studentData, score, aptitudeScore, reasoningScore, technicalScore, verbalScore, codingScore, domainSections]);
 
   const highPriorityAreas = improvementAreas.filter(a => a.priority === 'high');
   const mediumPriorityAreas = improvementAreas.filter(a => a.priority === 'medium');

@@ -8,10 +8,8 @@ const router = Router();
 // All question endpoints require authentication
 router.use(authenticateToken);
 
-// Candidate & Admin can read questions
-router.get('/', getAllQuestions);
-
-// Admin-only question bank mutations
+// Admin-only question bank access & mutations
+router.get('/', requireRole('admin'), getAllQuestions);
 router.post('/', requireRole('admin'), createQuestion);
 router.put('/:id', requireRole('admin'), updateQuestion);
 router.delete('/:id', requireRole('admin'), deleteQuestion);

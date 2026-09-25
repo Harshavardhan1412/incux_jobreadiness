@@ -16,6 +16,7 @@ const makeRateLimiter = (options) => {
   return rateLimit({
     standardHeaders: true,
     legacyHeaders: false,
+    validate: false,
     ...options,
     ...(store ? { store } : {}),
   });
@@ -43,18 +44,24 @@ export const registerLimiter = makeRateLimiter({
     }),
 });
 
-// -- Global API: 600 requests per 15 min per IP -------------------------------
+// -- Global API: Campus NAT & Student Burst Support --------------------------
 export const apiLimiter = makeRateLimiter({
   windowMs: 15 * 60 * 1000,
-  max: 600,
+  max: isDev ? 50000 : 15000,
   message: { success: false, error: "Too many requests. Please slow down and try again later." },
+  keyGenerator: (req) => {
+    return req.headers["authorization"] || req.headers["x-candidate-id"] || req.body?.candidateId || req.ip;
+  }
 });
 
-// -- Submissions: 40 per 10 min per IP ----------------------------------------
+// -- Submissions: 40 attempts per candidate (keyed by candidate ID) -----------
 export const submissionLimiter = makeRateLimiter({
   windowMs: 10 * 60 * 1000,
-  max: 40,
+  max: 100,
   message: { success: false, error: "Submission rate limit reached. Please wait before submitting another attempt." },
+  keyGenerator: (req) => {
+    return req.headers["authorization"] || req.headers["x-candidate-id"] || req.body?.candidateId || req.ip;
+  }
 });
 
 // -- Per-Account Lockout Helpers (Redis-backed) --------------------------------

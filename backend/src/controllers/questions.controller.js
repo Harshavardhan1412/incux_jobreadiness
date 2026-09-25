@@ -48,7 +48,28 @@ export const getAllQuestions = async (req, res) => {
     sql += ' ORDER BY created_at DESC';
 
     const result = await pool.query(sql, params);
-    const responsePayload = { success: true, data: result.rows, total: result.rowCount };
+    
+    // Sanitize hidden test cases for non-admin queries to prevent leakage
+    const sanitizedData = isAdmin ? result.rows : result.rows.map(row => {
+      let tc = row.test_cases;
+      if (typeof tc === 'string') {
+        try { tc = JSON.parse(tc); } catch { tc = []; }
+      }
+      const safeTestCases = Array.isArray(tc)
+        ? tc.filter(item => !item.isHidden).map(item => ({
+            id: item.id,
+            input: item.input,
+            expectedOutput: item.expectedOutput,
+            isHidden: false
+          }))
+        : [];
+      return {
+        ...row,
+        test_cases: safeTestCases
+      };
+    });
+
+    const responsePayload = { success: true, data: sanitizedData, total: result.rowCount };
 
     if (!isFiltered) {
       if (isAdmin) {
@@ -62,7 +83,8 @@ export const getAllQuestions = async (req, res) => {
 
     res.json(responsePayload);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('getAllQuestions error:', err.message);
+    res.status(500).json({ success: false, error: 'Failed to fetch questions.' });
   }
 };
 
@@ -84,40 +106,23 @@ export const createQuestion = async (req, res) => {
     timeLimitSec,
     tags,
     testCases,
-    test_cases,
     starterTemplates,
-    starter_templates,
     constraints
   } = req.body;
 
-  const id = customId || `q-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
-  const resolvedTestCases = testCases || test_cases || null;
-  const resolvedStarterTemplates = starterTemplates || starter_templates || null;
-
   try {
     clearQuestionsCache();
+    const id = customId || `q-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
+    const resolvedTestCases = Array.isArray(testCases) ? testCases : null;
+    const resolvedStarterTemplates = (typeof starterTemplates === 'object' && starterTemplates !== null) ? starterTemplates : null;
+
     const result = await pool.query(
-      `INSERT INTO questions (id, category, topic, difficulty, type, question, code_snippet, language, options, correct_answer, explanation, marks, time_limit_sec, tags, test_cases, starter_templates, constraints)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
-       ON CONFLICT (id) DO UPDATE SET
-         category = EXCLUDED.category,
-         topic = EXCLUDED.topic,
-         difficulty = EXCLUDED.difficulty,
-         type = EXCLUDED.type,
-         question = EXCLUDED.question,
-         code_snippet = EXCLUDED.code_snippet,
-         language = EXCLUDED.language,
-         options = EXCLUDED.options,
-         correct_answer = EXCLUDED.correct_answer,
-         explanation = EXCLUDED.explanation,
-         marks = EXCLUDED.marks,
-         time_limit_sec = EXCLUDED.time_limit_sec,
-         tags = EXCLUDED.tags,
-         test_cases = EXCLUDED.test_cases,
-         starter_templates = EXCLUDED.starter_templates,
-         constraints = EXCLUDED.constraints,
-         updated_at = CURRENT_TIMESTAMP
-       RETURNING *`,
+      `INSERT INTO questions (
+        id, category, topic, difficulty, type, question, code_snippet,
+        language, options, correct_answer, explanation, marks, time_limit_sec,
+        tags, test_cases, starter_templates, constraints
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+      RETURNING *`,
       [
         id,
         category || 'Technical',
@@ -140,7 +145,8 @@ export const createQuestion = async (req, res) => {
     );
     res.status(201).json({ success: true, data: result.rows[0] });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('createQuestion error:', err.message);
+    res.status(500).json({ success: false, error: 'Failed to create question.' });
   }
 };
 
@@ -244,7 +250,8 @@ export const updateQuestion = async (req, res) => {
     res.json({ success: true, data: updatedQ });
   } catch (err) {
     await client.query('ROLLBACK');
-    res.status(500).json({ error: err.message });
+    console.error('updateQuestion error:', err.message);
+    res.status(500).json({ success: false, error: 'Failed to update question.' });
   } finally {
     client.release();
   }
@@ -265,7 +272,8 @@ export const deleteQuestion = async (req, res) => {
     res.json({ success: true, message: 'Question and all assessment links deleted.' });
   } catch (err) {
     await client.query('ROLLBACK');
-    res.status(500).json({ error: err.message });
+    console.error('deleteQuestion error:', err.message);
+    res.status(500).json({ success: false, error: 'Failed to delete question.' });
   } finally {
     client.release();
   }
