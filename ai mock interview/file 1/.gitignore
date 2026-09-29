@@ -1,0 +1,34 @@
+# Python
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Local uploads (metadata is stored in PostgreSQL; files remain on disk)
+uploads/
+
+# Node
+node_modules/
+
+# Build
+dist/
+build/
+
+# macOS
+.DS_Store
+
+# VSCode
+.vscode/settings.json
+
+.env.*
+coverage/
+.vscode/
+.idea/
+*.log

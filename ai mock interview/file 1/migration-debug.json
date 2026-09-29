@@ -1,0 +1,18 @@
+{
+  "cwd": "C:\\Users\\Aditya\\Downloads\\incux_jobreadiness-main\\ai mock interview\\incuxhireflow-interviewv0.1\\incuxhireflow-interviewv0.1",
+  "appRoot": "C:\\Users\\Aditya\\Downloads\\incux_jobreadiness-main\\ai mock interview\\incuxhireflow-interviewv0.1\\incuxhireflow-interviewv0.1",
+  "schema": "C:\\Users\\Aditya\\Downloads\\incux_jobreadiness-main\\ai mock interview\\incuxhireflow-interviewv0.1\\incuxhireflow-interviewv0.1\\prisma\\schema.prisma",
+  "entries": [
+    {
+      "name": "20260924000000_init",
+      "directory": true
+    },
+    {
+      "name": "migration_lock.toml",
+      "directory": false
+    }
+  ],
+  "status": 0,
+  "stdout": "Prisma schema loaded from prisma\\schema.prisma\nDatasource \"db\": PostgreSQL database \"hireflow_db\", schema \"public\" at \"localhost:5432\"\n\n1 migration found in prisma/migrations\n\nDatabase schema is up to date!\n",
+  "stderr": "warn The configuration property `package.json#prisma` is deprecated and will be removed in Prisma 7. Please migrate to a Prisma config file (e.g., `prisma.config.ts`).\nFor more information, see: https://pris.ly/prisma-config\n\nEnvironment variables loaded from .env\n"
+}

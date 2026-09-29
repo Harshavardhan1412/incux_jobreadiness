@@ -1,0 +1,14 @@
+{
+  "name": "jobreadiness-monorepo",
+  "version": "1.0.0",
+  "description": "ReadySetJob AI Job Readiness Platform — Monorepo",
+  "private": true,
+  "scripts": {
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev": "start /B npm run dev:backend && npm run dev:frontend",
+    "install:all": "cd backend && npm install && cd ../frontend && npm install",
+    "seed": "cd backend && npm run seed",
+    "build": "cd frontend && npm run build"
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "database": "hireflow_db",
+  "publicTables": [
+    "AiAnalysis",
+    "Interview",
+    "InterviewQuestion",
+    "InterviewResponse",
+    "Resume",
+    "User",
+    "_prisma_migrations",
+    "interview",
+    "report",
+    "resumeAnalysis",
+    "user"
+  ],
+  "prismaMigrationsTable": true,
+  "migrations": [
+    {
+      "name": "20260922063024_init_postgresql",
+      "finished": true
+    },
+    {
+      "name": "20260922085011_add_ats_data",
+      "finished": true
+    },
+    {
+      "name": "20260924000000_init",
+      "finished": true
+    }
+  ]
+}
