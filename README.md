@@ -1,70 +1,181 @@
-# ReadySetJob — AI-Powered Job Readiness & Assessment Platform MVP
+# ReadySetJob — AI-Powered Job Readiness & Assessment Platform
 
-A modern, production-grade SaaS MVP web application designed to evaluate candidate job readiness through standardized Aptitude, Reasoning, and Technical modules with real-time AI performance analysis, skill gap diagnostics, and verifiable job readiness reporting.
+ReadySetJob is a full-stack job readiness and assessment platform designed to help organizations evaluate candidates through aptitude, reasoning, and technical assessments. The platform combines a modern React frontend, a secure Express API, a PostgreSQL data layer, and Redis-based rate limiting and queue support to deliver a production-style recruitment workflow.
 
----
+This repository is structured as a monorepo and contains the main application logic for the candidate experience, admin panel, assessment engine, code execution support, and analytics dashboards.
 
-## 🌟 Key Features
+## Project overview
 
-### 1. 🎨 Professional SaaS Design System
-- Modern, clean, and responsive UI built with Tailwind CSS, custom design tokens, and curated typography (**Inter** and **JetBrains Mono**).
-- Reusable components: Radial Score Ring, Glassmorphic Topbar, Responsive Collapsible Sidebar, Toast Notification system, Accessible Modals, and Chart.js analytics.
+The application enables:
 
-### 2. 👤 Candidate Portal
-- **Candidate Registration & Login**: Split-screen design with real-time validation, 10-digit phone checking, password strength meter, university/branch selectors, experience level toggles, optional resume dropzone, and 1-click demo logins.
-- **Candidate Dashboard**: Prominent Overall Job Readiness Score (78/100), subscore breakdowns (Aptitude 82%, Reasoning 74%, Technical 78%), "Continue Assessment" active card, performance trend chart, strong areas vs needs improvement bars, AI career insights, and actionable recommendations.
-- **Distraction-Free Live Assessment Runner**: Live countdown timer, Single-Choice / Multi-Choice / True-False / Code Snippet questions with syntax highlighting, Question Navigator matrix (1-20), review flags, and pre-submission confirmation modals.
-- **Assessment Results Page**: Instant score breakdown (Score, Accuracy, Correct, Incorrect, Time Taken), celebratory confetti, module scores, and topic-level mastery bars.
-- **AI Performance Analysis**: 6-dimension Radar Chart compared against industry hiring benchmarks, career readiness verdict with placement probability, skill gap matrix table, and 7-day prescriptive learning roadmap.
-- **Official Job Readiness Report**: Verified digital credential with Report ID, verification QR seal, and print/PDF download capabilities.
+- Candidate sign-up and login flows
+- Role-based access for candidates and recruiters/admins
+- Assessment creation and management
+- Aptitude, reasoning, coding, and technical evaluation modules
+- Candidate analytics and readiness scoring
+- Administrative tools for managing candidates, assessments, and questions
+- Secure backend APIs with validation, auth, and rate limiting
 
-### 3. 🛡️ Admin & Recruiter Portal
-- **Admin Dashboard**: Top 5 KPI cards (Total Candidates, Active Candidates, Tests Completed, Avg Score, Job Ready Candidates), average score trend chart, and category performance breakdown.
-- **Candidate Management**: Live candidate roster with multi-filters (University, Grad Year, Status, Readiness Level), `+ Add Candidate` modal, and detailed Candidate Profile drawer.
-- **Question Bank Management**: Multi-filter by Category/Topic/Difficulty/Type, `+ Add Question` modal supporting code snippets and languages, live preview modal, and duplicate/delete actions.
-- **Assessment Management**: Assessment catalog cards and a **7-Step Create Assessment Wizard** (*Details $\rightarrow$ Question Bank Selection $\rightarrow$ Configuration $\rightarrow$ Duration $\rightarrow$ Passing Score $\rightarrow$ Preview $\rightarrow$ Publish*).
-- **Analytics & Reports Generator**: Deep-dive analytics charts, Weakest Topics matrix, CSV exports, and printable placement PDF summaries.
+## Core features
 
----
+### Candidate experience
+- Clean onboarding and role-based login experience
+- Candidate dashboard with readiness score and progress tracking
+- Assessment listing and attempt flow
+- Timed assessments with structured question types
+- Results and performance analytics
+- Career readiness insights and score breakdowns
 
-## 🛠️ Technology Stack
+### Admin & recruiter experience
+- Candidate management interface
+- Question bank and assessment administration
+- Assessment configuration and filtering
+- Analytics dashboard for performance review
+- Candidate readiness reporting
 
-- **Frontend**: React 18, Vite
-- **Styling**: Tailwind CSS, PostCSS, Autoprefixer
-- **Charts & Visualizations**: Chart.js, React-Chartjs-2
-- **Icons & Micro-interactions**: Lucide React, Canvas-Confetti
-- **Document Export**: Print-to-PDF styles, CSV Data Exporter
+### Technical capabilities
+- React + Vite frontend for a fast interactive UI
+- Express backend for REST API services
+- PostgreSQL for persistent data storage
+- Redis for caching / rate limiting / worker support
+- JWT-based authentication and protected endpoints
+- Code execution support via Judge0/Piston patterns in backend design
 
----
+## Architecture
 
-## 🚀 Getting Started
+```text
+incux_jobreadiness/
+├── frontend/              # React + Vite app
+│   ├── src/
+│   ├── package.json
+│   └── vite.config.*
+├── backend/               # Express API + business logic
+│   ├── src/
+│   ├── scripts/
+│   ├── prisma/
+│   ├── package.json
+│   └── .env.example
+├── .env.example           # Root env template
+├── package.json           # Monorepo scripts
+├── README.md              # Project overview
+├── ai mock interview/     # Additional AI interview prototype work
+└── verify_fixes.mjs       # Validation/helper script
+```
+
+## Tech stack
+
+### Frontend
+- React 18
+- Vite
+- Tailwind CSS
+- Chart.js / React Chart.js
+- Lucide icons
+- Material UI and custom UI components
+
+### Backend
+- Node.js
+- Express
+- PostgreSQL via pg
+- Redis
+- JWT auth
+- Helmet + CORS + rate limiting
+- BullMQ-ready worker architecture
+
+## Getting started
 
 ### Prerequisites
-- Node.js (v18 or higher)
-- npm or yarn
+- Node.js 18+
+- npm
+- PostgreSQL database
+- Redis instance
 
-### Installation
+### 1) Clone the repository
+
 ```bash
-# Clone the repository
 git clone https://github.com/Harshavardhan1412/incux_jobreadiness.git
 cd incux_jobreadiness
+```
 
-# Install dependencies
+### 2) Install dependencies
+
+```bash
 npm install
+cd backend && npm install
+cd ../frontend && npm install
+```
 
-# Start the local development server
+### 3) Configure environment variables
+
+Copy the example env file and fill in your database and auth credentials:
+
+```bash
+cp .env.example backend/.env
+```
+
+Then update the values in `backend/.env`:
+
+- `DATABASE_URL`
+- `REDIS_URL`
+- `JWT_SECRET`
+- `CORS_ORIGIN`
+- `PORT`
+- `NODE_ENV`
+
+### 4) Start the application
+
+From the root:
+
+```bash
 npm run dev
 ```
 
-Open [http://localhost:5173](http://localhost:5173) in your browser.
+This project includes monorepo scripts for running backend and frontend together.
 
-### Production Build
+### 5) Build production assets
+
 ```bash
 npm run build
 ```
 
----
+## Available scripts
 
-## 🕹️ Demo Features & Quick Jumps
-- **Role Switcher**: Click the **Candidate / Admin HR** toggle in the top header to seamlessly switch perspectives.
-- **Floating Quick Jump Directory**: Use the **"MVP Quick Jumps"** floating pill in the bottom-left corner to jump directly to any candidate or admin screen.
+Root `package.json` includes convenience scripts:
+
+```bash
+npm run dev
+npm run dev:backend
+npm run dev:frontend
+npm run build
+npm run seed
+```
+
+## Backend notes
+
+The backend is designed around a modular REST API structure and includes:
+
+- authentication routes
+- candidate routes
+- assessment routes
+- question management routes
+- submissions processing
+- admin APIs
+- code execution middleware and integrations
+
+The app is built to support scalable hiring workflows while keeping the codebase organized by feature and service responsibility.
+
+## Important project notes
+
+- This repo is intended as a job-readiness SaaS platform MVP and not a single-page demo only.
+- The `ai mock interview/` folder contains an additional interview-related prototype that complements the main platform.
+- The project uses environment-specific secrets and should not be committed directly in production.
+
+## License
+
+This project currently does not declare an explicit license in the repository metadata. Please check the repository settings before commercial use or redistribution.
+
+## Contact
+
+For questions, collaboration, or deployment support, connect with the repository owner on GitHub:
+
+https://github.com/Harshavardhan1412
+
